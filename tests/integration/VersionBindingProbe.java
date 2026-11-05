@@ -111,6 +111,8 @@ public final class VersionBindingProbe {
         ClockBinding renderer = ClockBinding.of(clock);
         if (!renderer.legacy) throw new AssertionError("Expected 8.5 provider binding");
         new OneUi85MediaBinding(clock);
+        new OneUi85ArtworkBinding(clock);
+        new OneUi85WallpaperFadeBinding(clock);
         if (!renderer.clockStyle) {
             ClockBlurBinding.resolve(clock);
             OneUi85AodBlur.submissions(provider);

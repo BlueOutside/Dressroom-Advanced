@@ -42,6 +42,8 @@ public final class ProviderBindingProbe {
         WidgetEngine.validateLegacyGrid(Class.forName(WidgetEngine.GRID, false, loader));
         if (clock.legacy) {
             new OneUi85MediaBinding(base);
+            new OneUi85ArtworkBinding(base);
+            new OneUi85WallpaperFadeBinding(base);
             System.out.println("8.5 media state, native return animator and observer callers resolved");
             RuntimeWidgetHooks.legacyUpdates(Class.forName(
                     "com.samsung.android.app.facewidget.complication.ComplicationWidgetPluginController", false, loader));

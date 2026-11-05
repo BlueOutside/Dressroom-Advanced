@@ -19,6 +19,7 @@ final class OneUi85MediaHooks {
                     .setId("dressroom-advanced.85-media-depth")
                     .intercept(chain -> {
                         Object result = chain.proceed();
+                        OneUi85FullscreenArt.attach((View) chain.getThisObject());
                         MediaDepthTransition.update((View) chain.getThisObject(),
                                 Boolean.TRUE.equals(chain.getArg(0)), binding::animation);
                         return result;

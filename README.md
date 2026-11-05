@@ -12,7 +12,7 @@ An LSPosed API 102 module for Samsung's lockscreen editor. Adds clock, widget an
 - Widget scaling, custom grids, free placement and separate depth controls.
 - Portrait and landscape settings on supported large-screen layouts.
 - Keep the charging Now Bar card visible and add a custom text card.
-- Fullscreen media artwork and song-change animations on One UI 9 AOD.
+- Fullscreen media artwork on One UI 9 AOD, plus an experimental 8.5 port.
 
 ## Support
 
@@ -24,7 +24,7 @@ An LSPosed API 102 module for Samsung's lockscreen editor. Adds clock, widget an
 | 8.5 | AOD + Dressroom | Experimental shim — not yet tested on an AOD device |
 | 8.0 | Any combination | Unsupported |
 
-Not every feature is available on both supported setups. Fullscreen media artwork is currently limited to One UI 9 AOD. Other devices and app versions may behave differently.
+Not every feature is available on both supported setups. The 8.5 fullscreen artwork port is experimental. Other devices and app versions may behave differently.
 
 ## Setup
 

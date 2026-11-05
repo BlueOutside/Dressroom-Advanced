@@ -43,3 +43,20 @@ or failed animator lookup releases the suspension instead of leaving depth off.
 
 Saved depth settings and orientation policies are unchanged. 9.0's artwork,
 clock return, controls blur and thumbnail layers are unchanged.
+
+## Wallpaper transition
+
+`MediaExpandStateObserver.onChanged` owns a separate wallpaper blur/dim animator.
+Clock Style stores it in `C`, with expanded state `E` and status-view host `u`.
+AOD stores the equivalent in `D`, with state `F` and host `v`. Both sources use
+integer opacity 0–255: opening is 300ms (or immediate for the native nonzero
+transition condition), while closing is 200ms. This is not the clock's 300ms
+return animator.
+
+The framed artwork can disappear before that wallpaper transition ends. The
+fullscreen backend therefore follows the wallpaper animator and retains the last
+native texture during close. Native observer callbacks only update opacity and
+invalidate the window; source selection/restoration waits until pre-draw, after
+Samsung finishes replacing its views and animator. Reopening replaces the old
+listener, and disabling the setting releases the retained texture immediately.
+The actual wallpaper/provider settings are not changed.

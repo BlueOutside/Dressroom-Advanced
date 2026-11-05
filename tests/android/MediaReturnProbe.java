@@ -6,6 +6,85 @@ import android.os.Looper;
 import android.view.View;
 
 public final class MediaReturnProbe {
+    private static void fullscreen85(Context context) throws Exception {
+        android.widget.FrameLayout root = new android.widget.FrameLayout(context);
+        android.widget.FrameLayout page = new android.widget.FrameLayout(context);
+        View frame = new View(context);root.addView(page);page.addView(frame);
+        page.setAlpha(.4f);frame.setAlpha(.5f);
+        check(Math.abs(OneUi85FullscreenArt.opacity(frame, root) - .2f) < .0001f,
+                "8.5 artwork ignores inherited native fade");
+        MediaBlurHost.hold(frame);
+        check(frame.getAlpha() == 0 && Math.abs(OneUi85FullscreenArt.opacity(frame, root) - .2f) < .0001f,
+                "Hiding native artwork also hides its fullscreen copy");
+        MediaBlurHost.nativeAlpha(frame, .6f);
+        check(Math.abs(OneUi85FullscreenArt.opacity(frame, root) - .24f) < .0001f,
+                "Fullscreen fade ignores new native alpha while held");
+        frame.setVisibility(View.INVISIBLE);
+        check(OneUi85FullscreenArt.opacity(frame, root) == 0, "Hidden page leaves fullscreen art visible");
+        frame.setVisibility(View.VISIBLE);MediaBlurHost.release(frame);
+        check(frame.getAlpha() == .6f, "Native artwork release restores stale opacity");
+        check(OneUi85FullscreenArt.opacity(frame, new View(context)) == 0,
+                "Artwork from another root is used");
+        var type = Class.forName("dev.denver.dressroomadvanced.OneUi85FullscreenArt$Layer");
+        var constructor = type.getDeclaredConstructor(android.view.ViewGroup.class);constructor.setAccessible(true);
+        View layer = (View) constructor.newInstance(root);
+        android.graphics.drawable.ColorDrawable background = new android.graphics.drawable.ColorDrawable(android.graphics.Color.RED);
+        View card = new View(context);card.setBackground(background);
+        Reflect.call(layer, "suppressBackground", card);
+        check(card.getBackground() instanceof OneUi85FullscreenArt.Blank, "Native framed background stays visible");
+        card.getBackground().setAlpha(121);
+        int nativeAlpha = background.getAlpha();
+        Reflect.call(layer, "restore");
+        check(card.getBackground() == background && background.getAlpha() == nativeAlpha,
+                "Restoring native card loses background updates");
+        android.graphics.Bitmap image = android.graphics.Bitmap.createBitmap(4, 4, android.graphics.Bitmap.Config.ARGB_8888);
+        image.eraseColor(android.graphics.Color.BLUE);
+        Reflect.set(layer, "bitmap", image);layer.layout(0, 0, 240, 120);
+        android.graphics.Bitmap output = android.graphics.Bitmap.createBitmap(240, 120, android.graphics.Bitmap.Config.ARGB_8888);
+        Reflect.call(layer, "onDraw", new android.graphics.Canvas(output));
+        check(output.getPixel(0, 0) == android.graphics.Color.BLUE
+                        && output.getPixel(239, 119) == android.graphics.Color.BLUE,
+                "Fullscreen artwork retains the native rounded frame");
+        check(!image.isRecycled(), "Fullscreen layer recycles Samsung's artwork");
+        ValueAnimator fade = ValueAnimator.ofInt(255, 0);fade.setDuration(200);fade.start();
+        Reflect.call(layer, "bindFade", fade, false);
+        Reflect.call(layer, "update", true);
+        check(layer.getVisibility() == View.VISIBLE && Reflect.field(layer, "bitmap") == image,
+                "Native source removal drops art before the wallpaper fade");
+        fade.setCurrentFraction(.5f);Reflect.call(layer, "update", true);
+        check(layer.getAlpha() > .4f && layer.getAlpha() < .6f,
+                "Artwork ignores the native wallpaper return progress");
+        check(Reflect.field(layer, "bitmap") == image, "Fade loses its retained native texture");
+        fade.end();Reflect.call(layer, "update", true);
+        check(layer.getVisibility() == View.INVISIBLE && Reflect.field(layer, "bitmap") == null,
+                "Completed wallpaper fade retains fullscreen art");
+        ValueAnimator opening = ValueAnimator.ofInt(0, 255);opening.setDuration(300);opening.start();
+        opening.setCurrentFraction(.5f);Reflect.call(layer, "bindFade", opening, true);
+        float openingAlpha = ((Number) Reflect.field(layer, "nativeAlpha")).floatValue();
+        check(openingAlpha > .4f && openingAlpha < .6f, "Opening ignores native wallpaper fade");
+        Reflect.call(layer, "sample", fade);
+        check(((Number) Reflect.field(layer, "nativeAlpha")).floatValue() == openingAlpha,
+                "Old closing animator overwrites the reopened scene");
+        opening.end();Reflect.call(layer, "bindFade", opening, true);
+        check(((Number) Reflect.field(layer, "nativeAlpha")).floatValue() == 1,
+                "Already-completed opening loses its final opacity");
+        Reflect.call(layer, "bindFade", opening, false);
+        check(Boolean.FALSE.equals(Reflect.field(layer, "nativeFade")),
+                "Missing replacement wallpaper animator retains stale opacity forever");
+        Reflect.call(layer, "bindFade", opening, false);
+        check(Boolean.FALSE.equals(Reflect.field(layer, "nativeFade")),
+                "Repeated native notification rebinds a stale expanded endpoint");
+        ValueAnimator closing = ValueAnimator.ofInt(255, 0);closing.setDuration(200);closing.start();
+        Reflect.set(layer, "bitmap", image);Reflect.call(layer, "bindFade", closing, false);
+        Reflect.call(layer, "update", false);
+        check(layer.getVisibility() == View.INVISIBLE && Reflect.field(layer, "bitmap") == null,
+                "Disabling fullscreen does not release its fading texture");
+        Reflect.call(layer, "clearFade");
+        check(closing.getListeners() == null || closing.getListeners().isEmpty(),
+                "Detached fullscreen layer retains native wallpaper listeners");
+        closing.end();output.recycle();image.recycle();
+    }
+
     private static final class QueuedView extends View {
         final java.util.ArrayList<Runnable> frames = new java.util.ArrayList<>();
         QueuedView(Context context) { super(context); }
@@ -131,7 +210,12 @@ public final class MediaReturnProbe {
         pixels.recycle();
     }
 
-    public static void main(String[] args) throws Exception {
+    public static void main(String[] args) {
+        try { run(); }
+        catch (Throwable error) { error.printStackTrace(System.out);System.exit(1); }
+    }
+
+    private static void run() throws Exception {
         Looper.prepareMainLooper();
         Class<?> memory = Class.forName("com.android.internal.os.ApplicationSharedMemory");
         memory.getMethod("setInstance", memory)
@@ -175,6 +259,7 @@ public final class MediaReturnProbe {
                 RuntimeClockData.manualHeights(saved) == null,
                 "Invalid native source heights accepted");
         mediaDepth(context);
+        fullscreen85(context);
         int[] ends = {0};
         ValueAnimator first = running();
         check(

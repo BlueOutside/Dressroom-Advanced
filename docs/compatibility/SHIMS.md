@@ -15,5 +15,7 @@ restoring only the visible clock leaves native measurement with old heights.
 
 AOD 8.9.32.95 has an experimental 8.5 source/measurement and depth-blur shim.
 It is declaration-checked, not device-validated. 9.0 Clock Style remains
-unsupported. The fullscreen media player and glyph-cache optimizations are
-not ported to 8.5.
+unsupported. The 0.21.0 fullscreen artwork port follows the native 8.5 fade and retains its
+controls container. The tablet user confirms fullscreen display; 0.21.1 follows the native wallpaper
+fade for closing, with that visual follow-up pending. Glyph-cache optimizations and
+the framed song-change shader/lighting remain unported on 8.5.

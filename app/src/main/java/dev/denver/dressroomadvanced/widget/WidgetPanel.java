@@ -139,7 +139,7 @@ final class WidgetPanel {
                         label(
                                 "Arrangement: "
                                         + (editor.vertical() ? "Vertical" : "Horizontal")
-                                        + "  •  Rotate");
+                                        + "  â€¢  Rotate");
                 rotate.setMinHeight(dp(48));
                 ripple(rotate);
                 rotate.setOnClickListener(
@@ -160,7 +160,7 @@ final class WidgetPanel {
                             }
                         });
                 note(
-                        "Rotate uses Samsung’s layout control. Wide grids are horizontal; tall"
+                        "Rotate uses Samsungâ€™s layout control. Wide grids are horizontal; tall"
                                 + " grids are vertical.");
                 slider(
                         "Columns",
@@ -181,14 +181,14 @@ final class WidgetPanel {
                 note(
                         "Grid capacity: "
                                 + b.getInt("columns")
-                                + " × "
+                                + " Ã— "
                                 + b.getInt("rows")
                                 + ". Larger widget variants appear in the widget picker when"
                                 + " supported.");
             }
         } else
             note(
-                    "Use Samsung’s widget layout control to switch between horizontal and vertical."
+                    "Use Samsungâ€™s widget layout control to switch between horizontal and vertical."
                             + " Custom grid capacity is not available in this build.");
         slider(
                 "Widget scale",
@@ -200,7 +200,7 @@ final class WidgetPanel {
                 false);
         note(
                 editor.legacy()
-                        ? "Scale changes cell size while keeping Samsung’s arrangement."
+                        ? "Scale changes cell size while keeping Samsungâ€™s arrangement."
                         : "Scale changes cell size. Rows and columns control how much the grid can"
                                 + " hold.");
         section("Placement");
@@ -283,7 +283,7 @@ final class WidgetPanel {
                             + " Off disables it in both. Size and placement stay separate.");
             note(
                     "On places widgets behind the detected subject independently of clock depth."
-                            + " Detect the subject in Clock → Advanced first.");
+                            + " Detect the subject in Clock â†’ Advanced first.");
             if (!editor.legacy()) {
                 toggle(
                         "Live background blur",
@@ -310,7 +310,7 @@ final class WidgetPanel {
                     }
                 });
         group = content;
-        status = label("Changes preview here. Use the editor’s Done / Apply to save.");
+        status = label("Changes preview here. Use the editorâ€™s Done / Apply to save.");
         binding = false;
         content.requestLayout();
     }
@@ -327,16 +327,11 @@ final class WidgetPanel {
                 next -> next.putBoolean("keepCharging", !b.getBoolean("keepCharging")),
                 false);
         note("Keep the finished charging card visible while plugged in. It closes when unplugged.");
-        if (!editor.legacy()) {
-            toggle(
-                    "Full-screen album artwork",
-                    b.getBoolean("fullscreenArt"),
-                    next -> next.putBoolean("fullscreenArt", !b.getBoolean("fullscreenArt")),
-                    false);
-            note(
-                    "Expand artwork to fill the screen using the player’s native movement, without"
-                            + " its artwork frame or top blur.");
-        }
+        toggle(
+                "Full-screen album artwork",
+                b.getBoolean("fullscreenArt"),
+                next -> next.putBoolean("fullscreenArt", !b.getBoolean("fullscreenArt")),
+                false);
         label("Your Now Bar");
         toggle(
                 "Show a custom message",
@@ -356,7 +351,7 @@ final class WidgetPanel {
                     next -> next.putBoolean("keepStretch", !b.getBoolean("keepStretch")),
                     false);
             note(
-                    "Keep a dynamic clock’s height when entering AOD. Native color and weight"
+                    "Keep a dynamic clockâ€™s height when entering AOD. Native color and weight"
                             + " transitions stay active.");
         }
         TextView reset = label("Reset extra settings");

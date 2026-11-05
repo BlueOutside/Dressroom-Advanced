@@ -6,7 +6,7 @@
     "Constructors, method signatures, enum values and behavioral contracts",
     "Resource names matched by traversal rather than getIdentifier literals"
   ],
-  "sourceFiles": 92,
+  "sourceFiles": 95,
   "entries": [
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/DressroomModule.java",
@@ -634,7 +634,7 @@
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/RuntimeClockHooks.java",
-      "line": 287,
+      "line": 292,
       "kind": "declared-method",
       "target": "setMediaExpanded"
     },
@@ -787,6 +787,18 @@
       "line": 28,
       "kind": "declared-method",
       "target": "g"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/oneui85/OneUi85WallpaperFadeBinding.java",
+      "line": 16,
+      "kind": "class",
+      "target": "com.samsung.android.app.facewidget.presentation.MediaExpandStateObserver"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/oneui85/OneUi85WallpaperFadeBinding.java",
+      "line": 18,
+      "kind": "class",
+      "target": "com.samsung.android.app.facewidget.SecKeyguardStatusView"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/oneui9/OneUi9ClockSource.java",
@@ -1870,25 +1882,25 @@
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/widget/WidgetPanel.java",
-      "line": 504,
+      "line": 499,
       "kind": "resource",
       "target": "clock_font_weight_seekbar_title_text_size"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/widget/WidgetPanel.java",
-      "line": 517,
+      "line": 512,
       "kind": "class",
       "target": "androidx.appcompat.widget.SeslSeekBar$OnSeekBarChangeListener"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/widget/WidgetPanel.java",
-      "line": 580,
+      "line": 575,
       "kind": "resource",
       "target": "clock_panel_item_divider"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/widget/WidgetPanel.java",
-      "line": 634,
+      "line": 629,
       "kind": "resource",
       "target": "clock_panel_layout"
     }

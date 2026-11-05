@@ -282,6 +282,11 @@ final class RuntimeClockHooks {
                 } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
                     module.report("8.5 media depth lifecycle unavailable", error);
                 }
+                try {
+                    OneUi85FullscreenArt.install(module, base);
+                } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+                    module.report("8.5 fullscreen artwork unavailable", error);
+                }
             }
             if (!binding.legacy) {
                 Method media = base.getDeclaredMethod("setMediaExpanded", boolean.class);
