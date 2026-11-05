@@ -1,16 +1,24 @@
 # Runtime and editor boundaries
 
-Production classes are organized into clear domain packages under `dev.denver.dressroomadvanced`:
+Source directories under `app/src/main/java/dev/denver/dressroomadvanced/`:
 
-| Package | Purpose | Primary classes |
-| --- | --- | --- |
-| `dev.denver.dressroomadvanced` | Core module startup, IPC, reflection, and lifecycle | `DressroomModule`, `SettingsProvider`, `SettingsBridge`, `SettingsScope`, `Reflect`, `HookTransaction`, `NativeContract` |
-| `dev.denver.dressroomadvanced.clock` | Clock runtime, manual heights, and glyph rendering | `RuntimeClockHooks`, `ClockBinding`, `AodStretchExtras`, `SavedStretch`, `DateEffects`, `GlyphFontCache`, `ShadowEffects` |
-| `dev.denver.dressroomadvanced.depth` | Wallpaper subject extraction, matting, and depth rendering | `DepthEffects`, `DepthGeometry`, `DepthAuto`, `LiveSubject`, `MaskAlpha`, `MaskContour`, `DepthStorage` |
-| `dev.denver.dressroomadvanced.widget` | Complication layouts, sizing, panels, and compositor paths | `WidgetEngine`, `WidgetLayout`, `WidgetPanel`, `WidgetPlacement`, `RuntimeWidgetHooks`, `EditorWidgets`, `WidgetDepthBlur` |
-| `dev.denver.dressroomadvanced.media` | Full-screen media artwork, interactions, and Now Bar cards | `MediaFullscreenExtras`, `MediaBlurHost`, `MediaClockContrast`, `MediaInteraction`, `ChargingState`, `ChargingVisuals` |
-| `dev.denver.dressroomadvanced.blur` | Per-clock path-based blur, opacity, and wallpaper tones | `BlurEffects`, `BlurOpacity`, `WallpaperBlurTone` |
-| `dev.denver.dressroomadvanced.editor` | Native editor activity bindings, tabs, and scroll coordination | `EditorBinding`, `EditorClockRefresh`, `EditorExtras`, `EditorScrollView`, `EditorWallpaperSource`, `PanelTabs` |
+| Directory | Contents |
+| --- | --- |
+| Root | Module startup, settings IPC, reflection and lifecycle helpers |
+| `clock/` | Clock rendering, manual heights, date, shadows and glyphs |
+| `depth/` | Subject detection, tracking and clipping |
+| `widget/` | Widget layout, placement and compositor handling |
+| `editor/` | Editor panels and Apply/cancel handling |
+| `media/` | Artwork, contrast and media transitions |
+| `blur/` | Blur controls and draw synchronization |
+| `compat/shared/` | Editor, clock, depth and widget binding contracts |
+| `compat/oneui85/` | Clock Style 8.5 method mappings |
+| `compat/oneui9/` | AOD 9.0 method mappings |
+
+These are source folders. Classes still share the Java package
+`dev.denver.dressroomadvanced` so package-private access and existing hook names
+stay intact. Version-specific mappings belong in `compat/`; effect logic stays
+in its feature folder. See [the shim map](compatibility/SHIMS.md).
 
 ## Important rendering contracts
 

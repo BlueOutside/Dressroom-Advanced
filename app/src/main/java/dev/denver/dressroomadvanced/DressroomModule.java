@@ -1043,6 +1043,8 @@ public final class DressroomModule extends XposedModule {
             if (!binding.legacy) {
                 BlurEffects.install(this, base);
                 widgetEngine.install(loader);
+            } else if (!binding.clockStyle) {
+                DepthBlurHooks.install(this, base);
             }
             Class<?> font =
                     Class.forName(

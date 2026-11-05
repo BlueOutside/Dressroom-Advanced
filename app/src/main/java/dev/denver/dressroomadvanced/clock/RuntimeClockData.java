@@ -57,15 +57,10 @@ final class RuntimeClockData {
         return entry.heights;
     }
 
-    static void install(DressroomModule module, ClassLoader loader)
+    static void install(DressroomModule module, ClassLoader loader, ClockBinding clock)
             throws ReflectiveOperationException {
-        Class<?> provider =
-                Class.forName(
-                        "com.samsung.android.app.facewidget.utils.KeyguardClockProvider",
-                        false,
-                        loader);
-        Method data = provider.getDeclaredMethod("getClockFontData");
-        Method values = provider.getDeclaredMethod("getClockFontHeights");
+        ClockSourceBinding binding = new ClockSourceBinding(loader, clock);
+        Method data = binding.data, values = binding.heights;
         try (HookTransaction hooks = new HookTransaction()) {
             hooks.add(
                     module.hook(data)
@@ -102,8 +97,7 @@ final class RuntimeClockData {
                                                 }
                                             })
                             ::unhook);
-            Method wallpaper =
-                    provider.getDeclaredMethod("updateWallpaperColorsItem", Object.class);
+            Method wallpaper = binding.wallpaper;
             hooks.add(
                     module.hook(wallpaper)
                                     .setId("dressroom-advanced.native-clock-source-reset")
@@ -116,20 +110,7 @@ final class RuntimeClockData {
             module.deoptimize(data);
             module.deoptimize(values);
             module.deoptimize(wallpaper);
-            module.deoptimize(provider.getDeclaredMethod("hasStretchFontHeights"));
-            Class<?> model =
-                    Class.forName(
-                            "com.samsung.android.app.facewidget.FaceWidgetViewModel",
-                            false,
-                            loader);
-            module.deoptimize(model.getDeclaredMethod("C"));
-            Class<?> page =
-                    Class.forName(
-                            "com.samsung.android.app.facewidget.pages.clock.FaceWidgetClockPage",
-                            false,
-                            loader);
-            for (String method : new String[] {"y", "C", "getFullscreenClockFontData"})
-                module.deoptimize(page.getDeclaredMethod(method));
+            for (Method caller : binding.callers) module.deoptimize(caller);
             hooks.commit();
         }
         android.util.Log.i(

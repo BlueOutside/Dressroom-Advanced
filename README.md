@@ -18,10 +18,10 @@ An LSPosed API 102 module for Samsung's lockscreen editor. Adds clock, widget an
 
 | One UI | Apps | Support |
 | --- | --- | --- |
-| 9.0 | AOD + Dressroom | Supported — tested on SM-S948B |
-| 8.5 | Clock Style + Dressroom | Supported — tested on SM-P613 with a custom ROM |
+| 9.0 | AOD + Dressroom | Supported â€” tested on SM-S948B |
+| 8.5 | Clock Style + Dressroom | Supported â€” tested on SM-P613 with a custom ROM |
 | 9.0 | Clock Style + Dressroom | Unsupported |
-| 8.5 | AOD + Dressroom | Unsupported |
+| 8.5 | AOD + Dressroom | Experimental shim — not yet tested on an AOD device |
 | 8.0 | Any combination | Unsupported |
 
 Not every feature is available on both supported setups. Fullscreen media artwork is currently limited to One UI 9 AOD. Other devices and app versions may behave differently.

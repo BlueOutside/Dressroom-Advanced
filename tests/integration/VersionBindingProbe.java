@@ -16,6 +16,10 @@ public final class VersionBindingProbe {
                         widgetProvider);
         NativeContract.field(providerOwner, "context", android.content.Context.class);
         NativeContract.method(providerOwner, "updateWallpaperColorsItem", void.class, Object.class);
+        Class<?> providerClock = Class.forName(
+                "com.samsung.android.uniform.widget.clock.AbsClockView", false, widgetProvider);
+        ClockSourceBinding source = new ClockSourceBinding(widgetProvider, ClockBinding.of(providerClock));
+        System.out.println("Clock source and " + source.callers.size() + " measurement callers resolved");
         ClassLoader editor = new PathClassLoader(args[0], parent);
         EditorBinding binding = EditorBinding.resolve(editor, Long.parseLong(args[2]));
         new WallpaperSourceBinding(editor, binding.legacy);
@@ -106,6 +110,11 @@ public final class VersionBindingProbe {
                         "com.samsung.android.uniform.widget.clock.AbsClockView", false, provider);
         ClockBinding renderer = ClockBinding.of(clock);
         if (!renderer.legacy) throw new AssertionError("Expected 8.5 provider binding");
+        if (!renderer.clockStyle) {
+            ClockBlurBinding.resolve(clock);
+            OneUi85AodBlur.submissions(provider);
+            System.out.println("8.5 AOD clock blur owner, clip and widget submission bindings resolved");
+        }
         RuntimeWidgetHooks.legacyUpdates(
                 Class.forName(
                         "com.samsung.android.app.facewidget.complication.ComplicationWidgetPluginController",

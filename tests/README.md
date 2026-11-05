@@ -27,3 +27,5 @@ For 0.18.0, the legacy branch of VersionBindingProbe also validates Object Captu
 DeferredRefreshTest checks that cancellation cannot let an old callback consume a new lifecycle's refresh, including force coalescing, reentrancy and failures. RootLayoutWatchProbe checks listener cleanup on real Android views when a root is rebound, replaced or released.
 
 SongRevealProbe loads the reference provider's installed shader asset and checks hardware-rendered pixels across the reveal. It also covers the posted image-bind handoff, software fallback, native image ownership, zoom geometry and the widget observer's 255f opacity input. It changes no settings and installs no hooks. It requires the reference AOD package/resources; it does not certify another provider's asset or a live music transition.
+
+`integration/ProviderBindingProbe` accepts a provider APK path without a matching editor. It checks clock source/measurement, native blur owner traversal and widget declarations for the inspected providers. It never installs the APK or creates a Samsung service; it does not establish rendering or plugin compatibility.

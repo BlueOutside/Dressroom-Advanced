@@ -95,19 +95,25 @@ final class WidgetDepthBlur {
                 android.util.Log.i(
                         DressroomModule.TAG, "Final complication blur clipping installed");
             }
-            if (deoptimized.add(loader)) {
-                Class<?> utils = Class.forName("aod.e70", false, loader);
-                module.deoptimize(
-                        utils.getDeclaredMethod(
-                                "c", View.class, float.class, float[].class, Integer.class));
-                module.deoptimize(
-                        utils.getDeclaredMethod(
-                                "d",
-                                View.class,
-                                int.class,
-                                float.class,
-                                Integer.class,
-                                String.class));
+            if (!deoptimized.contains(loader)) {
+                if (ClockBinding.of(Class.forName(
+                        "com.samsung.android.uniform.widget.clock.AbsClockView", false, loader)).legacy) {
+                    for (Method method : OneUi85AodBlur.submissions(loader)) module.deoptimize(method);
+                } else {
+                    Class<?> utils = Class.forName("aod.e70", false, loader);
+                    module.deoptimize(
+                            utils.getDeclaredMethod(
+                                    "c", View.class, float.class, float[].class, Integer.class));
+                    module.deoptimize(
+                            utils.getDeclaredMethod(
+                                    "d",
+                                    View.class,
+                                    int.class,
+                                    float.class,
+                                    Integer.class,
+                                    String.class));
+                }
+                deoptimized.add(loader);
             }
         } catch (Exception | LinkageError error) {
             module.report("Complication blur hooks unavailable", error);

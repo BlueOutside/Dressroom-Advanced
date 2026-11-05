@@ -407,7 +407,10 @@ final class RuntimeWidgetHooks {
         Object container = Reflect.field(controller, "container");
         if (!(container instanceof ViewGroup root)) return;
         Object grid = Reflect.field(controller, "complicationGridUIController");
-        if (!module.widgetEngine.main(Reflect.call(grid, "getWidgetSizeManager"))) return;
+        if (!module.widgetEngine.main(Reflect.call(grid, "getWidgetSizeManager"))) {
+            clear(controller);
+            return;
+        }
         State state = controllers.computeIfAbsent(controller, ignored -> new State());
         int orientation = LayoutOrientation.current(root.getContext());
         if (state.orientation != orientation) {
@@ -445,9 +448,9 @@ final class RuntimeWidgetHooks {
         Bundle settings = module.widgetEngine.settings(root.getContext());
         String scale = Float.toString(settings.getFloat("scale", 1));
         if (!state.loaded || !scale.equals(state.layout)) {
+            module.widgetEngine.refreshChecked(grid);
             state.layout = scale;
             state.loaded = true;
-            module.widgetEngine.refreshChecked(grid);
         }
         Object provider = Reflect.field(controller, "keyguardClockProvider");
         Class<?> base =
@@ -455,13 +458,13 @@ final class RuntimeWidgetHooks {
                         "com.samsung.android.uniform.widget.clock.AbsClockView",
                         false,
                         grid.getClass().getClassLoader());
-        if (ClockBinding.of(base).clockStyle) {
+        if (DepthBinding.provider(base)) {
             Object item = Reflect.field(provider, "clockItem");
             if (item != null) {
                 int type = ((Number) Reflect.call(item, "getClockType")).intValue();
                 Object preset = Reflect.call(Reflect.call(item, "getFont"), "getPresetFontIndex");
                 int font = preset instanceof Number ? ((Number) preset).intValue() : 0;
-                if (force || type != state.type || font != state.font) {
+                if (force || type != state.type || font != state.font || state.depthProfile == null) {
                     Bundle query = new Bundle();
                     query.putInt("type", type);
                     query.putInt("font", font);
@@ -479,7 +482,7 @@ final class RuntimeWidgetHooks {
                     state.maskReady = ready;
                     android.util.Log.i(
                             DressroomModule.TAG,
-                            "Clock Style widget depth: enabled="
+                            "8.5 widget depth: enabled="
                                     + enabled
                                     + " mask="
                                     + ready
@@ -490,6 +493,12 @@ final class RuntimeWidgetHooks {
                                     + " owner="
                                     + root.getClass().getSimpleName());
                 }
+            } else {
+                // A provider can briefly have no item while replacing the wallpaper/clock.
+                state.type = state.font = -1;
+                state.depthProfile = null;
+                state.depthEnabled = state.maskReady = false;
+                DepthEffects.applyWidgetRoot(root, false, null);
             }
         }
         WidgetPlacement.apply(root, settings, provider);

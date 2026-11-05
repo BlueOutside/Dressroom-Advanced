@@ -20,6 +20,10 @@ final class DepthBlurHooks {
 
     private DepthBlurHooks() {}
 
+    static synchronized boolean ready(ClassLoader loader) {
+        return installed.contains(loader);
+    }
+
     static synchronized void install(DressroomModule module, Class<?> base) {
         ClassLoader loader = base.getClassLoader();
         WidgetDepthBlur.install(module, loader);
@@ -27,22 +31,8 @@ final class DepthBlurHooks {
         java.util.List<io.github.libxposed.api.XposedInterface.HookHandle> handles =
                 new java.util.ArrayList<>();
         try {
-            Class<?> strategy = Class.forName("aod.tx0", false, loader);
-            Class<?> weather =
-                    Class.forName(
-                            "com.samsung.android.clockpack.plugins.clock.WeatherInfo",
-                            false,
-                            loader);
-            Class<?> options = Class.forName("aod.xb0", false, loader);
-            Method render =
-                    strategy.getDeclaredMethod(
-                            "b", android.widget.ImageView.class, weather, options);
-            Method clip =
-                    Class.forName("aod.e70", false, loader)
-                            .getDeclaredMethod(
-                                    "a",
-                                    Class.forName("android.view.SemBlurInfo$Builder"),
-                                    Path.class);
+            ClockBlurBinding binding = ClockBlurBinding.resolve(base);
+            Method render = binding.render, clip = binding.clip;
             handles.add(
                     module.hook(render)
                             .setId("dressroom-advanced.depth-blur-owner")
@@ -52,19 +42,13 @@ final class DepthBlurHooks {
                                         try {
                                             try {
                                                 Object owner = chain.getThisObject();
-                                                Object clock =
-                                                        Reflect.field(
-                                                                Reflect.field(owner, "b"), "o");
-                                                Object host = Reflect.call(owner, "d");
-                                                if (clock instanceof View
-                                                        && host instanceof ViewGroup)
-                                                    current.set(
-                                                            new Scope(
-                                                                    (View) clock,
-                                                                    (PointF)
-                                                                            Reflect.call(
-                                                                                    owner, "e",
-                                                                                    host)));
+                                                View clock = binding.clock(owner);
+                                                Object host = binding.host.invoke(owner);
+                                                PointF point = host instanceof ViewGroup
+                                                        ? (PointF) binding.origin.invoke(owner, host) : null;
+                                                if (clock != null && point != null
+                                                        && Float.isFinite(point.x) && Float.isFinite(point.y))
+                                                    current.set(new Scope(clock, point));
                                                 else current.remove();
                                             } catch (Exception error) {
                                                 current.remove();
@@ -84,33 +68,30 @@ final class DepthBlurHooks {
                                     chain -> {
                                         Scope scope = current.get();
                                         if (scope == null) return chain.proceed();
-                                        MediaFullscreenExtras.clockPath(
-                                                scope.clock,
-                                                scope.origin.x,
-                                                scope.origin.y,
-                                                (Path) chain.getArg(1));
-                                        Path subject =
-                                                DepthEffects.nativeSubjectPath(
-                                                        scope.clock,
-                                                        scope.origin.x,
-                                                        scope.origin.y);
-                                        if (subject == null) return chain.proceed();
-                                        Path visible =
-                                                DepthGeometry.subtract(
-                                                        (Path) chain.getArg(1), subject);
-                                        if (verified.add(scope.clock))
-                                            android.util.Log.i(
-                                                    DressroomModule.TAG,
-                                                    "Depth applied to native blur path: "
-                                                            + scope.clock
-                                                                    .getClass()
-                                                                    .getSimpleName());
-                                        return chain.proceed(
-                                                new Object[] {chain.getArg(0), visible});
+                                        Path original = (Path) chain.getArg(1), visible = original;
+                                        try {
+                                            MediaFullscreenExtras.clockPath(scope.clock,
+                                                    scope.origin.x, scope.origin.y, original);
+                                            Path subject = DepthEffects.nativeSubjectPath(scope.clock,
+                                                    scope.origin.x, scope.origin.y);
+                                            if (original != null && subject != null) {
+                                                visible = DepthGeometry.subtract(original, subject);
+                                                if (verified.add(scope.clock))
+                                                    android.util.Log.i(DressroomModule.TAG,
+                                                            "Depth applied to native blur path: "
+                                                                    + scope.clock.getClass().getSimpleName());
+                                            }
+                                        } catch (RuntimeException error) {
+                                            visible = original;
+                                            module.report("Native blur depth clip unavailable", error);
+                                        }
+                                        // Call Samsung once, including when our optional clip fails.
+                                        return visible == original ? chain.proceed()
+                                                : chain.proceed(new Object[] {chain.getArg(0), visible});
                                     }));
             module.deoptimize(render);
             module.deoptimize(clip);
-            Method clear = strategy.getDeclaredMethod("c");
+            Method clear = binding.clear;
             handles.add(
                     module.hook(clear)
                             .setId("dressroom-advanced.media-clock-blur-clear")
@@ -118,13 +99,9 @@ final class DepthBlurHooks {
                                     chain -> {
                                         Object result = chain.proceed();
                                         try {
-                                            Object clock =
-                                                    Reflect.field(
-                                                            Reflect.field(
-                                                                    chain.getThisObject(), "b"),
-                                                            "o");
-                                            if (clock instanceof View view)
-                                                MediaFullscreenExtras.clockPath(view, 0, 0, null);
+                                            View clock = binding.clock(chain.getThisObject());
+                                            if (clock != null)
+                                                MediaFullscreenExtras.clockPath(clock, 0, 0, null);
                                         } catch (Exception ignored) {
                                         }
                                         return result;

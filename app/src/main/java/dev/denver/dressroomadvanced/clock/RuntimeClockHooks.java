@@ -117,6 +117,7 @@ final class RuntimeClockHooks {
                 module.widgetEngine.install(loader);
                 widgets.install(loader);
             } else {
+                if (!binding.clockStyle) DepthBlurHooks.install(module, base);
                 try {
                     module.widgetEngine.installScale(loader);
                     widgets.installLegacy(loader);
@@ -270,6 +271,11 @@ final class RuntimeClockHooks {
                                                 });
                                         return result;
                                     }));
+            try {
+                RuntimeClockData.install(module, loader, binding);
+            } catch (Exception | LinkageError error) {
+                module.report("Native clock source sync unavailable", error);
+            }
             if (!binding.legacy) {
                 Method media = base.getDeclaredMethod("setMediaExpanded", boolean.class);
                 record(
@@ -320,11 +326,6 @@ final class RuntimeClockHooks {
                                             return result;
                                         }));
                 module.deoptimize(media);
-                try {
-                    RuntimeClockData.install(module, loader);
-                } catch (Exception | LinkageError error) {
-                    module.report("Native clock source sync unavailable", error);
-                }
                 try {
                     AodStretchExtras.install(module, base);
                 } catch (Exception | LinkageError error) {
