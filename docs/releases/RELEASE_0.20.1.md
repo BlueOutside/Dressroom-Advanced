@@ -11,3 +11,6 @@ media hooks remain unchanged. No thumbnail motion, fullscreen player or controls
 blur layer is added to 8.5. See [the research notes](../research/MEDIA_8.5.md).
 
 Device verification is tracked in [validation](../VALIDATION.md).
+
+The user confirms the fix on the P613 in portrait and landscape: the player clock
+has no wallpaper-subject cuts, and depth returns correctly after closing.
