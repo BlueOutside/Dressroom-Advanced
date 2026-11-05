@@ -1,21 +1,16 @@
 # Runtime and editor boundaries
 
-All production classes remain in `dev.denver.dressroomadvanced` to preserve package-private/reflection contracts. This cleanup deliberately avoids moving hook targets between Java packages or changing Samsung method names.
+Production classes are organized into clear domain packages under `dev.denver.dressroomadvanced`:
 
-| Area | Primary classes |
-| --- | --- |
-| Module startup and editor injection | `DressroomModule`, `DeferredDiscovery`, `NativeClockPanel`, `PanelTabs` |
-| Editor transactions | `NativeEdits`, `SaveSnapshot`, `EditorClockRefresh`, `EditorExtras`, `EditorWidgets` |
-| Committed settings and IPC | `SettingsProvider`, `SettingsBridge`, `SettingsScope`, `RuntimeExtras`, `DepthStorage` |
-| Clock runtime and manual heights | `RuntimeClockHooks`, `SavedStretch`, `AodStretchExtras`, `MediaReturnCompletion`, `RuntimeClockData` |
-| Date, weather, blur and shadow | `DateEffects`, `BlurEffects`, `GlyphBlurReadiness`, `ClockBlurSync`, `ShadowEffects` |
-| Wallpaper subject extraction/tracking | `DepthAuto`, `EditorWallpaperSource`, `LiveSubject`, `MaskAlpha`, `MaskContour` |
-| Depth rendering | `DepthEffects`, `DepthGeometry`, `DepthBlurHooks`, `ClockContentClip` |
-| Widgets | `WidgetEngine`, `WidgetLayout`, `WidgetPanel`, `WidgetPlacement`, `RuntimeWidgetHooks` |
-| Widget compositor paths | `WidgetContentClip`, `WidgetDepthBlur`, `WidgetBlurInfo`, `WidgetMediaOcclusion`, `WidgetMediaReveal` |
-| Media artwork and interactions | `MediaFullscreenExtras`, `MediaBlurHost`, `MediaClockContrast`, `MediaInteraction`, `NativeArtworkReveal` |
-| Render reuse | `ArtworkSamples`, `GlyphFontCache`, `GlyphDrawReuse`, `GlyphOutlineMemo`, `ViewGeometry` |
-| Now Bar cards | `NowBarExtras`, `ChargingState`, `ChargingVisuals`, `PillTouchBounds` |
+| Package | Purpose | Primary classes |
+| --- | --- | --- |
+| `dev.denver.dressroomadvanced` | Core module startup, IPC, reflection, and lifecycle | `DressroomModule`, `SettingsProvider`, `SettingsBridge`, `SettingsScope`, `Reflect`, `HookTransaction`, `NativeContract` |
+| `dev.denver.dressroomadvanced.clock` | Clock runtime, manual heights, and glyph rendering | `RuntimeClockHooks`, `ClockBinding`, `AodStretchExtras`, `SavedStretch`, `DateEffects`, `GlyphFontCache`, `ShadowEffects` |
+| `dev.denver.dressroomadvanced.depth` | Wallpaper subject extraction, matting, and depth rendering | `DepthEffects`, `DepthGeometry`, `DepthAuto`, `LiveSubject`, `MaskAlpha`, `MaskContour`, `DepthStorage` |
+| `dev.denver.dressroomadvanced.widget` | Complication layouts, sizing, panels, and compositor paths | `WidgetEngine`, `WidgetLayout`, `WidgetPanel`, `WidgetPlacement`, `RuntimeWidgetHooks`, `EditorWidgets`, `WidgetDepthBlur` |
+| `dev.denver.dressroomadvanced.media` | Full-screen media artwork, interactions, and Now Bar cards | `MediaFullscreenExtras`, `MediaBlurHost`, `MediaClockContrast`, `MediaInteraction`, `ChargingState`, `ChargingVisuals` |
+| `dev.denver.dressroomadvanced.blur` | Per-clock path-based blur, opacity, and wallpaper tones | `BlurEffects`, `BlurOpacity`, `WallpaperBlurTone` |
+| `dev.denver.dressroomadvanced.editor` | Native editor activity bindings, tabs, and scroll coordination | `EditorBinding`, `EditorClockRefresh`, `EditorExtras`, `EditorScrollView`, `EditorWallpaperSource`, `PanelTabs` |
 
 ## Important rendering contracts
 
