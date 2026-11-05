@@ -11,3 +11,5 @@ detach. Missing native animation falls back to the original source visibility.
 The clock, controls and saved wallpaper are unchanged.
 
 See [validation](../VALIDATION.md) for checks and device results.
+
+The tablet user confirms the closing fade and reopening during the fade work correctly.
