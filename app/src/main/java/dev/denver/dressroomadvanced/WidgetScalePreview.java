@@ -1,27 +1,32 @@
 package dev.denver.dressroomadvanced;
 
 import android.view.View;
+
 import java.lang.ref.WeakReference;
 
-/** Temporary visual zoom while scrubbing. Native hosts resize once the gesture ends. */
 final class WidgetScalePreview {
     private WeakReference<View> root = new WeakReference<>(null);
     private float originalX, originalY, appliedX, appliedY, startingZoom;
 
     void show(View view, float savedZoom, float requestedZoom) {
         if (root.get() != view) {
-            clear(); root = new WeakReference<>(view);
-            originalX = view.getScaleX(); originalY = view.getScaleY(); startingZoom = savedZoom;
+            clear();
+            root = new WeakReference<>(view);
+            originalX = view.getScaleX();
+            originalY = view.getScaleY();
+            startingZoom = savedZoom;
         }
         float ratio = requestedZoom / startingZoom;
-        appliedX = originalX * ratio; appliedY = originalY * ratio;
-        view.setScaleX(appliedX); view.setScaleY(appliedY);
+        appliedX = originalX * ratio;
+        appliedY = originalY * ratio;
+        view.setScaleX(appliedX);
+        view.setScaleY(appliedY);
     }
 
     void clear() {
-        View view = root.get(); root.clear();
+        View view = root.get();
+        root.clear();
         if (view == null) return;
-        // A native transition may have taken ownership while the panel was closing.
         if (Math.abs(view.getScaleX() - appliedX) < .0001f) view.setScaleX(originalX);
         if (Math.abs(view.getScaleY() - appliedY) < .0001f) view.setScaleY(originalY);
     }

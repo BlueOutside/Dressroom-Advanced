@@ -5,6 +5,7 @@ import java.util.List;
 
 final class SavedStretch {
     private SavedStretch() {}
+
     static List<Float> heights(float[] values) {
         if (values == null || values.length == 0) return null;
         List<Float> result = new ArrayList<>();
@@ -14,14 +15,21 @@ final class SavedStretch {
         }
         return result;
     }
+
     static Object font(Object original, List<Float> heights) throws ReflectiveOperationException {
-        if (heights == null || heights.equals(Reflect.call(original, "getFontHeights"))) return original;
+        if (heights == null || heights.equals(Reflect.call(original, "getFontHeights")))
+            return original;
         return copy(original, heights);
     }
-    /** A new instance with exactly these heights. */
+
     static Object copy(Object original, List<Float> heights) throws ReflectiveOperationException {
-        return Reflect.call(original, "copy", Reflect.call(original, "getFontType"),
-            Reflect.call(original, "getFontPath"), Reflect.call(original, "getFontWeight"),
-            Reflect.call(original, "getFontRoundedCorners"), new ArrayList<>(heights));
+        return Reflect.call(
+                original,
+                "copy",
+                Reflect.call(original, "getFontType"),
+                Reflect.call(original, "getFontPath"),
+                Reflect.call(original, "getFontWeight"),
+                Reflect.call(original, "getFontRoundedCorners"),
+                new ArrayList<>(heights));
     }
 }

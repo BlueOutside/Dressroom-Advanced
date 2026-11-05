@@ -3,69 +3,95 @@ package dev.denver.dressroomadvanced;
 import android.os.Bundle;
 import android.view.View;
 import android.view.ViewGroup;
+
 import java.lang.reflect.Method;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
 import java.util.WeakHashMap;
 
-/** Keeps the host date visibility policy intact unless the saved override hides it. */
 final class DateEffects {
-    private static final Map<View, Boolean> previews = Collections.synchronizedMap(new WeakHashMap<>());
-    private static final Map<View, int[]> identities = Collections.synchronizedMap(new WeakHashMap<>());
-    private static final Map<View, Integer> originalVisibility = Collections.synchronizedMap(new WeakHashMap<>());
-    private static final Map<View, Integer> weatherMargins = Collections.synchronizedMap(new WeakHashMap<>());
+    private static final Map<View, Boolean> previews =
+            Collections.synchronizedMap(new WeakHashMap<>());
+    private static final Map<View, int[]> identities =
+            Collections.synchronizedMap(new WeakHashMap<>());
+    private static final Map<View, Integer> originalVisibility =
+            Collections.synchronizedMap(new WeakHashMap<>());
+    private static final Map<View, Integer> weatherMargins =
+            Collections.synchronizedMap(new WeakHashMap<>());
     private static final Set<View> tracked = Collections.newSetFromMap(new WeakHashMap<>());
     private static final Set<Method> hooked = Collections.newSetFromMap(new WeakHashMap<>());
 
     private DateEffects() {}
-    static void resetPreviews() { previews.clear(); identities.clear(); }
+
+    static void resetPreviews() {
+        previews.clear();
+        identities.clear();
+    }
 
     static synchronized void attach(DressroomModule module, View clock) {
         try {
             Method setter = clock.getClass().getMethod("setDateVisibility", int.class);
             if (hooked.add(setter)) {
-                module.hook(setter).setId("dressroom-advanced.date-visibility").intercept(chain -> {
-                    View target = (View) chain.getThisObject();
-                    Object result = chain.proceed();
-                    target.post(() -> updateDate(target));
-                    return result;
-                });
+                module.hook(setter)
+                        .setId("dressroom-advanced.date-visibility")
+                        .intercept(
+                                chain -> {
+                                    View target = (View) chain.getThisObject();
+                                    Object result = chain.proceed();
+                                    target.post(() -> updateDate(target));
+                                    return result;
+                                });
             }
-            Method weatherSetter = clock.getClass().getMethod("setShowWeatherInformation", boolean.class);
+            Method weatherSetter =
+                    clock.getClass().getMethod("setShowWeatherInformation", boolean.class);
             if (hooked.add(weatherSetter)) {
-                module.hook(weatherSetter).setId("dressroom-advanced.weather-layout").intercept(chain -> {
-                    Object result = chain.proceed();
-                    View target = (View) chain.getThisObject();
-                    updateDate(target);
-                    target.post(() -> updateDate(target));
-                    return result;
-                });
+                module.hook(weatherSetter)
+                        .setId("dressroom-advanced.weather-layout")
+                        .intercept(
+                                chain -> {
+                                    Object result = chain.proceed();
+                                    View target = (View) chain.getThisObject();
+                                    updateDate(target);
+                                    target.post(() -> updateDate(target));
+                                    return result;
+                                });
             }
             for (Method method : clock.getClass().getMethods()) {
-                if (!method.getName().equals("updateWeatherInfo") || method.getParameterCount() != 1 || !hooked.add(method)) continue;
-                module.hook(method).setId("dressroom-advanced.weather-info-layout").intercept(chain -> {
-                    Object result = chain.proceed();
-                    View target = (View) chain.getThisObject();
-                    updateDate(target);
-                    return result;
-                });
+                if (!method.getName().equals("updateWeatherInfo")
+                        || method.getParameterCount() != 1
+                        || !hooked.add(method)) continue;
+                module.hook(method)
+                        .setId("dressroom-advanced.weather-info-layout")
+                        .intercept(
+                                chain -> {
+                                    Object result = chain.proceed();
+                                    View target = (View) chain.getThisObject();
+                                    updateDate(target);
+                                    return result;
+                                });
             }
             if (tracked.add(clock)) {
-                clock.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> updateDate(clock));
+                clock.addOnLayoutChangeListener(
+                        (v, l, t, r, b, ol, ot, or, ob) -> updateDate(clock));
             }
             apply(clock);
-        } catch (Exception e) { module.report("Date visibility unavailable for this clock", e); }
+        } catch (Exception e) {
+            module.report("Date visibility unavailable for this clock", e);
+        }
     }
 
     static void preview(View clock, DressroomModule module, boolean hide) {
         previews.put(clock, hide);
-        try { apply(clock); }
-        catch (Exception e) { module.report("Date preview unavailable", e); }
+        try {
+            apply(clock);
+        } catch (Exception e) {
+            module.report("Date preview unavailable", e);
+        }
     }
 
     static void bindIdentity(View clock, int type, int font, int orientation) {
-        identities.put(clock, new int[]{type, font, orientation});
+        identities.put(clock, new int[] {type, font, orientation});
         apply(clock);
     }
 
@@ -85,12 +111,19 @@ final class DateEffects {
         try {
             Bundle query = new Bundle();
             int[] identity = identities.get(clock);
-            query.putInt("type", identity == null ? ((Number) Reflect.call(clock, "getClockType")).intValue() : identity[0]);
-            query.putInt("font", identity == null ? ClockBinding.of(clock).fontId(clock) : identity[1]);
+            query.putInt(
+                    "type",
+                    identity == null
+                            ? ((Number) Reflect.call(clock, "getClockType")).intValue()
+                            : identity[0]);
+            query.putInt(
+                    "font", identity == null ? ClockBinding.of(clock).fontId(clock) : identity[1]);
             if (identity != null) query.putInt(LayoutOrientation.FIELD, identity[2]);
             Bundle saved = SettingsBridge.read(clock.getContext(), query);
             return saved != null && saved.getBoolean("hideDate");
-        } catch (Exception ignored) { return false; }
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
     private static void updateDate(View clock) {
@@ -121,11 +154,13 @@ final class DateEffects {
         if (dateRow != null && weather != null) {
             boolean empty = hide && weather.getVisibility() != View.VISIBLE;
             if (empty) {
-                if (!originalVisibility.containsKey(dateRow)) originalVisibility.put(dateRow, dateRow.getVisibility());
+                if (!originalVisibility.containsKey(dateRow))
+                    originalVisibility.put(dateRow, dateRow.getVisibility());
                 if (dateRow.getVisibility() != View.GONE) dateRow.setVisibility(View.GONE);
             } else {
                 Integer original = originalVisibility.remove(dateRow);
-                if (original != null && dateRow.getVisibility() == View.GONE) dateRow.setVisibility(original);
+                if (original != null && dateRow.getVisibility() == View.GONE)
+                    dateRow.setVisibility(original);
             }
         }
     }
@@ -133,7 +168,8 @@ final class DateEffects {
     private static void updateText(View date, boolean hide) {
         if (date == null) return;
         if (hide) {
-            if (!originalVisibility.containsKey(date)) originalVisibility.put(date, date.getVisibility());
+            if (!originalVisibility.containsKey(date))
+                originalVisibility.put(date, date.getVisibility());
             if (date.getVisibility() != View.GONE) date.setVisibility(View.GONE);
         } else {
             Integer original = originalVisibility.remove(date);
@@ -144,8 +180,10 @@ final class DateEffects {
     private static View find(View root, String entry) {
         int id = root.getId();
         if (id != View.NO_ID) {
-            try { if (entry.equals(root.getResources().getResourceEntryName(id))) return root; }
-            catch (android.content.res.Resources.NotFoundException ignored) { }
+            try {
+                if (entry.equals(root.getResources().getResourceEntryName(id))) return root;
+            } catch (android.content.res.Resources.NotFoundException ignored) {
+            }
         }
         if (root instanceof ViewGroup) {
             ViewGroup group = (ViewGroup) root;
