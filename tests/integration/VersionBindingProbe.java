@@ -110,6 +110,7 @@ public final class VersionBindingProbe {
                         "com.samsung.android.uniform.widget.clock.AbsClockView", false, provider);
         ClockBinding renderer = ClockBinding.of(clock);
         if (!renderer.legacy) throw new AssertionError("Expected 8.5 provider binding");
+        new OneUi85MediaBinding(clock);
         if (!renderer.clockStyle) {
             ClockBlurBinding.resolve(clock);
             OneUi85AodBlur.submissions(provider);

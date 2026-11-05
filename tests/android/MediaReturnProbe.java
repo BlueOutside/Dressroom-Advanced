@@ -6,6 +6,53 @@ import android.os.Looper;
 import android.view.View;
 
 public final class MediaReturnProbe {
+    private static final class QueuedView extends View {
+        final java.util.ArrayList<Runnable> frames = new java.util.ArrayList<>();
+        QueuedView(Context context) { super(context); }
+        @Override public void postOnAnimation(Runnable action) { frames.add(action); }
+        void frame() {
+            var next = new java.util.ArrayList<>(frames);
+            frames.clear();
+            for (Runnable action : next) action.run();
+        }
+    }
+
+    private static void mediaDepth(Context context) {
+        QueuedView view = new QueuedView(context);
+        ValueAnimator[] animation = {null};
+        MediaDepthTransition.update(view, true, ignored -> animation[0]);
+        check(DepthEffects.mediaActive(view), "8.5 player retains wallpaper depth");
+        MediaDepthTransition.update(view, false, ignored -> animation[0]);
+        check(DepthEffects.mediaActive(view), "Depth resumes before native return is created");
+        animation[0] = running();
+        view.frame();
+        check(DepthEffects.mediaActive(view), "Depth resumes during native return");
+        animation[0].end();
+        check(DepthEffects.mediaActive(view), "Depth resumes before final native layout frame");
+        view.frame();
+        check(!DepthEffects.mediaActive(view), "Depth does not resume after native return");
+
+        MediaDepthTransition.update(view, true, ignored -> null);
+        MediaDepthTransition.update(view, false, ignored -> null);
+        MediaDepthTransition.update(view, true, ignored -> null);
+        view.frame();
+        check(DepthEffects.mediaActive(view), "Old queued close overrides a reopened player");
+        animation[0] = running();
+        MediaDepthTransition.update(view, false, ignored -> animation[0]);
+        view.frame();
+        MediaDepthTransition.update(view, true, ignored -> null);
+        check(animation[0].getListeners() == null || animation[0].getListeners().isEmpty(),
+                "Reopening retains the old return listener");
+        animation[0].end();view.frame();
+        check(DepthEffects.mediaActive(view), "Interrupted return restores the wallpaper mask");
+        MediaDepthTransition.update(view, false, ignored -> null);view.frame();
+        check(!DepthEffects.mediaActive(view), "No-animation return leaves depth suspended");
+        MediaDepthTransition.update(view, true, ignored -> null);
+        MediaDepthTransition.update(view, false, ignored -> {throw new IllegalStateException("test");});
+        view.frame();
+        check(!DepthEffects.mediaActive(view), "Failed native animator lookup leaves depth suspended");
+    }
+
     private static int checks;
 
     private static void check(boolean condition, String message) {
@@ -127,6 +174,7 @@ public final class MediaReturnProbe {
         check(
                 RuntimeClockData.manualHeights(saved) == null,
                 "Invalid native source heights accepted");
+        mediaDepth(context);
         int[] ends = {0};
         ValueAnimator first = running();
         check(

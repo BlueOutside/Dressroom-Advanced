@@ -276,6 +276,13 @@ final class RuntimeClockHooks {
             } catch (Exception | LinkageError error) {
                 module.report("Native clock source sync unavailable", error);
             }
+            if (binding.legacy) {
+                try {
+                    OneUi85MediaHooks.install(module, base);
+                } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+                    module.report("8.5 media depth lifecycle unavailable", error);
+                }
+            }
             if (!binding.legacy) {
                 Method media = base.getDeclaredMethod("setMediaExpanded", boolean.class);
                 record(

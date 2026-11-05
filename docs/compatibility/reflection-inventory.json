@@ -6,7 +6,7 @@
     "Constructors, method signatures, enum values and behavioral contracts",
     "Resource names matched by traversal rather than getIdentifier literals"
   ],
-  "sourceFiles": 89,
+  "sourceFiles": 92,
   "entries": [
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/DressroomModule.java",
@@ -634,7 +634,7 @@
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/RuntimeClockHooks.java",
-      "line": 280,
+      "line": 287,
       "kind": "declared-method",
       "target": "setMediaExpanded"
     },
@@ -763,6 +763,30 @@
       "line": 19,
       "kind": "declared-method",
       "target": "t"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/oneui85/OneUi85MediaBinding.java",
+      "line": 22,
+      "kind": "class",
+      "target": "com.samsung.android.app.facewidget.pages.clock.FaceWidgetClockPage"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/oneui85/OneUi85MediaBinding.java",
+      "line": 26,
+      "kind": "declared-method",
+      "target": "onChanged"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/oneui85/OneUi85MediaBinding.java",
+      "line": 27,
+      "kind": "declared-method",
+      "target": "d"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/oneui85/OneUi85MediaBinding.java",
+      "line": 28,
+      "kind": "declared-method",
+      "target": "g"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/oneui9/OneUi9ClockSource.java",
