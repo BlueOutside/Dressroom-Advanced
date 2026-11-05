@@ -40,4 +40,4 @@ The GitHub workflow builds an unsigned APK and runs JVM checks. Rooted-device an
 
 Run `scripts/check-repository.ps1` and inspect `git diff --cached`. Keep signing keys, APKs, preference backups, decompiled Samsung sources, screenshots and raw device logs out of commits. Local evidence in `docs/validation/` is deliberately ignored; share a redacted excerpt when it is needed to explain a bug.
 
-License selection is pending. Do not add third-party code or assets without preserving their terms and attribution. Samsung APKs and SDK implementations are not distributed in this repository.
+Contributions are distributed under the repository's [source-available license](LICENSE). Do not add third-party code or assets without preserving their terms and attribution. Samsung APKs and SDK implementations are not distributed in this repository.
