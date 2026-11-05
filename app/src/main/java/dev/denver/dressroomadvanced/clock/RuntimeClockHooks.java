@@ -116,6 +116,11 @@ final class RuntimeClockHooks {
                 GlyphDrawReuse.install(module, loader);
                 module.widgetEngine.install(loader);
                 widgets.install(loader);
+                try {
+                    NowBarStackRepair.install(module, loader);
+                } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+                    module.report("Now Bar stack repair unavailable", error);
+                }
             } else {
                 if (!binding.clockStyle) DepthBlurHooks.install(module, base);
                 try {

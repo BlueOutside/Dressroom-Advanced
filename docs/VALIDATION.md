@@ -1,5 +1,9 @@
 # Current validation
 
+## Now Bar stack workaround: 0.21.2 / versionCode 135
+
+The user requested a direct fix and installation without test-suite runs. The 9.0 workaround blocks stale cancelled-animation pose restoration and reconciles settled Y positions against Samsung's own depth offsets. The signed APK is installed on the phone; the new SystemUI process confirms the repair installed. No test suites were run. The intermittent visual result remains unconfirmed. See [the stack investigation](research/NOW_BAR_STACK.md).
+
 ## Native wallpaper fade: 0.21.1 / versionCode 134
 
 Source inspection in both 8.5 providers confirms a separate native wallpaper blur/dim animator: 300ms opening (or native immediate transition), 200ms closing. The artwork now follows its interpolated fraction and retains its last texture after the framed view disappears. Eleven new cases cover first-frame retention, intermediate opacity, cleanup, reopening, completed/stale animators, repeated stale notifications and disabling the feature. The first test run caught the raw integer value being uninitialized before the first animator frame; using the native interpolated fraction corrects that case. The signed build, 152 JVM checks, 17 shared tablet Android suites (478 checks), and both providers' native wallpaper-fade bindings pass. Version 134 is installed with SystemUI reloaded. The new process confirms the fullscreen source and its wallpaper-transition binding installed without a hook exception. The user confirms the artwork fades back into the wallpaper on closing and that reopening during the fade works correctly. Dressroom was left running and no settings were changed. See [the change record](releases/RELEASE_0.21.1.md).

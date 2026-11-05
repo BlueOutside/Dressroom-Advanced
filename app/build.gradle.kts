@@ -6,8 +6,8 @@ android {
         applicationId = "dev.denver.dressroomadvanced"
         minSdk = 29
         targetSdk = 36
-        versionCode = 134
-        versionName = "0.21.1-alpha"
+        versionCode = 135
+        versionName = "0.21.2-alpha"
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     buildTypes { release { isMinifyEnabled = false } }

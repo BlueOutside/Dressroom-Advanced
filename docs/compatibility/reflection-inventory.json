@@ -6,7 +6,7 @@
     "Constructors, method signatures, enum values and behavioral contracts",
     "Resource names matched by traversal rather than getIdentifier literals"
   ],
-  "sourceFiles": 95,
+  "sourceFiles": 96,
   "entries": [
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/DressroomModule.java",
@@ -592,49 +592,49 @@
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/RuntimeClockHooks.java",
-      "line": 129,
+      "line": 134,
       "kind": "class",
       "target": "com.samsung.android.clockpack.plugins.clock.ClockFontData"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/RuntimeClockHooks.java",
-      "line": 142,
+      "line": 147,
       "kind": "declared-method",
       "target": "setFontType"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/RuntimeClockHooks.java",
-      "line": 195,
+      "line": 200,
       "kind": "declared-method",
       "target": "isStretchable"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/RuntimeClockHooks.java",
-      "line": 220,
+      "line": 225,
       "kind": "declared-method",
       "target": "onAttachedToWindow"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/RuntimeClockHooks.java",
-      "line": 243,
+      "line": 248,
       "kind": "class",
       "target": "com.samsung.android.clockpack.plugins.clock.ShadowStyle"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/RuntimeClockHooks.java",
-      "line": 247,
+      "line": 252,
       "kind": "declared-method",
       "target": "setShadowStyle"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/RuntimeClockHooks.java",
-      "line": 257,
+      "line": 262,
       "kind": "declared-method",
       "target": "setDozing"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/RuntimeClockHooks.java",
-      "line": 292,
+      "line": 297,
       "kind": "declared-method",
       "target": "setMediaExpanded"
     },
@@ -799,6 +799,54 @@
       "line": 18,
       "kind": "class",
       "target": "com.samsung.android.app.facewidget.SecKeyguardStatusView"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/oneui9/NowBarStackRepair.java",
+      "line": 31,
+      "kind": "class",
+      "target": "aod.qx4"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/oneui9/NowBarStackRepair.java",
+      "line": 35,
+      "kind": "class",
+      "target": "com.samsung.android.app.facewidget.utils.NowBarCardStackView"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/oneui9/NowBarStackRepair.java",
+      "line": 37,
+      "kind": "class",
+      "target": "aod.zj0"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/oneui9/NowBarStackRepair.java",
+      "line": 39,
+      "kind": "declared-method",
+      "target": "onAnimationEnd"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/oneui9/NowBarStackRepair.java",
+      "line": 40,
+      "kind": "declared-method",
+      "target": "onAnimationCancel"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/oneui9/NowBarStackRepair.java",
+      "line": 53,
+      "kind": "declared-method",
+      "target": "q"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/oneui9/NowBarStackRepair.java",
+      "line": 54,
+      "kind": "declared-method",
+      "target": "dispatchTouchEvent"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/oneui9/NowBarStackRepair.java",
+      "line": 55,
+      "kind": "declared-method",
+      "target": "onAttachedToWindow"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/oneui9/OneUi9ClockSource.java",

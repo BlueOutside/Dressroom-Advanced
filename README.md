@@ -36,7 +36,7 @@ Not every feature is available on both supported setups. The 8.5 fullscreen artw
 
 ## Known issues
 
-- Now Bar cards can occasionally overlap; a workaround is being investigated.
+- Now Bar stack overlap: a 9.0 workaround is included, awaiting confirmation.
 
 - Widgets disappear immediately when opening the media player; closing has a fade.
 - The fullscreen song-change effect still needs some visual polish.
