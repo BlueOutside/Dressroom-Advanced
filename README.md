@@ -36,6 +36,8 @@ Not every feature is available on both supported setups. The 8.5 fullscreen artw
 
 ## Known issues
 
+- Now Bar cards can occasionally overlap; a workaround is being investigated.
+
 - Widgets disappear immediately when opening the media player; closing has a fade.
 - The fullscreen song-change effect still needs some visual polish.
 - Subject detection can miss fine details. Animated/video and gyro wallpapers are not supported for depth.
