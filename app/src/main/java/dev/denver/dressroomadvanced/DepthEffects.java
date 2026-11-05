@@ -1,0 +1,717 @@
+package dev.denver.dressroomadvanced;
+
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Canvas;
+import android.graphics.Matrix;
+import android.graphics.Paint;
+import android.graphics.Path;
+import android.graphics.Region;
+import android.graphics.PorterDuff;
+import android.graphics.PorterDuffXfermode;
+import android.graphics.Rect;
+import android.graphics.RectF;
+import android.os.Bundle;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.TextView;
+import java.io.ByteArrayOutputStream;
+import java.lang.reflect.Method;
+import java.util.Collections;
+import java.util.Arrays;
+import java.util.Map;
+import java.util.WeakHashMap;
+import io.github.libxposed.api.XposedModule;
+
+/** Clips only clock drawing against a saved wallpaper subject, leaving hitboxes unchanged. */
+final class DepthEffects {
+    interface Result { void done(byte[] mask, String message); }
+    private static final Map<View, Entry> entries = Collections.synchronizedMap(new WeakHashMap<>());
+    private static final Map<View, android.view.ViewTreeObserver.OnGlobalLayoutListener> editorRoots =
+        Collections.synchronizedMap(new WeakHashMap<>());
+    private static final ThreadLocal<Boolean> drawingClock = ThreadLocal.withInitial(() -> false);
+    private static byte[] editorPng;
+    private static boolean editorEnabled;
+    private static boolean editorPreviewClip;
+    private static float editorScale = 1f, editorOriginX, editorOriginY;
+    private static final Paint erase = new Paint(Paint.FILTER_BITMAP_FLAG);
+    private static byte[] cachedPng;
+    private static Bitmap cachedMask;
+    private static Path cachedSubject;
+    private static LiveSubject activeSubject;
+    private record LocalPath(Path screen, Matrix matrix, Path path) {}
+    private static final Map<View,LocalPath> localPaths = new WeakHashMap<>();
+    private static final java.util.Set<View> mediaClocks=Collections.newSetFromMap(new WeakHashMap<>());
+    private static java.lang.ref.WeakReference<View> editorWallpaper = new java.lang.ref.WeakReference<>(null);
+    private static boolean installed;
+    private static volatile long editorGeneration;
+    private static volatile long scanRequest;
+    private static java.util.function.Consumer<View> wallpaperListener;
+    private static boolean sourcePending;
+    private static final android.os.Handler scanMain=new android.os.Handler(android.os.Looper.getMainLooper());
+    private static final java.util.concurrent.ExecutorService scanner=java.util.concurrent.Executors.newSingleThreadExecutor(task->{
+        Thread thread=new Thread(task,"Dressroom-depth-scan");thread.setDaemon(true);return thread;
+    });
+    static {
+        erase.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_OUT));
+    }
+    private DepthEffects() {}
+
+    static synchronized void install(XposedModule module) throws ReflectiveOperationException {
+        if (installed) return;
+        Method draw = ViewGroup.class.getDeclaredMethod("dispatchDraw", Canvas.class);
+        module.hook(draw).setId("dressroom-advanced.depth-clock-draw").intercept(chain -> {
+            Object target = chain.getThisObject();
+            if (!(target instanceof View)) return chain.proceed();
+            View view = (View) target;
+            Entry entry = entries.get(view);
+            if (entry == null || entry.mask == null || !entry.enabled || (entry.editor && sourcePending) || entry.nodeClip || drawingClock.get() || mediaSuspended(view))
+                return chain.proceed();
+            Canvas canvas = (Canvas) chain.getArg(0);
+            int save = canvas.saveLayer(0, 0, view.getWidth(), view.getHeight(), null);
+            boolean previous=drawingClock.get(); drawingClock.set(true);
+            try {
+                Object result = chain.proceed();
+                drawMask(canvas, view, entry);
+                return result;
+            } finally { drawingClock.set(previous); canvas.restoreToCount(save); }
+        });
+        module.hook(View.class.getDeclaredMethod("draw", Canvas.class))
+            .setId("dressroom-advanced.depth-whole-clock").intercept(chain -> {
+                View view = (View) chain.getThisObject();
+                Entry entry = entries.get(view);
+                if (entry == null || entry.mask == null || !entry.enabled || (entry.editor && sourcePending) || !entry.wholeDraw || drawingClock.get() || mediaSuspended(view))
+                    return chain.proceed();
+                Canvas canvas = (Canvas) chain.getArg(0);
+                int save = canvas.saveLayer(0, 0, view.getWidth(), view.getHeight(), null);
+                boolean previous = drawingClock.get();
+                drawingClock.set(true);
+                try {
+                    Object result = chain.proceed();
+                    drawMask(canvas, view, entry);
+                    return result;
+                } finally {
+                    drawingClock.set(previous);
+                    canvas.restoreToCount(save);
+                }
+            });
+        module.hook(TextView.class.getDeclaredMethod("onDraw", Canvas.class))
+            .setId("dressroom-advanced.depth-digit-draw").intercept(chain -> {
+                View view = (View) chain.getThisObject();
+                Entry entry = entries.get(view);
+                if (entry == null || entry.mask == null || !entry.enabled || (entry.editor && sourcePending) || drawingClock.get() || mediaSuspended(view)) return chain.proceed();
+                Canvas canvas = (Canvas) chain.getArg(0);
+                int save = canvas.saveLayer(0, 0, view.getWidth(), view.getHeight(), null);
+                try {
+                    Object result = chain.proceed();
+                    drawMask(canvas, view, entry);
+                    return result;
+                } finally { canvas.restoreToCount(save); }
+            });
+        installed = true;
+    }
+
+    private static void drawMask(Canvas canvas, View view, Entry entry) {
+        if (entry.live != null) {
+            Matrix source=entry.live.global(), global=new Matrix(), inverse=new Matrix();
+            if(source==null) return;
+            view.transformMatrixToGlobal(global);
+            if(!global.invert(inverse)) return;
+            Matrix local=new Matrix(); local.setConcat(inverse,source);
+            canvas.drawBitmap(entry.mask,local,erase); return;
+        }
+        float scale = entry.previewScale;
+        float width = view.getResources().getDisplayMetrics().widthPixels * scale;
+        float height = view.getResources().getDisplayMetrics().heightPixels * scale;
+        RectF destination = new RectF(entry.previewOriginX, entry.previewOriginY,
+            entry.previewOriginX + width, entry.previewOriginY + height);
+        Matrix toScreen = new Matrix();
+        view.transformMatrixToGlobal(toScreen);
+        Matrix toLocal = new Matrix();
+        if (!toScreen.invert(toLocal)) return;
+        toLocal.mapRect(destination);
+        Bitmap mask = entry.mask;
+        int sourceWidth = mask.getWidth(), sourceHeight = mask.getHeight();
+        float sourceRatio = (float) sourceWidth / sourceHeight;
+        float targetRatio = width / height;
+        Rect crop;
+        if (sourceRatio > targetRatio) {
+            int cropped = Math.max(1, Math.round(sourceHeight * targetRatio));
+            crop = new Rect((sourceWidth - cropped) / 2, 0, (sourceWidth + cropped) / 2, sourceHeight);
+        } else {
+            int cropped = Math.max(1, Math.round(sourceWidth / targetRatio));
+            crop = new Rect(0, (sourceHeight - cropped) / 2, sourceWidth, (sourceHeight + cropped) / 2);
+        }
+        canvas.drawBitmap(mask, crop, destination, erase);
+    }
+
+    static void apply(View view, boolean enabled, byte[] png) {
+        if (!enabled || png == null || png.length == 0) {
+            ClockContentClip.watch(view,false);
+            if (entries.remove(view) != null) { view.invalidate(); refreshNativeBlur(view); }
+            return;
+        }
+        Entry entry = entries.get(view);
+        LiveSubject binding=activeSubject!=null && Arrays.equals(activeSubject.png,png)?activeSubject:null;
+        boolean changed = entry == null || entry.live!=binding || !Arrays.equals(entry.png, png);
+        if (changed) {
+            Bitmap mask;
+            if (Arrays.equals(cachedPng, png)) mask = cachedMask;
+            else {
+                Bitmap decoded = BitmapFactory.decodeByteArray(png, 0, png.length);
+                mask = decoded;
+                cachedPng = png;
+                cachedMask = mask;
+                cachedSubject = null;
+            }
+            if (mask == null) {
+                if(entries.remove(view)!=null){view.invalidate();refreshNativeBlur(view);}return;
+            }
+            entry = new Entry(png, mask);
+            entries.put(view, entry);
+        }
+        entry.enabled = true;
+        entry.wholeDraw = isClockView(view);
+        if (entry.wholeDraw && ClockBinding.of(view).clockStyle && WidgetContentClip.supported()) {
+            entry.nodeClip = true; entry.wholeDraw = false;
+            ClockContentClip.watch(view, true);
+        }
+        if (changed) { view.invalidate(); refreshNativeBlur(view); }
+    }
+    private static void refreshNativeBlur(View view) {
+        if (!isClockView(view)) return;
+        view.post(() -> {
+            if (!view.isAttachedToWindow()) return;
+            try { Reflect.call(view, "setClockTextBlur"); }
+            catch (Exception error) { android.util.Log.w(DressroomModule.TAG, "Depth blur rebuild unavailable", error); }
+        });
+    }
+
+    static Path nativeSubjectPath(View clock, float hostX, float hostY) {
+        if(mediaSuspended(clock))return null;
+        Entry entry = inheritedSubject(clock);
+        if (entry == null || !entry.enabled || (entry.editor && sourcePending)) return null;
+        return screenSubjectPath(clock, entry, hostX, hostY);
+    }
+
+    private static Entry inheritedSubject(View view) {
+        for (View current = view; current != null; ) {
+            Entry entry = entries.get(current);
+            if (entry != null && entry.enabled) return entry;
+            current = current.getParent() instanceof View ? (View) current.getParent() : null;
+        }
+        return null;
+    }
+
+    static boolean hasSubject(View view) { return inheritedSubject(view) != null; }
+    static Object subjectIdentity(View view) { Entry e=inheritedSubject(view); return e==null?null:e.identity; }
+
+    static Path localSubjectPath(View view) {
+        if(mediaSuspended(view))return null;
+        Entry entry = inheritedSubject(view);
+        if (entry == null || (entry.editor && sourcePending)) return null;
+        Matrix global = new Matrix(), local = new Matrix();
+        view.transformMatrixToGlobal(global);
+        if (!global.invert(local)) return null;
+        Path subject = screenSubjectPath(view, entry, 0, 0);
+        if(subject==null) return null;
+        LocalPath cached=localPaths.get(view);
+        if(cached!=null && cached.screen==subject && cached.matrix.equals(local)) return cached.path;
+        Path result=new Path(subject); result.transform(local);
+        localPaths.put(view,new LocalPath(subject,new Matrix(local),result)); return result;
+    }
+    static void media(View clock,boolean active) {
+        boolean changed=active?mediaClocks.add(clock):mediaClocks.remove(clock);
+        if(!changed)return;
+        invalidateTree(clock);refreshNativeBlur(clock);
+    }
+    private static boolean mediaSuspended(View view){
+        if(mediaClocks.isEmpty())return false;
+        for(View current=view;current!=null;current=current.getParent() instanceof View parent?parent:null)
+            if(mediaClocks.contains(current))return true;
+        return false;
+    }
+    static boolean mediaActive(View view){return mediaSuspended(view);}
+    private static void invalidateTree(View view){
+        localPaths.remove(view);view.invalidate();
+        if(view instanceof ViewGroup group)for(int i=0;i<group.getChildCount();i++)invalidateTree(group.getChildAt(i));
+    }
+
+    private static Path screenSubjectPath(View clock, Entry entry, float hostX, float hostY) {
+        float width = clock.getResources().getDisplayMetrics().widthPixels * entry.previewScale;
+        float height = clock.getResources().getDisplayMetrics().heightPixels * entry.previewScale;
+        RectF source = new RectF(0, 0, entry.mask.getWidth(), entry.mask.getHeight());
+        float ratio = width / height;
+        if (source.width() / source.height() > ratio) {
+            float crop = source.height() * ratio;
+            source.inset((source.width() - crop) / 2, 0);
+        } else {
+            float crop = source.width() / ratio;
+            source.inset(0, (source.height() - crop) / 2);
+        }
+        Matrix transform = new Matrix();
+        transform.setRectToRect(source, new RectF(entry.previewOriginX - hostX, entry.previewOriginY - hostY,
+            entry.previewOriginX - hostX + width, entry.previewOriginY - hostY + height), Matrix.ScaleToFit.FILL);
+        if(entry.live!=null) {
+            transform=entry.live.global(); if(transform==null) return null;
+            transform.postTranslate(-hostX,-hostY);
+        }
+        Path cached=entry.paths.get(transform); if(cached!=null) return cached;
+        Path subject = new Path(entry.subject);
+        subject.transform(transform);
+        if(entry.paths.size()>=8) entry.paths.clear();
+        entry.paths.put(new Matrix(transform),subject);
+        return subject;
+    }
+
+    static void resetEditor() {
+        EditorWallpaperSource.reset();
+        editorGeneration++;
+        scanRequest++;
+        sourcePending=false;editorWallpaper.clear();
+        if(activeSubject!=null) activeSubject.stop();
+        activeSubject=null; localPaths.clear();
+        synchronized (entries) { entries.entrySet().removeIf(item -> {
+            if(!item.getValue().editor)return false;
+            ClockContentClip.watch(item.getKey(),false);return true;
+        }); }
+        synchronized (editorRoots) {
+            for (Map.Entry<View, android.view.ViewTreeObserver.OnGlobalLayoutListener> item : editorRoots.entrySet())
+                if (item.getKey().getViewTreeObserver().isAlive())
+                    item.getKey().getViewTreeObserver().removeOnGlobalLayoutListener(item.getValue());
+            editorRoots.clear();
+        }
+        editorEnabled = false; editorPreviewClip=false; editorPng = null; editorScale = 1; editorOriginX = editorOriginY = 0;
+    }
+
+    private static boolean isClockView(View view) {
+        for (Class<?> type = view.getClass(); type != null; type = type.getSuperclass())
+            if ("com.samsung.android.uniform.widget.clock.AbsClockView".equals(type.getName())) return true;
+        return false;
+    }
+    static boolean isEditorClock(View view) {
+        for(View current=view;current!=null;current=current.getParent() instanceof View parent?parent:null) {
+            // World clocks contain provider clocks of their own. Only their outer owner
+            // corresponds to the selected editor profile and may bind automatic detection.
+            if(current!=view && isClockView(current))return false;
+            if(current.getId()!=View.NO_ID)try{
+                if("clock_preview".equals(current.getResources().getResourceEntryName(current.getId())))return true;
+            }catch(android.content.res.Resources.NotFoundException ignored){}
+        }
+        return false;
+    }
+
+    static void applyEditor(View view, boolean enabled, byte[] png) {
+        png=editorMask(png);
+        if (enabled && png != null) {
+            editorEnabled = true;
+            editorPng = png;
+        }
+        apply(view, enabled, png);
+        Entry entry = entries.get(view);
+        if (entry != null) {
+            entry.editor = true;
+            if(isClockView(view) && ClockContentClip.needed(view)) {
+                entry.nodeClip=true;entry.wholeDraw=false;ClockContentClip.watch(view,true);
+            }
+            entry.previewScale = editorScale;
+            entry.previewOriginX = editorOriginX;
+            entry.previewOriginY = editorOriginY;
+            view.invalidate();
+        }
+        observeEditorRoot(view.getRootView());
+    }
+
+    static void setEditorState(View view, boolean enabled, byte[] png) {
+        png=editorMask(png);
+        editorEnabled = enabled && png != null;
+        editorPng = editorEnabled ? png : null;
+        View root = view.getRootView();
+        View world=root==null?null:find(root,"world_clock_view");
+        editorPreviewClip=world!=null && world.isShown();
+        if (root != null) {
+            View preview = find(root, "clock_preview");
+            if (preview != null) {
+                applyEditorPreview(preview, editorEnabled, editorPng,editorPreviewClip);
+                View time = find(preview, "common_stretch_time_area");
+                if (time != null) applyEditor(time, editorEnabled, editorPng);
+                applyDigitChildren(preview, editorEnabled, editorPng, true);
+            }
+            applyEditorClockOwners(root,editorEnabled,editorPng);
+        }
+    }
+
+    static void applyEditorPreview(View preview,boolean enabled,byte[] png,boolean nodeClip) {
+        applyEditor(preview,enabled,png);
+        Entry entry=entries.get(preview);
+        if(entry==null)return;
+        entry.nodeClip=nodeClip && WidgetContentClip.supported();
+        ClockContentClip.watch(preview,entry.nodeClip);
+    }
+
+    private static void observeEditorRoot(View root) {
+        if (root == null || editorRoots.containsKey(root)) return;
+        android.view.ViewTreeObserver.OnGlobalLayoutListener listener = () -> {
+            if (!editorEnabled || editorPng == null) return;
+            View preview = find(root, "clock_preview");
+            if (preview != null) {
+                applyEditorPreview(preview, true, editorPng,editorPreviewClip);
+                View time = find(preview, "common_stretch_time_area");
+                if (time != null) applyEditor(time, true, editorPng);
+                applyDigitChildren(preview, true, editorPng, true);
+            }
+            applyEditorClockOwners(root,true,editorPng);
+            View widgets = find(root, "widget_item_preview");
+            if (widgets != null) {
+                applyEditorWidgets(widgets, true, editorPng);
+            }
+        };
+        editorRoots.put(root, listener);
+        root.getViewTreeObserver().addOnGlobalLayoutListener(listener);
+    }
+    private static void applyEditorClockOwners(View root, boolean enabled, byte[] png) {
+        // Candidate wallpaper changes can replace the provider view inside the same editor.
+        // Its idle blur is owned by that new view, outside the digit drawing path.
+        if (isClockView(root) && isEditorClock(root)) applyEditor(root,enabled,png);
+        if (root instanceof ViewGroup group) for (int i=0;i<group.getChildCount();i++)
+            applyEditorClockOwners(group.getChildAt(i),enabled,png);
+    }
+
+    static void applyWidgets(View clock, boolean enabled, byte[] png, boolean editor) {
+        View root = clock.getRootView();
+        if (root == null) return;
+        View widgets = find(root, editor ? "widget_item_preview" : "grid_layout");
+        if (widgets == null || widgets == clock) return;
+        if (editor) applyEditorWidgets(widgets, enabled, png);
+        else applyWidgetRoot(widgets, enabled, png);
+    }
+
+    private static Boolean editorWidgetDepth;
+    private static byte[] editorWidgetMask;
+    static void setEditorWidgetPolicy(Boolean enabled, byte[] mask) {
+        editorWidgetDepth = enabled; editorWidgetMask = mask;
+    }
+    static void applyEditorWidgets(View widgets, boolean inherited, byte[] mask) {
+        boolean enabled = editorWidgetDepth == null ? inherited : editorWidgetDepth;
+        byte[] png = editorWidgetDepth == null ? mask : editorWidgetMask;
+        // Widget-only depth must not become the global clock depth state.
+        boolean oldEnabled = editorEnabled; byte[] oldPng = editorPng;
+        try { applyEditor(widgets, enabled, png); }
+        finally { editorEnabled = oldEnabled; editorPng = oldPng; }
+    }
+
+    static void applyWidgetRoot(View widgets, boolean enabled, byte[] png) {
+            if (widgets.getContext().getPackageName().equals("com.samsung.android.app.dressroom")) png = editorMask(png);
+            apply(widgets, enabled, png);
+            Entry entry = entries.get(widgets);
+            boolean active = entry != null && entry.enabled;
+            if (entry != null) entry.nodeClip = active && WidgetContentClip.supported();
+            WidgetContentClip.apply(widgets, active);
+            WidgetDepthBlur.watch(widgets, active || WidgetMediaOcclusion.active(widgets));
+    }
+
+    static void applyDigits(View clock, boolean enabled, byte[] png) {
+        applyDigitChildren(clock, enabled, png, false);
+    }
+
+    static void applyEditorDigits(View clock, boolean enabled, byte[] png) {
+        applyDigitChildren(clock, enabled, png, true);
+        long generation = editorGeneration;
+        clock.post(() -> {
+            if (generation == editorGeneration && clock.isAttachedToWindow())
+                applyDigitChildren(clock, enabled, png, true);
+        });
+    }
+
+    private static void applyDigitChildren(View root, boolean enabled, byte[] png, boolean editor) {
+        if (root == null) return;
+        if (root instanceof TextView && root.getId() != View.NO_ID) try {
+            String name = root.getResources().getResourceEntryName(root.getId());
+            if (name.startsWith("common_stretch_hour") || name.startsWith("common_stretch_minute")
+                    || name.equals("common_stretch_colon")) {
+                if (editor) applyEditor(root, enabled, png);
+                else apply(root, enabled, png);
+            }
+        } catch (android.content.res.Resources.NotFoundException ignored) { }
+        if (root instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) root;
+            for (int i = 0; i < group.getChildCount(); i++)
+                applyDigitChildren(group.getChildAt(i), enabled, png, editor);
+        }
+    }
+
+    private static View find(View root, String entry) {
+        if (root.getId() != View.NO_ID) try {
+            if (entry.equals(root.getResources().getResourceEntryName(root.getId()))) return root;
+        } catch (android.content.res.Resources.NotFoundException ignored) { }
+        if (root instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) root;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                View found = find(group.getChildAt(i), entry);
+                if (found != null) return found;
+            }
+        }
+        return null;
+    }
+
+    static void editorTransform(View clock, float scale, Rect fullClockRect) {
+        Entry entry = entries.get(clock);
+        if (entry == null || fullClockRect == null) return;
+        long generation = editorGeneration;
+        Rect position = new Rect(fullClockRect);
+        clock.post(() -> {
+            if (generation != editorGeneration || !clock.isAttachedToWindow()) return;
+            int[] location = new int[2];
+            clock.getLocationOnScreen(location);
+            entry.previewScale = scale;
+            entry.previewOriginX = location[0] - position.left * scale;
+            entry.previewOriginY = location[1] - position.top * scale;
+            editorScale = entry.previewScale;
+            editorOriginX = entry.previewOriginX;
+            editorOriginY = entry.previewOriginY;
+            synchronized (entries) {
+                for (Map.Entry<View, Entry> item : entries.entrySet()) {
+                    Entry layer = item.getValue();
+                    if (!layer.editor) continue;
+                    layer.previewScale = editorScale;
+                    layer.previewOriginX = editorOriginX;
+                    layer.previewOriginY = editorOriginY;
+                    item.getKey().invalidate();
+                }
+            }
+            refreshNativeBlur(clock);
+        });
+    }
+
+    static void watchEditorWallpaper(XposedModule module, ClassLoader loader) throws ReflectiveOperationException {
+        watchEditorWallpaper(module, loader, false);
+    }
+    static void watchEditorWallpaper(XposedModule module, ClassLoader loader, boolean legacy) throws ReflectiveOperationException {
+        java.lang.reflect.Method draw = Class.forName("com.samsung.android.app.dressroom.presentation.preview.widget.CropImageView",false,loader)
+            .getDeclaredMethod("onDraw",Canvas.class);
+        module.hook(draw).setId("dressroom-advanced.editor-wallpaper-source").intercept(chain -> {
+            View view = (View)chain.getThisObject();
+            if (view.isShown() && view.getWidth() > 0 && view.getHeight() > 0) editorWallpaper = new java.lang.ref.WeakReference<>(view);
+            if(wallpaperListener!=null && view.isShown())wallpaperListener.accept(view);
+            if(activeSubject!=null && activeSubject.image.get()==view) updateLiveMask();
+            return chain.proceed();
+        }); module.deoptimize(draw);
+        try {
+            Class<?> weather=Class.forName(legacy ? "l3.h" : "i7.g",false,loader);
+            for(Method method:weather.getDeclaredMethods())if(method.getName().equals(legacy ? "u" : "e") && method.getParameterCount()==(legacy ? 1 : 0)){
+                module.hook(method).setId("dressroom-advanced.weather-depth-source").intercept(chain->{
+                    Object result=chain.proceed();Object owner=chain.getThisObject();
+                    try {
+                        Object crop=Reflect.field(owner,"d"),surface=Reflect.field(owner,legacy ? "j" : "l");
+                        if(crop instanceof View image && surface instanceof View layer){
+                            EditorWallpaperSource.bind(image,layer);
+                            image.post(()->{if(wallpaperListener!=null)wallpaperListener.accept(image);updateLiveMask();});
+                        }
+                    }catch(ReflectiveOperationException error){android.util.Log.w(DressroomModule.TAG,"Weather depth binding unavailable",error);}
+                    return result;
+                });module.deoptimize(method);
+            }
+        }catch(ReflectiveOperationException error){android.util.Log.w(DressroomModule.TAG,"Weather depth source unavailable",error);}
+    }
+    private static void updateLiveMask() {
+        if(activeSubject==null || !activeSubject.changed()) return;
+        synchronized(entries) {
+            for(Map.Entry<View,Entry> item:entries.entrySet()) if(item.getValue().live==activeSubject) {
+                item.getValue().identity=new Object();
+                View layer=item.getKey(); layer.invalidate();
+                if(item.getValue().nodeClip) WidgetContentClip.refresh(layer);
+                if(isClockView(layer)) refreshNativeBlur(layer);
+            }
+        }
+    }
+    static void listenWallpaper(java.util.function.Consumer<View> listener){wallpaperListener=listener;}
+    static void cancelScan(){scanRequest++;}
+    static void clearEditorSubject() {
+        cancelScan(); sourcePending = false;
+        if (activeSubject != null) activeSubject.stop(); activeSubject = null;
+        editorEnabled = false; editorPng = null; editorWidgetDepth = false; editorWidgetMask = null;
+        for (View view : new java.util.ArrayList<>(entries.keySet())) {
+            Entry entry = entries.get(view);
+            if (entry != null && entry.editor) {
+                applyWidgetRoot(view, false, null); view.invalidate();
+            }
+        }
+        localPaths.clear();
+    }
+    static void pendingSource(boolean pending){
+        if(sourcePending==pending)return;sourcePending=pending;
+        synchronized(entries){for(Map.Entry<View,Entry> item:entries.entrySet())if(item.getValue().editor){
+            item.getValue().identity=new Object();View view=item.getKey();view.invalidate();
+            if(item.getValue().nodeClip)WidgetContentClip.refresh(view);refreshNativeBlur(view);
+        }}
+    }
+    static View wallpaper(View clock){View image=findCropView(clock.getRootView());return image==null?editorWallpaper.get():image;}
+    static boolean hasLiveSource(View image){return activeSubject!=null && activeSubject.image.get()==image && activeSubject.global()!=null;}
+    static byte[] liveMask(View image){return hasLiveSource(image)?activeSubject.png:null;}
+    static byte[] editorMask(byte[] png){
+        return activeSubject!=null && activeSubject.matches(png) && activeSubject.global()!=null ? activeSubject.png : null;
+    }
+    static void sourceMetadata(Bundle settings){
+        if(activeSubject!=null && activeSubject.matches(settings.getByteArray("depthMask"))){
+            settings.putInt("depthSourceVersion",2);settings.putString(DepthMetadata.FINGERPRINT,activeSubject.fingerprint);
+            settings.putByteArray(DepthMetadata.SOURCE,activeSubject.png);
+        }
+    }
+    static void restoreSource(View image,Bundle saved,String fingerprint)throws Exception{
+        byte[] png=saved.getByteArray(DepthMetadata.SOURCE);
+        if(png==null || saved.getInt("depthSourceVersion")!=2 || !fingerprint.equals(saved.getString(DepthMetadata.FINGERPRINT)))return;
+        LiveSubject subject=LiveSubject.bind(image,png,fingerprint,saved.getByteArray("depthMask"));
+        if(activeSubject!=null)activeSubject.stop();activeSubject=subject;subject.watch(DepthEffects::updateLiveMask);
+    }
+    static void scan(android.content.Context editorContext, View clock, Result callback) {
+        scan(editorContext,clock,callback,()->{});
+    }
+    static void scan(android.content.Context editorContext, View clock, Result callback,Runnable finished) {
+        final Bitmap wallpaper;
+        final LiveSubject capture;
+        final long generation=editorGeneration;
+        final long request=++scanRequest;
+        try {
+            View image = findCropView(clock.getRootView());
+            if (image == null) image = editorWallpaper.get();
+            if (!EditorWallpaperSource.available(image)) throw new IllegalStateException("Wallpaper preview is not ready. Reopen the editor and try again.");
+            LiveSubject.Capture snapshot=LiveSubject.capture(image);
+            wallpaper=snapshot.bitmap(); capture=snapshot.subject();
+            if (wallpaper == null) throw new IllegalStateException("The current wallpaper cannot be scanned.");
+        } catch (Exception e) {
+            try{callback.done(null,"Depth detection: " + e.getMessage());}finally{finished.run();}
+            return;
+        }
+        scanner.execute(() -> {
+            Object detector = null;
+            Bitmap prepared = null;
+            try {
+                if(request!=scanRequest || generation!=editorGeneration)return;
+                ClassLoader loader = editorContext.getClassLoader();
+                Class<?> provider = Class.forName("com.samsung.android.app.sdk.deepsky.objectcapture.ObjectCaptureProvider", false, loader);
+                detector = provider.getMethod("getInstance", android.content.Context.class).invoke(null, editorContext);
+                if (!Boolean.TRUE.equals(Reflect.call(detector, "isObjectCaptureSupported")))
+                    throw new IllegalStateException("Samsung object capture is unavailable on this device");
+                Reflect.call(detector, "init");
+                prepared=MaskAlpha.detect(detector,wallpaper,"full image");
+                final Object activeDetector=detector;
+                prepared=MaskAlpha.refine(prepared,()->detailMask(activeDetector,capture,wallpaper));
+                if(prepared==null)throw new IllegalStateException("No subject found in this wallpaper");
+                final Bitmap readyMask=prepared;
+                byte[] mask=MaskAlpha.encode(readyMask);
+                Path outline=contour(readyMask);
+                if(!scanMain.post(() -> {
+                    if(generation!=editorGeneration || request!=scanRequest){readyMask.recycle();return;}
+                    if(capture.global()==null) {readyMask.recycle();callback.done(null,"Wallpaper changed. Detecting the new source…");return;}
+                    if(activeSubject!=null) activeSubject.stop();
+                    cachedPng=mask;cachedMask=readyMask;cachedSubject=outline;
+                    capture.png=mask; activeSubject=capture; capture.watch(DepthEffects::updateLiveMask);
+                    callback.done(mask, "Subject detected · follows wallpaper movement");
+                }))throw new IllegalStateException("Editor result handler stopped");
+                // The posted result now owns this bitmap, including stale-result disposal.
+                prepared=null;
+            } catch (Exception | LinkageError e) {
+                String message = e.getCause() != null ? e.getCause().getMessage() : e.getMessage();
+                if (message != null && message.length() > 110) message = message.substring(0, 110) + "…";
+                final String visibleMessage = "Depth detection: " + message;
+                scanMain.post(() -> {if(generation==editorGeneration && request==scanRequest)callback.done(null,visibleMessage);});
+            } finally {
+                if (detector != null) try { Reflect.call(detector, "release"); } catch (Exception | LinkageError ignored) { }
+                if(prepared!=null && !prepared.isRecycled())prepared.recycle();
+                wallpaper.recycle();
+                scanMain.post(finished);
+            }
+        });
+    }
+    private static Bitmap detailMask(Object detector,LiveSubject capture,Bitmap wallpaper)throws Exception {
+        LiveSubject.Detail detail=capture.detail(wallpaper);
+        try {
+            Bitmap focused=MaskAlpha.detect(detector,detail.bitmap(),"visible detail");
+            if(focused==null)return null;
+            try {
+                Bitmap mapped=Bitmap.createBitmap(wallpaper.getWidth(),wallpaper.getHeight(),Bitmap.Config.ARGB_8888);
+                try {
+                    new Canvas(mapped).drawBitmap(focused,detail.toSource(),new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG));
+                    return mapped;
+                }catch(RuntimeException | Error failure){mapped.recycle();throw failure;}
+            }finally{focused.recycle();}
+        }finally{detail.bitmap().recycle();}
+    }
+    private static View findCropView(View root) {
+        View largest=root.getClass().getName().equals("com.samsung.android.app.dressroom.presentation.preview.widget.CropImageView") && EditorWallpaperSource.available(root)?root:null;
+        if (root instanceof ViewGroup group) for (int i=0;i<group.getChildCount();i++) {
+            View found = findCropView(group.getChildAt(i));
+            if(found!=null && (largest==null || (long)found.getWidth()*found.getHeight()>(long)largest.getWidth()*largest.getHeight()))largest=found;
+        }
+        return largest;
+    }
+    static android.os.Bundle freezeMask(android.os.Bundle draft) {
+        if(draft==null) return null;
+        android.os.Bundle copy=new android.os.Bundle(draft);
+        boolean stale=activeSubject!=null && activeSubject.matches(copy.getByteArray("depthMask")) && activeSubject.global()==null;
+        if(sourcePending || stale){for(String field:DepthMetadata.BLOBS){copy.remove(field);copy.remove(field+"Ref");}
+            copy.remove(DepthMetadata.FINGERPRINT);copy.remove("depthSourceVersion");
+            View image=editorWallpaper.get();if(image!=null)android.widget.Toast.makeText(image.getContext(),"Subject detection is not ready yet. Apply again after it finishes.",android.widget.Toast.LENGTH_LONG).show();
+            return copy;
+        }
+        byte[] png=copy.getByteArray("depthMask");
+        if(activeSubject!=null && activeSubject.matches(png)) {
+            sourceMetadata(copy);png=activeSubject.png;
+            Bitmap bitmap=Arrays.equals(cachedPng,png)?cachedMask:BitmapFactory.decodeByteArray(png,0,png.length);
+            try { copy.putByteArray("depthMask",activeSubject.bake(bitmap)); }
+            catch(Exception e) { throw new IllegalStateException("Could not save wallpaper depth crop",e); }
+            finally { if(bitmap!=cachedMask && bitmap!=null) bitmap.recycle(); }
+        }
+        return copy;
+    }
+
+    private static byte[] encodeMask(int width, int height, Bitmap subject, Rect bounds) {
+        if(width<=0 || height<=0 || subject.isRecycled())throw new IllegalArgumentException("Subject image is not ready");
+        int outWidth = width;
+        int outHeight = height;
+        Bitmap output = Bitmap.createBitmap(outWidth, outHeight, Bitmap.Config.ARGB_8888);
+        try {
+        // createScaledBitmap can alias its input. Never recolor/recycle the SDK's subject bitmap.
+        Paint alpha=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
+        alpha.setColorFilter(new android.graphics.BlendModeColorFilter(android.graphics.Color.WHITE,android.graphics.BlendMode.SRC_IN));
+        RectF destination=new RectF(bounds);destination.left*=((float)outWidth/width);destination.right*=((float)outWidth/width);
+        destination.top*=((float)outHeight/height);destination.bottom*=((float)outHeight/height);
+        new Canvas(output).drawBitmap(subject,null,destination,alpha);
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        output.compress(Bitmap.CompressFormat.PNG, 100, bytes);
+        return bytes.toByteArray();
+        }finally{output.recycle();}
+    }
+    private static Path contour(Bitmap mask){
+        try{return DepthGeometry.simplify(MaskContour.extract(mask,127.5f),.2f);}
+        catch(IllegalStateException error){
+            android.util.Log.w(DressroomModule.TAG,"Contour fallback",error);
+            Region region=new Region();int[] row=new int[mask.getWidth()];
+            for(int y=0;y<mask.getHeight();y++){mask.getPixels(row,0,row.length,0,y,row.length,1);int start=-1;
+                for(int x=0;x<=row.length;x++){boolean inside=x<row.length && (row[x]>>>24)>=128;
+                    if(inside && start<0)start=x;if(!inside && start>=0){region.op(start,y,x,y+1,Region.Op.UNION);start=-1;}}}
+            return DepthGeometry.simplify(region.getBoundaryPath(),.2f);
+        }
+    }
+
+    private static final class Entry {
+        final byte[] png;
+        final Bitmap mask;
+        final Path subject;
+        final LiveSubject live;
+        Object identity=new Object();
+        final Map<Matrix,Path> paths=new java.util.LinkedHashMap<>();
+        boolean enabled;
+        boolean editor;
+        boolean wholeDraw;
+        boolean nodeClip;
+        float previewScale = 1f, previewOriginX, previewOriginY;
+        Entry(byte[] png, Bitmap mask) {
+            this.png = png.clone(); this.mask = mask;
+            live=activeSubject!=null && Arrays.equals(activeSubject.png,png)?activeSubject:null;
+            if (mask == cachedMask && cachedSubject != null) { subject = cachedSubject; return; }
+            subject = contour(mask);
+            if (mask == cachedMask) cachedSubject = subject;
+        }
+    }
+}

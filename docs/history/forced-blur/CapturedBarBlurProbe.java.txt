@@ -1,0 +1,60 @@
+package dev.denver.dressroomadvanced;
+
+import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.Color;
+import android.graphics.Path;
+import android.os.Looper;
+import android.view.View;
+
+/** Native captured-info ownership and wallpaper crop contracts; no windows or settings changed. */
+public final class CapturedBarBlurProbe {
+    private static int checks;
+    private static void check(boolean value, String message) {
+        if (!value) throw new AssertionError(message); checks++;
+    }
+    public static void main(String[] args) {
+        try { run(); } catch (Throwable error) { error.printStackTrace(System.out); System.exit(1); }
+    }
+    private static void run() throws Exception {
+        Looper.prepareMainLooper();
+        Class<?> memory = Class.forName("com.android.internal.os.ApplicationSharedMemory");
+        memory.getMethod("setInstance", memory).invoke(null, memory.getMethod("create").invoke(null));
+        Class<?> activityThread = Class.forName("android.app.ActivityThread");
+        Object thread = activityThread.getMethod("systemMain").invoke(null);
+        Context context = (Context) activityThread.getMethod("getSystemContext").invoke(thread);
+        Class<?> builder = Class.forName("android.view.SemBlurInfo$Builder");
+        Object nativeBuilder = builder.getConstructor(int.class).newInstance(0);
+        builder.getMethod("setColorCurvePreset", int.class).invoke(nativeBuilder, 117);
+        builder.getMethod("setRadius", int.class).invoke(nativeBuilder, 120);
+        builder.getMethod("setBackgroundColor", int.class).invoke(nativeBuilder, Color.WHITE);
+        builder.getMethod("setBackgroundCornerRadius", float.class).invoke(nativeBuilder, 30f);
+        Path path = new Path(); path.addCircle(50, 50, 20, Path.Direction.CW);
+        builder.getMethod("setBackgroundClipPath", Path.class).invoke(nativeBuilder, path);
+        Object original = builder.getMethod("build").invoke(nativeBuilder);
+        int nativeRadius = ((Number) Reflect.call(original, "getBlurRadius")).intValue();
+        Bitmap source = Bitmap.createBitmap(100, 60, Bitmap.Config.ARGB_8888);
+        Object captured = CapturedBarBlur.capturedInfo(original, source);
+        check(((Number) Reflect.call(captured, "getBlurMode")).intValue() == 1, "captured mode");
+        check(Reflect.call(captured, "getCapturedBitmap") == source, "bitmap owned by new info");
+        check(((Number) Reflect.call(captured, "getBlurRadius")).intValue() == Math.max(1, nativeRadius / 4), "downscaled blur radius");
+        check(((Number) Reflect.field(captured, "mBackgroundBlurColor")).intValue() == Color.WHITE, "native tint");
+        check(((Number) Reflect.field(captured, "mCornerRadiusTL")).floatValue() == 30
+            && ((Number) Reflect.field(captured, "mCornerRadiusBR")).floatValue() == 30, "native corner radii");
+        check(Reflect.call(captured, "getColorCurve") == Reflect.call(original, "getColorCurve"), "native curve");
+        check(Reflect.call(captured, "getBackgroundClipPath") != null, "native clip retained");
+        check(((Number) Reflect.call(original, "getBlurMode")).intValue() == 0, "original mode unchanged");
+        check(((Number) Reflect.call(original, "getBlurRadius")).intValue() == nativeRadius, "original radius unchanged");
+        View view = new View(context); view.layout(40, 80, 120, 160);
+        Bitmap crop = CapturedBarBlur.crop(view, source, 400, 240);
+        check(crop != null && crop.getWidth() == 20 && crop.getHeight() == 20, "screen coordinates to reduced bitmap");
+        check(CapturedBarBlur.crop(view, source, 400, 240) == crop, "unchanged crop reuses bitmap");
+        view.layout(-40, 80, 40, 160);
+        Bitmap partial = CapturedBarBlur.crop(view, source, 400, 240);
+        check(partial != null && partial.getWidth() == 20, "partial swipe preserves full sampling width");
+        view.layout(500, 500, 580, 580);
+        check(CapturedBarBlur.crop(view, source, 400, 240) == null, "outside display rejected");
+        System.out.println("CapturedBarBlurProbe: " + checks + " checks passed");
+        System.exit(0);
+    }
+}

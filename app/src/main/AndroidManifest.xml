@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="dev.denver.dressroomadvanced">
+    <queries>
+        <package android:name="com.samsung.android.app.dressroom"/>
+        <package android:name="com.samsung.android.app.aodservice"/>
+        <package android:name="com.samsung.android.app.clockpack"/>
+        <package android:name="com.android.systemui"/>
+    </queries>
+    <application android:label="Dressroom Advanced" android:description="@string/module_description"
+        android:allowBackup="false" android:supportsRtl="true">
+        <provider android:name=".SettingsProvider" android:authorities="dev.denver.dressroomadvanced.settings" android:exported="true"/>
+    </application>
+</manifest>

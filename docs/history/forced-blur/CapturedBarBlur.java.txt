@@ -1,0 +1,189 @@
+package dev.denver.dressroomadvanced;
+
+import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.Matrix;
+import android.graphics.Point;
+import android.graphics.Rect;
+import android.graphics.RectF;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.SystemClock;
+import android.view.Display;
+import android.view.View;
+import android.view.WindowManager;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.Executors;
+
+/** Wallpaper-only captured blur for ROMs whose window-blur backend is disabled. */
+final class CapturedBarBlur {
+    private static final Handler main = new Handler(Looper.getMainLooper());
+    private static final java.util.concurrent.Executor worker = Executors.newSingleThreadExecutor(r -> {
+        Thread thread = new Thread(r, "Dressroom bar background"); thread.setDaemon(true); return thread;
+    });
+    // Main-thread state. Captures never include the lockscreen controls or the card itself.
+    private static final Map<Integer, Frame> frames = new HashMap<>();
+    private static final Map<View, Crop> crops = new java.util.WeakHashMap<>();
+    private record Crop(Bitmap source, int left, int top, int right, int bottom, Bitmap bitmap) {}
+    private record Shape(int display, int width, int height, int rotation) {}
+    private static final class Frame {
+        Shape shape; Bitmap bitmap; long refreshed, retryAt; boolean pending;
+    }
+    private static Method screenshot;
+    private static Object windowManager;
+    private static Constructor<?> infoConstructor;
+    private static Field[] copyFields;
+    private static boolean failed, listening, reported;
+    private static android.hardware.display.DisplayManager displays;
+    private static final Runnable invalidate = () -> {
+        for (Frame frame : frames.values()) frame.refreshed = 0;
+        NativeForceBlur.refreshCaptured();
+    };
+    private static final java.util.Set<View> submitted = java.util.Collections.newSetFromMap(new java.util.WeakHashMap<>());
+    private CapturedBarBlur() {}
+
+    static boolean windowBlur(Context context) {
+        WindowManager windows = context.getSystemService(WindowManager.class);
+        return windows != null && windows.isCrossWindowBlurEnabled();
+    }
+    private static Shape shape(Context context) {
+        Display display = context.getDisplay();
+        if (display == null) return null;
+        Point size = new Point(); display.getRealSize(size);
+        return size.x > 0 && size.y > 0 ? new Shape(display.getDisplayId(), size.x, size.y, display.getRotation()) : null;
+    }
+    static boolean ready(Context context) {
+        listen(context);
+        if (failed || Looper.myLooper() != Looper.getMainLooper()) return false;
+        Shape shape = shape(context);
+        if (shape == null) return false;
+        Frame frame = frames.computeIfAbsent(shape.display(), ignored -> new Frame());
+        long now = SystemClock.uptimeMillis();
+        boolean matches = shape.equals(frame.shape) && frame.bitmap != null;
+        if (context.getDisplay().getState() == Display.STATE_OFF) return matches;
+        if (!frame.pending && now >= frame.retryAt && (!matches || now - frame.refreshed > 2000)) {
+            frame.pending = true;
+            worker.execute(() -> capture(shape, frame));
+        }
+        return matches;
+    }
+    private static void listen(Context context) {
+        if (listening) return;
+        Context app = context.getApplicationContext();
+        if (app == null) app = context;
+        displays = app.getSystemService(android.hardware.display.DisplayManager.class);
+        android.content.IntentFilter filter = new android.content.IntentFilter();
+        filter.addAction(android.content.Intent.ACTION_SCREEN_ON);
+        filter.addAction(android.content.Intent.ACTION_WALLPAPER_CHANGED);
+        filter.addAction(android.content.Intent.ACTION_CONFIGURATION_CHANGED);
+        app.registerReceiver(new android.content.BroadcastReceiver() {
+            @Override public void onReceive(Context receiverContext, android.content.Intent intent) {
+                // Wait for the new wallpaper surface rather than caching the black wake-up frame.
+                main.removeCallbacks(invalidate); main.postDelayed(invalidate, 500);
+            }
+        }, filter, Context.RECEIVER_NOT_EXPORTED);
+        listening = true;
+    }
+    private static void capture(Shape shape, Frame frame) {
+        Bitmap bitmap = null;
+        try {
+            if (screenshot == null) {
+                Class<?> type = Class.forName("com.samsung.android.view.SemWindowManager");
+                windowManager = type.getMethod("getInstance").invoke(null);
+                screenshot = type.getMethod("screenshot", int.class, int.class, boolean.class, Rect.class,
+                    int.class, int.class, boolean.class);
+            }
+            // TYPE_WALLPAPER, include that layer. Security policy remains enabled.
+            bitmap = (Bitmap) screenshot.invoke(windowManager, shape.display(), 2013, true, new Rect(),
+                Math.max(1, shape.width() / 4), Math.max(1, shape.height() / 4), false);
+        } catch (ReflectiveOperationException | RuntimeException error) {
+            android.util.Log.w(DressroomModule.TAG, "Wallpaper capture unavailable; retaining native card background", error);
+        }
+        Bitmap result = bitmap;
+        main.post(() -> {
+            frame.pending = false;
+            long now = SystemClock.uptimeMillis();
+            Display display = displays == null ? null : displays.getDisplay(shape.display());
+            if (display == null || display.getState() == Display.STATE_OFF) return;
+            if (result == null) { frame.retryAt = now + 10000; return; }
+            // Submitted info may still own an older bitmap. Let the renderer/GC release it.
+            frame.bitmap = result; frame.shape = shape; frame.refreshed = now;
+            if (!reported) {
+                reported = true;
+                android.util.Log.i(DressroomModule.TAG, "Wallpaper-only captured blur backend ready");
+            }
+            NativeForceBlur.refreshCaptured();
+        });
+    }
+    static Object submission(View view, Object original) throws ReflectiveOperationException {
+        if (original == null || view.getWidth() <= 0 || view.getHeight() <= 0) return original;
+        Shape shape = shape(view.getContext());
+        Frame frame = shape == null ? null : frames.get(shape.display());
+        if (frame == null || frame.bitmap == null || !shape.equals(frame.shape)) return original;
+        if (((Number) Reflect.call(original, "getBlurMode")).intValue() != 0) return original;
+        Bitmap crop = crop(view, frame.bitmap, shape.width(), shape.height());
+        if (crop == null) return original;
+        Object info = capturedInfo(original, crop);
+        submitted.add(view);
+        return info;
+    }
+    static Object capturedInfo(Object original, Bitmap crop) throws ReflectiveOperationException {
+        if (infoConstructor == null) {
+            Class<?> type = original.getClass();
+            infoConstructor = type.getConstructor(int.class, Bitmap.class, int.class, int.class,
+                float.class, float.class, float.class, float.class, int.class);
+            copyFields = java.util.Arrays.stream(type.getDeclaredFields())
+                .filter(field -> !Modifier.isStatic(field.getModifiers()) && !Modifier.isFinal(field.getModifiers()))
+                .toArray(Field[]::new);
+            for (Field field : copyFields) field.setAccessible(true);
+        }
+        int radius = ((Number) Reflect.call(original, "getBlurRadius")).intValue();
+        int color = ((Number) Reflect.call(original, "getBackgroundBlurColor")).intValue();
+        float[] corners = new float[4]; Reflect.call(original, "getBackgroundBlurCornerRadius", corners);
+        // Captured-mode filtering runs on the downscaled bitmap, before it is fitted to the View.
+        Object info = infoConstructor.newInstance(1, crop, Math.max(1, radius / 4), color,
+            corners[0], corners[1], corners[2], corners[3], 8);
+        for (Field field : copyFields) field.set(info, field.get(original));
+        return info;
+    }
+    static Bitmap crop(View view, Bitmap source, int width, int height) {
+        Matrix transform = new Matrix(); view.transformMatrixToGlobal(transform);
+        RectF bounds = new RectF(0, 0, view.getWidth(), view.getHeight()); transform.mapRect(bounds);
+        if (!RectF.intersects(bounds, new RectF(0, 0, width, height))) return null;
+        int left = (int) Math.floor(bounds.left * source.getWidth() / width);
+        int top = (int) Math.floor(bounds.top * source.getHeight() / height);
+        int right = (int) Math.ceil(bounds.right * source.getWidth() / width);
+        int bottom = (int) Math.ceil(bounds.bottom * source.getHeight() / height);
+        if (right <= left || bottom <= top || right - left > source.getWidth() * 2
+                || bottom - top > source.getHeight() * 2) return null;
+        Crop cached = crops.get(view);
+        if (cached != null && cached.source() == source && cached.left() == left && cached.top() == top
+                && cached.right() == right && cached.bottom() == bottom) return cached.bitmap();
+        Bitmap bitmap;
+        if (left >= 0 && top >= 0 && right <= source.getWidth() && bottom <= source.getHeight())
+            bitmap = Bitmap.createBitmap(source, left, top, right - left, bottom - top);
+        else {
+            // Keep the off-screen portion in the crop so a swiped card doesn't stretch its visible background.
+            bitmap = Bitmap.createBitmap(right - left, bottom - top, Bitmap.Config.ARGB_8888);
+            new android.graphics.Canvas(bitmap).drawBitmap(source, -left, -top, null);
+        }
+        crops.put(view, new Crop(source, left, top, right, bottom, bitmap));
+        return bitmap;
+    }
+    static void clear() {
+        for (View view : new java.util.ArrayList<>(submitted)) if (view != null) try {
+            Reflect.call(view, "semSetBlurInfo", new Object[]{null});
+        } catch (ReflectiveOperationException error) { android.util.Log.w(DressroomModule.TAG, "Captured blur cleanup failed", error); }
+        submitted.clear(); crops.clear();
+    }
+    static void disable(Throwable error) {
+        clear();
+        failed = true;
+        android.util.Log.w(DressroomModule.TAG, "Captured card blur unavailable; restoring native background", error);
+    }
+}

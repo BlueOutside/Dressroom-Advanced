@@ -1,0 +1,215 @@
+package dev.denver.dressroomadvanced;
+
+import android.content.Context;
+import android.os.Handler;
+import android.os.Looper;
+import android.provider.Settings;
+import android.view.View;
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Map;
+import java.util.Set;
+import java.util.WeakHashMap;
+
+/** Local renderer overrides. Device-wide rune flags and accessibility settings stay untouched. */
+final class NativeForceBlur {
+    private static final String WIDGET = "com.samsung.android.app.facewidget.complication.ComplicationWidgetHostViewContainer";
+    private static final String CARD = "com.samsung.android.app.facewidget.presentation.";
+    private static final Set<ClassLoader> installed = Collections.newSetFromMap(new WeakHashMap<>());
+    private static final Map<View, WidgetState> widgets = new WeakHashMap<>();
+    private static final Map<View, BarState> bars = new WeakHashMap<>();
+    private static final ThreadLocal<Boolean> barScope = ThreadLocal.withInitial(() -> false);
+    private static final Handler main = new Handler(Looper.getMainLooper());
+    private record Binding(boolean legacy, Method color, Method nativeGate, String refreshPolicy, String colorChanged) {}
+    private static final class WidgetState {
+        final DressroomModule module;
+        final Binding binding;
+        int color; double brightness; float amount; boolean expanded, applied, restoring;
+        WidgetState(DressroomModule module, Binding binding) { this.module = module; this.binding = binding; }
+    }
+    private record BarState(DressroomModule module, Binding binding, boolean forced) {}
+    private NativeForceBlur() {}
+    private static boolean enabled(DressroomModule module, Context context, String key) {
+        return allowed(context) && (module.editorWidgets != null ? module.editorExtras.settings(context).getBoolean(key)
+            : RuntimeExtras.enabled(context, key));
+    }
+    private static boolean allowed(Context context) {
+        return Settings.System.getInt(context.getContentResolver(), "accessibility_reduce_transparency", 0) != 1;
+    }
+    static Binding validate(ClassLoader loader, boolean legacy) throws ReflectiveOperationException {
+        Class<?> widget = Class.forName(WIDGET, false, loader);
+        Class<?> type = Class.forName("com.samsung.android.app.facewidget.complication.WidgetBlurType", false, loader);
+        Method color = Class.forName(legacy ? "aod.QT" : "aod.ln", false, loader)
+            .getDeclaredMethod(legacy ? "L" : "o", double.class, int.class);
+        if (!java.lang.reflect.Modifier.isStatic(color.getModifiers()) || color.getReturnType() != type)
+            throw new NoSuchMethodException("Unsupported native widget color selector");
+        color.setAccessible(true);
+        NativeContract.field(widget, "widgetBlurType", type);
+        NativeContract.method(widget, "addBgViews", void.class, int.class, double.class, float.class, boolean.class);
+        NativeContract.method(widget, "refreshBlur", void.class, float.class);
+        NativeContract.method(widget, "setDarkAmount", void.class, float.class);
+        NativeContract.method(widget, "setMusicExpandState", void.class, boolean.class);
+        Class<?> card = Class.forName(CARD + "a", false, loader);
+        String policy = legacy ? "D" : "H", changed = legacy ? "O" : "T";
+        NativeContract.method(card, policy, void.class);
+        NativeContract.method(card, changed, void.class, boolean.class, boolean.class, boolean.class);
+        Method gate = Class.forName(legacy ? "aod.Sp0" : "aod.m05", false, loader)
+            .getDeclaredMethod(legacy ? "O" : "X", Context.class);
+        gate.setAccessible(true);
+        return new Binding(legacy, color, gate, policy, changed);
+    }
+    static synchronized boolean available(ClassLoader loader) { return installed.contains(loader); }
+    static synchronized void install(DressroomModule module, ClassLoader loader, boolean legacy) {
+        if (installed.contains(loader)) return;
+        try {
+            Binding binding = validate(loader, legacy);
+            Class<?> widget = Class.forName(WIDGET, false, loader);
+            Method add = widget.getDeclaredMethod("addBgViews", int.class, double.class, float.class, boolean.class);
+            try (HookTransaction hooks = new HookTransaction()) {
+                var backgrounds = module.hook(add).setId("dressroom-advanced.forced-widget-background").intercept(chain -> {
+                    Object result = chain.proceed(); View view = (View) chain.getThisObject();
+                    WidgetState state = widgets.computeIfAbsent(view, ignored -> new WidgetState(module, binding));
+                    state.color = (Integer) chain.getArg(0); state.brightness = (Double) chain.getArg(1);
+                    state.amount = (Float) chain.getArg(2); state.expanded = (Boolean) chain.getArg(3);
+                    if (!state.restoring) applyWidget(view, state);
+                    return result;
+                }); hooks.add(backgrounds::unhook); module.deoptimize(add);
+                for (String name : new String[]{"setDarkAmount", "setMusicExpandState"}) {
+                    Method update = widget.getDeclaredMethod(name, name.equals("setDarkAmount") ? float.class : boolean.class);
+                    var change = module.hook(update).setId("dressroom-advanced.forced-widget-" + name).intercept(chain -> {
+                        Object result = chain.proceed(); View view = (View) chain.getThisObject();
+                        WidgetState state = widgets.get(view);
+                        if (state != null && !state.restoring) {
+                            if (name.equals("setDarkAmount")) state.amount = (Float) chain.getArg(0); else state.expanded = (Boolean) chain.getArg(0);
+                            applyWidget(view, state);
+                        }
+                        return result;
+                    }); hooks.add(change::unhook); module.deoptimize(update);
+                }
+                Method gate = Class.forName(legacy ? "aod.Sp0" : "aod.m05", false, loader)
+                    .getDeclaredMethod(legacy ? "O" : "X", Context.class); gate.setAccessible(true);
+                var capability = module.hook(gate).setId("dressroom-advanced.nowbar-local-blur-gate").intercept(chain -> {
+                    if (barScope.get() && enabled(module, (Context) chain.getArg(0), "forceNowBarBlur")) {
+                        Context context = (Context) chain.getArg(0);
+                        return !legacy || CapturedBarBlur.windowBlur(context) || CapturedBarBlur.ready(context);
+                    }
+                    return chain.proceed();
+                }); hooks.add(capability::unhook); module.deoptimize(gate);
+                if (legacy) {
+                    Class<?> info = Class.forName("android.view.SemBlurInfo");
+                    Method submit = Class.forName("aod.Ke", false, loader)
+                        .getDeclaredMethod("b", View.class, info, String.class);
+                    var captured = module.hook(submit).setId("dressroom-advanced.captured-nowbar-blur").intercept(chain -> {
+                        View view = (View) chain.getArg(0);
+                        Object original = chain.getArg(1);
+                        if (!barScope.get() || original == null || !enabled(module, view.getContext(), "forceNowBarBlur")
+                                || CapturedBarBlur.windowBlur(view.getContext())) return chain.proceed();
+                        Object replacement = original;
+                        try { replacement = CapturedBarBlur.submission(view, original); }
+                        catch (ReflectiveOperationException | RuntimeException error) {
+                            CapturedBarBlur.disable(error); main.post(NativeForceBlur::refreshCaptured);
+                        }
+                        return replacement == original ? chain.proceed()
+                            : chain.proceed(new Object[]{view, replacement, chain.getArg(2)});
+                    }); hooks.add(captured::unhook); module.deoptimize(submit);
+                    module.deoptimize(Class.forName("aod.QT", false, loader).getDeclaredMethod("f", View.class, info, String.class));
+                    module.deoptimize(Class.forName("aod.Ke", false, loader)
+                        .getDeclaredMethod("e", View.class, int.class, float.class, Integer.class, String.class));
+                }
+                Class<?> base = Class.forName(CARD + "a", false, loader);
+                Set<Method> methods = new java.util.HashSet<>();
+                for (Method method : base.getDeclaredMethods()) if (Set.of(binding.refreshPolicy(), binding.colorChanged(),
+                        legacy ? "J" : "N", legacy ? "U" : "Z", "onAttachedToWindow").contains(method.getName())) methods.add(method);
+                for (String name : new String[]{"NowBarMediaCardView", "NowBarBriefCardView", "NowBarBatteryCardView",
+                        "NowBarExternalViewCardView", "NowBarOngoingCardView", "NowBarCallCardView", "NowBarModeCardView",
+                        "NowBarContactCardView", "NowBarAppSearchCardView"}) {
+                    try {
+                        for (Method method : Class.forName(CARD + name, false, loader).getDeclaredMethods())
+                            if (!java.lang.reflect.Modifier.isStatic(method.getModifiers()) && Set.of(binding.colorChanged(),
+                                    "setBgColor", "setSettingBgColor", legacy ? "d0" : "s0", legacy ? "h0" : "m0").contains(method.getName())) methods.add(method);
+                    } catch (ClassNotFoundException optionalStyle) { }
+                }
+                for (Method method : methods) {
+                    method.setAccessible(true);
+                    var renderer = module.hook(method).setId("dressroom-advanced.nowbar-blur-scope-" + method.getDeclaringClass().getSimpleName() + "." + method.getName()).intercept(chain -> {
+                        View view = (View) chain.getThisObject();
+                        boolean first = !bars.containsKey(view);
+                        boolean force = first && enabled(module, view.getContext(), "forceNowBarBlur");
+                        if (first) {
+                            bars.put(view, new BarState(module, binding, force));
+                            if (legacy) view.addOnLayoutChangeListener((changed, l, t, r, b, ol, ot, or, ob) -> {
+                                if (changed.isAttachedToWindow() && !CapturedBarBlur.windowBlur(changed.getContext())
+                                        && enabled(module, changed.getContext(), "forceNowBarBlur")) refreshCaptured(changed);
+                            });
+                        }
+                        boolean previous = barScope.get(); barScope.set(true);
+                        try {
+                            if (first && force && !method.getName().equals(binding.refreshPolicy())) Reflect.call(view, binding.refreshPolicy());
+                            return chain.proceed();
+                        } finally { barScope.set(previous); }
+                    }); hooks.add(renderer::unhook); module.deoptimize(method);
+                }
+                hooks.commit(); installed.add(loader);
+            }
+            RuntimeExtras.listen(NativeForceBlur::refresh);
+            android.util.Log.i(DressroomModule.TAG, "Scoped native widget/Now Bar force-blur hooks installed: " + (legacy ? "8.5" : "reference"));
+        } catch (Exception | LinkageError error) { module.report("Native force-blur hooks unavailable", error); }
+    }
+    private static void applyWidget(View view, WidgetState state) {
+        try {
+            boolean force = enabled(state.module, view.getContext(), "forceWidgetBlur");
+            if (!force) {
+                if (state.applied) {
+                    state.applied = false; state.restoring = true;
+                    try {
+                        Reflect.call(Reflect.call(view, "getBlurView"), "semSetBlurInfo", new Object[]{null});
+                        Reflect.call(view, "addBgViews", state.color, state.brightness, state.amount, state.expanded);
+                    } finally { state.restoring = false; }
+                }
+                return;
+            }
+            // Supported devices already ran this renderer in the native callback above.
+            if (Boolean.TRUE.equals(state.binding.nativeGate().invoke(null, view.getContext()))) return;
+            Object display = Reflect.field(view, "widgetDisplayType");
+            if (Boolean.TRUE.equals(Reflect.call(display, "isCover")) || Boolean.TRUE.equals(Reflect.call(display, "isInformative"))) return;
+            View background = (View) Reflect.call(view, "getBlurView");
+            state.applied = true;
+            if (state.expanded) { Reflect.call(background, "semSetBlurInfo", new Object[]{null}); return; }
+            if (!Boolean.TRUE.equals(Reflect.field(view, "enableBlur"))) return;
+            Reflect.set(view, "widgetBlurType", state.binding.color().invoke(null, state.brightness, state.color));
+            Reflect.set(view, "darkAmount", state.amount);
+            background.setBackgroundColor(android.graphics.Color.TRANSPARENT);
+            Reflect.call(view, "refreshBlur", state.amount);
+        } catch (Exception error) { state.module.report("Forced widget blur update unavailable", error); }
+    }
+    static void refreshCaptured() {
+        for (View view : new ArrayList<>(bars.keySet())) if (view != null) refreshCaptured(view);
+    }
+    private static void refreshCaptured(View view) {
+        BarState state = bars.get(view);
+        if (state == null || !state.binding.legacy() || !view.isAttachedToWindow()
+                || !enabled(state.module, view.getContext(), "forceNowBarBlur")) return;
+        try {
+            Reflect.call(view, state.binding.refreshPolicy());
+            Reflect.call(view, state.binding.colorChanged(), false, true, true);
+        } catch (ReflectiveOperationException error) { state.module.report("Captured Now Bar refresh unavailable", error); }
+    }
+    static void refresh() {
+        if (Looper.myLooper() != Looper.getMainLooper()) { main.post(NativeForceBlur::refresh); return; }
+        for (var entry : new ArrayList<>(widgets.entrySet())) {
+            View view = entry.getKey(); WidgetState state = entry.getValue();
+            if (view != null && enabled(state.module, view.getContext(), "forceWidgetBlur") != state.applied) applyWidget(view, state);
+        }
+        for (var entry : new ArrayList<>(bars.entrySet())) try {
+            View view = entry.getKey(); BarState state = entry.getValue();
+            if (view == null) continue;
+            boolean forced = enabled(state.module, view.getContext(), "forceNowBarBlur");
+            if (forced == state.forced) continue;
+            bars.put(view, new BarState(state.module, state.binding, forced));
+            if (!forced && state.binding.legacy()) CapturedBarBlur.clear();
+            Reflect.call(view, state.binding.refreshPolicy());
+            if (view.isAttachedToWindow()) Reflect.call(view, state.binding.colorChanged(), false, true, true);
+        } catch (Exception error) { entry.getValue().module.report("Now Bar blur refresh unavailable", error); }
+    }
+}

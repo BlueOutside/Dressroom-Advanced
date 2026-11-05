@@ -1,0 +1,36 @@
+.gradle/
+.build/
+local.properties
+**/build/
+*.jks
+.signing/
+artifacts/
+*.idsig
+*.log
+
+# Local IDE state and operating-system files
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Signing material, device captures and private research stay on this machine.
+*.keystore
+*.p12
+*.pfx
+*.pem
+.env
+.env.*
+*.apk
+*.apks
+*.aab
+*.hprof
+*.heapdump
+*.mp4
+*.zip
+docs/validation/
+captures/
+private/
+__pycache__/
+*.py[cod]
