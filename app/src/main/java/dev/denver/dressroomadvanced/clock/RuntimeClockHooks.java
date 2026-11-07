@@ -439,7 +439,7 @@ final class RuntimeClockHooks {
                 return;
             }
             List<Float> heights = SavedStretch.heights(profile.getFloatArray("manualHeights"));
-            Object original = Reflect.field(clock, "T0");
+            Object original = ClockBinding.of(clock).font(clock);
             if (original == null || heights == null) {
                 finishMediaReturn(clock);
                 return;
@@ -463,7 +463,7 @@ final class RuntimeClockHooks {
                             if (view != null) view.postOnAnimation(() -> restoreAfterMedia(view));
                         })) return;
             }
-            Reflect.call(clock, "g0", restored);
+            ClockBinding.of(clock).render(clock, restored);
             Reflect.call(clock, "refresh");
             clock.requestLayout();
             finishMediaReturn(clock);

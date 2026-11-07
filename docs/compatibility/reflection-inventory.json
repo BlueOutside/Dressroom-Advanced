@@ -868,21 +868,15 @@
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/ClockBinding.java",
-      "line": 67,
+      "line": 106,
       "kind": "class",
       "target": "com.samsung.android.clockpack.plugins.clock.ShadowStyle"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/ClockBinding.java",
-      "line": 79,
-      "kind": "class",
-      "target": "aod.qn1"
-    },
-    {
-      "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/ClockBinding.java",
-      "line": 80,
-      "kind": "declared-method",
-      "target": "X"
+      "line": 189,
+      "kind": "public-method",
+      "target": "getFontType"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/ClockBlurBinding.java",
