@@ -73,9 +73,23 @@ final class WidgetPanel {
         Object nativePanel = Reflect.field(Reflect.field(ui, "a"), "c");
         Reflect.set(nativePanel, editor.legacy() ? "j" : "h", true);
         Reflect.call(nativePanel, "setAnchorStateSupported", false);
-        Object type =
-                WidgetEngine.enumValue(
-                        Class.forName(editor.legacy() ? "T2.K" : "k6.o", false, loader), "WIDGET");
+        Class<?> menuType = null;
+        for (java.lang.reflect.Method m : ui.getClass().getDeclaredMethods()) {
+            if (m.getParameterCount() == 10 && m.getParameterTypes()[6].isEnum()) {
+                menuType = m.getParameterTypes()[6];
+                break;
+            }
+        }
+        if (menuType == null) {
+            menuType =
+                    Class.forName(
+                            editor.legacy()
+                                    ? OneUi85WidgetEditor.PANEL_MENU
+                                    : OneUi9WidgetEditor.PANEL_MENU,
+                            false,
+                            loader);
+        }
+        Object type = WidgetEngine.enumValue(menuType, "WIDGET");
         Reflect.call(
                 ui,
                 editor.legacy() ? "j" : "d",

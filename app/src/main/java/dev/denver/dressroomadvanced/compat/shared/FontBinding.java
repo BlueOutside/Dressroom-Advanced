@@ -51,10 +51,10 @@ final class FontBinding {
             throws ReflectiveOperationException {
         clock = ClockBinding.of(base);
         fixed =
-                NativeContract.method(
+                NativeContract.findMethod(
                         base, fixedName, void.class, Typeface.class, TextView[].class);
         variable =
-                NativeContract.method(
+                NativeContract.findMethod(
                         base, variableName, void.class, int.class, String.class, TextView[].class);
         Class<?> data = clock.render.getParameterTypes()[0];
         copy =

@@ -32,15 +32,16 @@ final class BlurEffects {
                 new java.util.ArrayList<>();
         boolean addedRadius = false;
         try {
-            Class<?> strategy = Class.forName("aod.tx0", false, loader);
             Class<?> weather =
                     Class.forName(
                             "com.samsung.android.clockpack.plugins.clock.WeatherInfo",
                             false,
                             loader);
-            Class<?> options = Class.forName("aod.xb0", false, loader);
+            Class<?> strategy = OneUi9AodBlur.strategy(loader, weather);
+            Class<?> options = OneUi9AodBlur.options(loader, strategy, weather);
             Method transition =
-                    strategy.getDeclaredMethod("h", int.class, android.widget.ImageView.class);
+                    NativeContract.findMethod(
+                            strategy, "h", void.class, int.class, android.widget.ImageView.class);
             handles.add(
                     module.hook(transition)
                             .setId("dressroom-advanced.clock-stable-blur-tick")
@@ -63,8 +64,13 @@ final class BlurEffects {
                                     }));
             module.deoptimize(transition);
             Method draw =
-                    strategy.getDeclaredMethod(
-                            "b", android.widget.ImageView.class, weather, options);
+                    NativeContract.findMethod(
+                            strategy,
+                            "b",
+                            null,
+                            android.widget.ImageView.class,
+                            weather,
+                            options);
             handles.add(
                     module.hook(draw)
                             .setId("dressroom-advanced.blur-draw")
@@ -91,8 +97,9 @@ final class BlurEffects {
                                             else radiusForDraw.set(previous);
                                         }
                                     }));
-            Class<?> manager = Class.forName("aod.cq0", false, loader);
-            Method tone = manager.getDeclaredMethod("h");
+            Class<?> manager = OneUi9AodBlur.manager(loader);
+            Method tone =
+                    NativeContract.findMethod(manager, "h", OneUi9AodBlur.toneInfo(loader));
             handles.add(
                     module.hook(tone)
                             .setId("dressroom-advanced.custom-glass-wallpaper-tone")
@@ -114,7 +121,7 @@ final class BlurEffects {
                                                 Object sampled =
                                                         WallpaperBlurTone.read(
                                                                 chain.getThisObject().getClass(),
-                                                                clock);
+                                                                 clock);
                                                 if (sampled != null) return sampled;
                                             }
                                         } catch (ReflectiveOperationException
@@ -124,7 +131,8 @@ final class BlurEffects {
                                     }));
             module.deoptimize(tone);
             Method collect =
-                    manager.getDeclaredMethod("d", ArrayList.class, int.class, float.class);
+                    NativeContract.findMethod(
+                            manager, "d", void.class, ArrayList.class, int.class, float.class);
             handles.add(
                     module.hook(collect)
                             .setId("dressroom-advanced.blur-text-visibility")
@@ -151,7 +159,8 @@ final class BlurEffects {
                                                                                     Reflect.call(
                                                                                             chain
                                                                                                     .getThisObject(),
-                                                                                            "h"),
+                                                                                            tone
+                                                                                                    .getName()),
                                                                                     "a"))
                                                                     .doubleValue();
                                                 visibility =
@@ -180,7 +189,9 @@ final class BlurEffects {
                                                         });
                                     }));
             module.deoptimize(collect);
-            module.deoptimize(manager.getDeclaredMethod("c", int.class, int.class, boolean.class));
+            module.deoptimize(
+                    NativeContract.findMethod(
+                            manager, "c", void.class, int.class, int.class, boolean.class));
             module.deoptimize(base.getDeclaredMethod("E0"));
             Method unsupported = base.getDeclaredMethod("y", boolean.class);
             handles.add(
@@ -224,13 +235,15 @@ final class BlurEffects {
         if (glyphSyncInstalled.contains(loader)) return;
         io.github.libxposed.api.XposedInterface.HookHandle handle = null;
         try {
-            Class<?> managerType = Class.forName("aod.cq0", false, loader);
+            Class<?> managerType = OneUi9AodBlur.manager(loader);
             Class<?> glyph =
                     Class.forName(
                             "com.samsung.android.uniform.widget.NonePaddingTextView",
                             false,
                             loader);
-            Method submit = managerType.getDeclaredMethod("c", int.class, int.class, boolean.class);
+            Method submit =
+                    NativeContract.findMethod(
+                            managerType, "c", void.class, int.class, int.class, boolean.class);
             handle =
                     module.hook(submit)
                             .setId("dressroom-advanced.native-blur-glyph-ready")
@@ -267,8 +280,11 @@ final class BlurEffects {
                                                                 if (Reflect.field(target, "h1")
                                                                         == current)
                                                                     Reflect.call(
-                                                                            current, "c", color,
-                                                                            retry, force);
+                                                                            current,
+                                                                            submit.getName(),
+                                                                            color,
+                                                                            retry,
+                                                                            force);
                                                             } catch (Exception error) {
                                                                 module.report(
                                                                         "Native blur redraw resume"
@@ -285,8 +301,11 @@ final class BlurEffects {
                                         return chain.proceed();
                                     });
             module.deoptimize(submit);
-            module.deoptimize(managerType.getDeclaredMethod("b", Integer.class, boolean.class));
-            module.deoptimize(Class.forName("aod.yp0", false, loader).getDeclaredMethod("run"));
+            module.deoptimize(
+                    NativeContract.findMethod(
+                            managerType, "b", void.class, Integer.class, boolean.class));
+            module.deoptimize(
+                    OneUi9AodBlur.glyphRunnable(loader, managerType).getDeclaredMethod("run"));
             module.deoptimize(base.getDeclaredMethod("setClockTextBlur"));
             module.deoptimize(
                     base.getDeclaredMethod("x0", int.class, android.widget.TextView[].class));

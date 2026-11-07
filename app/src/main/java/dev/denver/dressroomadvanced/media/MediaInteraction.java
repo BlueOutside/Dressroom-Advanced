@@ -92,9 +92,7 @@ final class MediaInteraction {
                         false,
                         loader);
         if (stacks.contains(stack)) return;
-        Method bounds =
-                Class.forName("aod.di1", false, loader)
-                        .getDeclaredMethod("D", View.class, int.class, int.class);
+        Method bounds = OneUi9MediaBinding.pillBounds(loader);
         module.hook(bounds)
                 .setId("dressroom-advanced.native-pill-content-bounds")
                 .intercept(

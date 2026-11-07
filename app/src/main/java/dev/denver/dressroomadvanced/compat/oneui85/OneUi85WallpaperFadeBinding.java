@@ -22,11 +22,12 @@ final class OneUi85WallpaperFadeBinding {
         Class<?> status =
                 Class.forName(
                         "com.samsung.android.app.facewidget.SecKeyguardStatusView", false, loader);
-        changed = NativeContract.method(observer, "onChanged", void.class, Object.class);
+        changed = NativeContract.findMethod(observer, "onChanged", void.class, Object.class);
         animator =
-                NativeContract.field(observer, clock.clockStyle ? "C" : "D", ValueAnimator.class);
+                NativeContract.findField(
+                        observer, clock.clockStyle ? "C" : "D", ValueAnimator.class);
         expanded = NativeContract.field(observer, clock.clockStyle ? "E" : "F", boolean.class);
-        host = NativeContract.field(observer, clock.clockStyle ? "u" : "v", status);
+        host = NativeContract.findField(observer, clock.clockStyle ? "u" : "v", status);
     }
 
     void update(Object observer) throws IllegalAccessException {

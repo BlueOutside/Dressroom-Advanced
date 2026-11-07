@@ -7,7 +7,6 @@ import android.view.ViewGroup;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
 
 final class ClockBlurBinding {
     final Method render, clip, clear, host, origin;
@@ -17,8 +16,7 @@ final class ClockBlurBinding {
         ClockBinding binding = ClockBinding.of(base);
         if (binding.clockStyle) throw new NoSuchMethodException("Clock Style blur is not mapped");
         ClassLoader loader = base.getClassLoader();
-        if (!binding.legacy)
-            return new ClockBlurBinding(loader, "aod.tx0", "aod.xb0", "aod.e70", "a", "o");
+        if (!binding.legacy) return OneUi9AodBlur.resolve(loader);
         return OneUi85AodBlur.resolve(loader);
     }
 
@@ -30,23 +28,37 @@ final class ClockBlurBinding {
             String clipName,
             String clockField)
             throws ReflectiveOperationException {
-        Class<?> strategy = Class.forName(strategyName, false, loader);
-        Class<?> options = Class.forName(optionsName, false, loader);
-        Class<?> weather =
+        this(
+                Class.forName(strategyName, false, loader),
+                Class.forName(optionsName, false, loader),
                 Class.forName(
-                        "com.samsung.android.clockpack.plugins.clock.WeatherInfo", false, loader);
-        render = strategy.getDeclaredMethod("b", android.widget.ImageView.class, weather, options);
-        clear = NativeContract.method(strategy, "c", void.class);
-        host = NativeContract.method(strategy, "d", ViewGroup.class);
-        origin = NativeContract.method(strategy, "e", PointF.class, ViewGroup.class);
+                        "com.samsung.android.clockpack.plugins.clock.WeatherInfo", false, loader),
+                Class.forName(helperName, false, loader),
+                clipName,
+                clockField);
+    }
+
+    ClockBlurBinding(
+            Class<?> strategy,
+            Class<?> options,
+            Class<?> weather,
+            Class<?> helper,
+            String clipName,
+            String clockField)
+            throws ReflectiveOperationException {
+        render =
+                NativeContract.findMethod(
+                        strategy, "b", null, android.widget.ImageView.class, weather, options);
+        clear = NativeContract.findMethod(strategy, "c", void.class);
+        host = NativeContract.findMethod(strategy, "d", ViewGroup.class);
+        origin = NativeContract.findMethod(strategy, "e", PointF.class, ViewGroup.class);
         clip =
-                Class.forName(helperName, false, loader)
-                        .getDeclaredMethod(
-                                clipName,
-                                Class.forName("android.view.SemBlurInfo$Builder"),
-                                Path.class);
-        if (!Modifier.isStatic(clip.getModifiers()) || clip.getReturnType() != void.class)
-            throw new NoSuchMethodException("Native blur clip signature changed");
+                NativeContract.findStaticMethod(
+                        helper,
+                        clipName,
+                        void.class,
+                        Class.forName("android.view.SemBlurInfo$Builder"),
+                        Path.class);
         owner = strategy.getDeclaredField("b");
         owner.setAccessible(true);
         clock = owner.getType().getDeclaredField(clockField);

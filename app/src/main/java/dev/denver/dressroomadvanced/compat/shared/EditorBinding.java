@@ -14,13 +14,30 @@ final class EditorBinding {
         SLIDER
     }
 
+    record Names(
+            boolean legacy,
+            String controller,
+            String useCase,
+            String helperType,
+            String rootField,
+            String dataUseCaseField,
+            String helperField,
+            String clockField,
+            String modelField,
+            String createMethod,
+            String bindMethod,
+            String weatherType,
+            String managerWrapperClass,
+            String managerWrapperField,
+            String managerGetterMethod) {}
+
     static final long REFERENCE = 301038000L, ONE_UI_85 = 296051000L, ONE_UI_85_TABLET = 296050000L;
     final boolean legacy;
     final Class<?> controller;
     final Method open, create, weather, bind;
     private final Method weatherCapability, managerGetter;
     private final Field managerWrapper;
-    private final Field root, dataUseCase, helper, clock, model;
+    private final Field root, dataUseCase, helper, clock, model, activityField;
 
     String rowTag(Row row) {
         return switch (row) {
@@ -36,8 +53,22 @@ final class EditorBinding {
                 @Override
                 protected EditorBinding computeValue(Class<?> owner) {
                     try {
-                        return new EditorBinding(
-                                owner.getClassLoader(), owner.getName().equals("Pa.w0"));
+                        ClassLoader loader = owner.getClassLoader();
+                        boolean isLegacy = owner.getName().equals(OneUi85Editor.names().controller);
+                        if (!isLegacy && !owner.getName().equals(OneUi9Editor.names().controller)) {
+                            Class<?> typeData =
+                                    Class.forName(
+                                            "com.samsung.android.lockscreen.editor.item.domain.entity.item.clock.ClockTypeData",
+                                            false,
+                                            loader);
+                            try {
+                                typeData.getDeclaredMethod("isSupportWeatherInfo");
+                            } catch (NoSuchMethodException ignored) {
+                                isLegacy = true;
+                            }
+                        }
+                        Names names = isLegacy ? OneUi85Editor.names() : OneUi9Editor.names();
+                        return new EditorBinding(loader, owner, names);
                     } catch (ReflectiveOperationException error) {
                         throw new IllegalStateException("Unsupported editor ABI", error);
                     }
@@ -50,17 +81,33 @@ final class EditorBinding {
 
     static EditorBinding resolve(ClassLoader loader, long version)
             throws ReflectiveOperationException {
-        if (version != REFERENCE && version != ONE_UI_85 && version != ONE_UI_85_TABLET)
-            throw new ClassNotFoundException(
-                    "Dressroom version " + version + " has no inspected editor binding");
-        return bindings.get(Class.forName(version == REFERENCE ? "vo.x" : "Pa.w0", false, loader));
+        boolean preferLegacy =
+                version == ONE_UI_85
+                        || version == ONE_UI_85_TABLET
+                        || (version > 0 && version < 300000000L);
+        Names primary = preferLegacy ? OneUi85Editor.names() : OneUi9Editor.names();
+        Names fallback = preferLegacy ? OneUi9Editor.names() : OneUi85Editor.names();
+        Class<?> data =
+                Class.forName(
+                        "com.samsung.android.lockscreen.editor.item.domain.entity.item.clock.ClockData",
+                        false,
+                        loader);
+        Class<?> owner =
+                NativeContract.findClass(
+                        loader,
+                        cls ->
+                                NativeContract.hasMethod(cls, void.class, ViewGroup.class, data)
+                                        && NativeContract.hasMethod(cls, boolean.class),
+                        primary.controller,
+                        fallback.controller);
+        return bindings.get(owner);
     }
 
-    private EditorBinding(ClassLoader loader, boolean legacy) throws ReflectiveOperationException {
-        this.legacy = legacy;
+    private EditorBinding(ClassLoader loader, Class<?> resolvedController, Names names)
+            throws ReflectiveOperationException {
+        this.legacy = names.legacy;
         NativeTabs.forType(
                 Class.forName("com.google.android.material.tabs.TabLayout", false, loader));
-        controller = Class.forName(legacy ? "Pa.w0" : "vo.x", false, loader);
         Class<?> data =
                 Class.forName(
                         "com.samsung.android.lockscreen.editor.item.domain.entity.item.clock.ClockData",
@@ -69,49 +116,109 @@ final class EditorBinding {
         Class<?> clockView =
                 Class.forName(
                         "com.samsung.android.clockpack.plugins.clock.ClockView", false, loader);
-        Class<?> useCase = Class.forName(legacy ? "b7.Z" : "mf.o0", false, loader);
-        Class<?> helperType =
-                Class.forName(
-                        legacy ? "com.samsung.android.lockscreen.editor.item.core.util.b" : "oc.a",
-                        false,
-                        loader);
-        open = NativeContract.method(controller, "a", boolean.class);
-        root = NativeContract.assignableField(controller, legacy ? "h0" : "Y", View.class);
-        dataUseCase = NativeContract.field(controller, legacy ? "c" : "b", useCase);
-        helper = NativeContract.field(controller, legacy ? "z" : "w", helperType);
-        clock = NativeContract.field(helperType, legacy ? "b" : "a", clockView);
-        model = controller.getDeclaredField(legacy ? "e" : "d");
-        model.setAccessible(true);
-        model.getType().getMethod("get");
+        controller =
+                resolvedController != null
+                        ? resolvedController
+                        : NativeContract.findClass(
+                                loader,
+                                cls ->
+                                        NativeContract.hasMethod(
+                                                        cls, void.class, ViewGroup.class, data)
+                                                && NativeContract.hasMethod(cls, boolean.class),
+                                names.controller);
+        Class<?> helperType = null;
+        try {
+            Class<?> candidate = Class.forName(names.helperType, false, loader);
+            if (NativeContract.hasField(candidate, clockView)) helperType = candidate;
+        } catch (ClassNotFoundException ignored) {
+        }
+        if (helperType == null) {
+            for (Field f : controller.getDeclaredFields()) {
+                if (NativeContract.hasField(f.getType(), clockView)) {
+                    helperType = f.getType();
+                    break;
+                }
+            }
+        }
+        if (helperType == null)
+            throw new ClassNotFoundException("Clock helper type not found in " + controller);
+
+        Class<?> useCase = null;
+        try {
+            useCase = Class.forName(names.useCase, false, loader);
+        } catch (ClassNotFoundException ignored) {
+            Field f = controller.getDeclaredField(names.dataUseCaseField);
+            useCase = f.getType();
+        }
+        open = NativeContract.findMethod(controller, "a", boolean.class);
+        root = NativeContract.findField(controller, names.rootField, View.class);
+        dataUseCase = NativeContract.findField(controller, names.dataUseCaseField, useCase);
+        helper = NativeContract.findField(controller, names.helperField, helperType);
+        clock = NativeContract.findField(helperType, names.clockField, clockView);
+        activityField =
+                NativeContract.findField(
+                        controller, legacy ? "p0" : "f0", java.lang.ref.WeakReference.class);
+        Field modelField = null;
+        try {
+            modelField = controller.getDeclaredField(names.modelField);
+            modelField.getType().getMethod("get");
+        } catch (ReflectiveOperationException ignored) {
+            for (Field f : controller.getDeclaredFields()) {
+                try {
+                    f.getType().getMethod("get");
+                    modelField = f;
+                    break;
+                } catch (NoSuchMethodException ignored2) {
+                }
+            }
+        }
+        if (modelField == null)
+            throw new NoSuchFieldException("Model field not found in " + controller.getName());
+        modelField.setAccessible(true);
+        model = modelField;
         create =
-                NativeContract.method(
-                        controller, legacy ? "s1" : "e", void.class, ViewGroup.class, data);
+                NativeContract.findMethod(
+                        controller, names.createMethod, void.class, ViewGroup.class, data);
         bind =
-                NativeContract.method(
+                NativeContract.findMethod(
                         helperType,
-                        legacy ? "w" : "e",
+                        names.bindMethod,
                         void.class,
                         legacy ? View.class : clockView);
-        Class<?> weatherType = Class.forName(legacy ? "b7.J" : "mf.i0", false, loader);
+        Class<?> weatherType =
+                NativeContract.findClass(
+                        loader,
+                        cls ->
+                                legacy
+                                        ? NativeContract.hasMethod(cls, void.class, boolean.class)
+                                        : NativeContract.hasMethod(
+                                                cls, void.class, boolean.class, boolean.class),
+                        names.weatherType);
         weather =
                 legacy
-                        ? NativeContract.method(weatherType, "a", void.class, boolean.class)
-                        : NativeContract.method(
+                        ? NativeContract.findMethod(weatherType, "a", void.class, boolean.class)
+                        : NativeContract.findMethod(
                                 weatherType, "a", void.class, boolean.class, boolean.class);
         Class<?> typeData =
                 Class.forName(
                         "com.samsung.android.lockscreen.editor.item.domain.entity.item.clock.ClockTypeData",
                         false,
                         loader);
-        if (legacy) {
+        if (legacy && names.managerWrapperClass != null) {
             Class<?> manager =
                     Class.forName(
                             "com.samsung.android.clockpack.plugins.clock.ClockManager",
                             false,
                             loader);
-            Class<?> wrapper = Class.forName("O5.a", false, loader);
-            managerWrapper = NativeContract.field(controller, "j", wrapper);
-            managerGetter = NativeContract.method(wrapper, "i", manager);
+            Class<?> wrapper =
+                    NativeContract.findClass(
+                            loader,
+                            cls -> NativeContract.hasMethod(cls, manager),
+                            names.managerWrapperClass);
+            managerWrapper =
+                    NativeContract.findField(controller, names.managerWrapperField, wrapper);
+            managerGetter =
+                    NativeContract.findMethod(wrapper, names.managerGetterMethod, manager);
             weatherCapability =
                     NativeContract.method(
                             manager,
@@ -163,7 +270,7 @@ final class EditorBinding {
     }
 
     Object activity(Object owner) throws ReflectiveOperationException {
-        return ((java.lang.ref.WeakReference<?>) Reflect.field(owner, legacy ? "p0" : "f0")).get();
+        return ((java.lang.ref.WeakReference<?>) activityField.get(owner)).get();
     }
 
     Object focusedScene(Object owner) throws ReflectiveOperationException {

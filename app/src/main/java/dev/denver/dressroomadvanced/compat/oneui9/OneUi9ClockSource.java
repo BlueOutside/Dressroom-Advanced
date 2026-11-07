@@ -8,8 +8,16 @@ final class OneUi9ClockSource {
 
     static Method normalizer(ClassLoader loader, Class<?> type)
             throws ReflectiveOperationException {
-        return Class.forName("aod.qn1", false, loader)
-                .getDeclaredMethod("X", int.class, type, List.class);
+        Class<?> owner =
+                NativeContract.findClass(
+                        loader,
+                        cls ->
+                                NativeContract.hasStaticMethod(
+                                        cls, List.class, int.class, type, List.class),
+                        "aod.qn1",
+                        "aod.uq6");
+        return NativeContract.findStaticMethod(
+                owner, "X", List.class, int.class, type, List.class);
     }
 
     static List<Method> callers(ClassLoader loader) throws ReflectiveOperationException {
@@ -27,11 +35,6 @@ final class OneUi9ClockSource {
                 page.getDeclaredMethod("C"),
                 page.getDeclaredMethod("getFullscreenClockFontData"),
                 page.getDeclaredMethod("getClockViewForFullScreen"),
-                NativeContract.method(
-                        page,
-                        "u",
-                        void.class,
-                        Class.forName("aod.fb2", false, loader),
-                        Object.class));
+                NativeContract.findMethod(page, "u", void.class, (Class<?>) null, Object.class));
     }
 }

@@ -1,32 +1,97 @@
 package dev.denver.dressroomadvanced;
 
+import android.graphics.Path;
+import android.graphics.PointF;
 import android.view.View;
+import android.view.ViewGroup;
+import android.widget.ImageView;
 
 import java.lang.reflect.Method;
 import java.util.List;
 
 final class OneUi85AodBlur {
+    static final String STRATEGY = "aod.Lv",
+            OPTIONS = "aod.dl",
+            CLIP_HELPER = "aod.rF",
+            SUBMIT_HELPER = "aod.yi";
+
     private OneUi85AodBlur() {}
 
     static ClockBlurBinding resolve(ClassLoader loader) throws ReflectiveOperationException {
+        Class<?> weather =
+                Class.forName(
+                        "com.samsung.android.clockpack.plugins.clock.WeatherInfo", false, loader);
+        Class<?> builder = Class.forName("android.view.SemBlurInfo$Builder");
+        Class<?> strategy =
+                NativeContract.findClass(
+                        loader,
+                        type ->
+                                NativeContract.hasMethod(type, PointF.class, ViewGroup.class)
+                                        && NativeContract.hasMethod(
+                                                type, void.class, int.class, ImageView.class),
+                        STRATEGY);
+        Class<?> options = OneUi9AodBlur.options(loader, strategy, weather);
+        Class<?> helper =
+                NativeContract.findClass(
+                        loader,
+                        type -> NativeContract.hasStaticMethod(type, void.class, builder, Path.class),
+                        CLIP_HELPER);
         // Lv.b points at a synthetic holder; that holder's b is the AbsClockView.
-        return new ClockBlurBinding(loader, "aod.Lv", "aod.dl", "aod.rF", "c", "b");
+        return new ClockBlurBinding(strategy, options, weather, helper, "c", "b");
     }
 
     static List<Method> submissions(ClassLoader loader) throws ReflectiveOperationException {
-        Class<?> helper = Class.forName("aod.yi", false, loader);
+        Class<?> info = Class.forName("android.view.SemBlurInfo");
+        Class<?> builder = Class.forName("android.view.SemBlurInfo$Builder");
+        Class<?> clipHelper =
+                NativeContract.findClass(
+                        loader,
+                        type ->
+                                NativeContract.hasStaticMethod(type, void.class, builder, Path.class)
+                                        && NativeContract.hasStaticMethod(
+                                                type, void.class, View.class, info, String.class),
+                        CLIP_HELPER);
+        Class<?> helper =
+                NativeContract.findClass(
+                        loader,
+                        type ->
+                                NativeContract.hasStaticMethod(
+                                                type,
+                                                void.class,
+                                                View.class,
+                                                float.class,
+                                                float[].class,
+                                                Integer.class)
+                                        && NativeContract.hasStaticMethod(
+                                                type,
+                                                void.class,
+                                                View.class,
+                                                int.class,
+                                                float.class,
+                                                Integer.class,
+                                                String.class),
+                        SUBMIT_HELPER);
         return List.of(
-                Class.forName("aod.rF", false, loader)
-                        .getDeclaredMethod(
-                                "d",
-                                View.class,
-                                Class.forName("android.view.SemBlurInfo"),
-                                String.class),
-                helper.getDeclaredMethod(
-                        "b", View.class, Class.forName("android.view.SemBlurInfo"), String.class),
-                helper.getDeclaredMethod(
-                        "d", View.class, float.class, float[].class, Integer.class),
-                helper.getDeclaredMethod(
-                        "e", View.class, int.class, float.class, Integer.class, String.class));
+                NativeContract.findStaticMethod(
+                        clipHelper, "d", void.class, View.class, info, String.class),
+                NativeContract.findStaticMethod(
+                        helper, "b", void.class, View.class, info, String.class),
+                NativeContract.findStaticMethod(
+                        helper,
+                        "d",
+                        void.class,
+                        View.class,
+                        float.class,
+                        float[].class,
+                        Integer.class),
+                NativeContract.findStaticMethod(
+                        helper,
+                        "e",
+                        void.class,
+                        View.class,
+                        int.class,
+                        float.class,
+                        Integer.class,
+                        String.class));
     }
 }

@@ -39,16 +39,8 @@ public final class VersionBindingProbe {
                 void.class,
                 android.content.res.Configuration.class);
         if (!binding.legacy) {
-            Class.forName("rp.e", false, editor)
-                    .getDeclaredMethod(
-                            "b",
-                            android.view.View.class,
-                            int.class,
-                            int.class,
-                            float.class,
-                            int.class,
-                            int.class,
-                            boolean.class);
+            OneUi9WidgetEditor.guide(editor);
+            OneUi9WidgetEditor.adapter(editor);
             Class.forName("androidx.databinding.ViewDataBinding", false, editor)
                     .getDeclaredMethod("getBinding", android.view.View.class);
             ClassLoader provider = new PathClassLoader(args[1], parent);
@@ -59,8 +51,11 @@ public final class VersionBindingProbe {
                             provider);
             mask.getDeclaredMethod("setAnimationProgress", float.class);
             mask.getDeclaredMethod("setRandomOffset", float.class);
-            Class<?> song = Class.forName("aod.ag4", false, provider);
-            song.getDeclaredMethod("d", android.graphics.drawable.Drawable.class);
+            Class<?> song = OneUi9MediaBinding.coordinator(provider);
+            NativeContract.findMethod(
+                    song, "d", void.class, android.graphics.drawable.Drawable.class);
+            OneUi9MediaBinding.holder(provider);
+            ClockBlurBinding.resolve(providerClock);
             Class<?> host =
                     Class.forName(
                             "com.samsung.android.app.facewidget.complication.ComplicationWidgetHostViewContainer",

@@ -7,7 +7,13 @@ final class OneUi85ClockSource {
     private OneUi85ClockSource() {}
 
     static Method normalizer(ClassLoader loader) throws ReflectiveOperationException {
-        return Class.forName("aod.QT", false, loader).getDeclaredMethod("g", List.class);
+        Class<?> owner =
+                NativeContract.findClass(
+                        loader,
+                        cls -> NativeContract.hasStaticMethod(cls, List.class, List.class),
+                        "aod.QT",
+                        "aod.PO");
+        return NativeContract.findStaticMethod(owner, "g", List.class, List.class);
     }
 
     static List<Method> callers(ClassLoader loader) throws ReflectiveOperationException {
@@ -28,6 +34,6 @@ final class OneUi85ClockSource {
                 NativeContract.method(page, "w", boolean.class),
                 NativeContract.method(page, "getFullscreenClockFontData", font),
                 page.getDeclaredMethod("getClockViewForFullScreen"),
-                page.getDeclaredMethod("t", Class.forName("aod.vL", false, loader), Object.class));
+                NativeContract.findMethod(page, "t", void.class, (Class<?>) null, Object.class));
     }
 }

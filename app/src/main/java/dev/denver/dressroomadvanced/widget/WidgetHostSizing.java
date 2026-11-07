@@ -80,19 +80,7 @@ final class WidgetHostSizing {
         try {
             NativeContract.method(manager, "calculateWidgetSizeSpec", spec, int.class, int.class);
         } catch (NoSuchMethodException reference) {
-            var sizing =
-                    Class.forName("aod.v99", false, loader)
-                            .getDeclaredMethod(
-                                    "a",
-                                    android.content.Context.class,
-                                    int.class,
-                                    int.class,
-                                    int.class,
-                                    int.class,
-                                    boolean.class);
-            if (!java.lang.reflect.Modifier.isStatic(sizing.getModifiers())
-                    || sizing.getReturnType() != spec)
-                throw new NoSuchMethodException("Unsupported reference widget sizing");
+            OneUi9AodBlur.widgetSizing(loader, spec);
         }
         Class<?> type = Class.forName(CONTAINER, false, loader);
         NativeContract.field(
@@ -136,17 +124,13 @@ final class WidgetHostSizing {
             try {
                 spec = Reflect.call(manager, "calculateWidgetSizeSpec", columns, rows);
             } catch (NoSuchMethodException reference) {
-                Class<?> sizing =
-                        Class.forName("aod.v99", false, manager.getClass().getClassLoader());
-                var method =
-                        sizing.getDeclaredMethod(
-                                "a",
-                                android.content.Context.class,
-                                int.class,
-                                int.class,
-                                int.class,
-                                int.class,
-                                boolean.class);
+                ClassLoader loader = manager.getClass().getClassLoader();
+                Class<?> specType =
+                        Class.forName(
+                                "com.samsung.android.app.facewidget.complication.WidgetSizeSpec",
+                                false,
+                                loader);
+                var method = OneUi9AodBlur.widgetSizing(loader, specType);
                 method.setAccessible(true);
                 spec =
                         method.invoke(

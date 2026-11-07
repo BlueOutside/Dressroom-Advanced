@@ -105,18 +105,8 @@ final class WidgetDepthBlur {
                     for (Method method : OneUi85AodBlur.submissions(loader))
                         module.deoptimize(method);
                 } else {
-                    Class<?> utils = Class.forName("aod.e70", false, loader);
-                    module.deoptimize(
-                            utils.getDeclaredMethod(
-                                    "c", View.class, float.class, float[].class, Integer.class));
-                    module.deoptimize(
-                            utils.getDeclaredMethod(
-                                    "d",
-                                    View.class,
-                                    int.class,
-                                    float.class,
-                                    Integer.class,
-                                    String.class));
+                    for (Method method : OneUi9AodBlur.submissions(loader))
+                        module.deoptimize(method);
                 }
                 deoptimized.add(loader);
             }

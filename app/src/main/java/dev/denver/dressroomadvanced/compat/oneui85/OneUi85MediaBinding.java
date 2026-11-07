@@ -26,16 +26,19 @@ final class OneUi85MediaBinding {
                         false,
                         loader);
         returnAnimation =
-                NativeContract.field(page, clock.clockStyle ? "K0" : "L0", ValueAnimator.class);
+                NativeContract.findField(
+                        page, clock.clockStyle ? "K0" : "L0", ValueAnimator.class);
+        Class<?> observer =
+                NativeContract.findClass(
+                        loader,
+                        type -> NativeContract.hasMethod(type, void.class, Object.class),
+                        clock.clockStyle ? "aod.WJ" : "aod.ZQ",
+                        clock.clockStyle ? "aod.ZQ" : "aod.WJ");
         callers =
                 List.of(
-                        Class.forName(clock.clockStyle ? "aod.WJ" : "aod.ZQ", false, loader)
-                                .getDeclaredMethod("onChanged", Object.class),
-                        page.getDeclaredMethod(
-                                "d",
-                                Class.forName(
-                                        clock.clockStyle ? "aod.cL" : "aod.iS", false, loader)),
-                        page.getDeclaredMethod("g", View.class));
+                        NativeContract.findMethod(observer, "onChanged", void.class, Object.class),
+                        NativeContract.findMethod(page, "d", View.class, (Class<?>) null),
+                        NativeContract.findMethod(page, "g", void.class, View.class));
     }
 
     Animator animation(View clock) {

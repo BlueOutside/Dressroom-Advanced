@@ -22,11 +22,19 @@ final class WallpaperBlurTone {
     private record Native(Method singleton, Method hsv, Method brightness, Constructor<?> info) {
         Native(ClassLoader loader) throws ReflectiveOperationException {
             this(
-                    Class.forName("aod.n16", false, loader).getDeclaredMethod("A"),
-                    Class.forName("aod.n16", false, loader).getDeclaredMethod("C", Object.class),
-                    Class.forName("aod.rv2", false, loader).getDeclaredMethod("w", int.class),
-                    Class.forName("aod.l49", false, loader)
-                            .getConstructor(double.class, float.class));
+                    OneUi9AodBlur.toneSampler(loader),
+                    OneUi9AodBlur.brightness(loader),
+                    OneUi9AodBlur.toneInfo(loader));
+        }
+
+        private Native(Class<?> sampler, Class<?> brightnessType, Class<?> infoType)
+                throws ReflectiveOperationException {
+            this(
+                    NativeContract.findStaticMethod(sampler, "A", sampler),
+                    NativeContract.findMethod(sampler, "C", float[].class, Object.class),
+                    NativeContract.findStaticMethod(
+                            brightnessType, "w", double.class, int.class),
+                    infoType.getConstructor(double.class, float.class));
         }
     }
 

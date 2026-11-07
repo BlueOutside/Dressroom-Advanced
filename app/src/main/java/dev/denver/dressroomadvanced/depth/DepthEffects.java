@@ -640,12 +640,12 @@ final class DepthEffects {
 
     static void watchEditorWallpaper(XposedModule module, ClassLoader loader, boolean legacy)
             throws ReflectiveOperationException {
-        java.lang.reflect.Method draw =
+        Class<?> cropType =
                 Class.forName(
-                                "com.samsung.android.app.dressroom.presentation.preview.widget.CropImageView",
-                                false,
-                                loader)
-                        .getDeclaredMethod("onDraw", Canvas.class);
+                        "com.samsung.android.app.dressroom.presentation.preview.widget.CropImageView",
+                        false,
+                        loader);
+        java.lang.reflect.Method draw = cropType.getDeclaredMethod("onDraw", Canvas.class);
         module.hook(draw)
                 .setId("dressroom-advanced.editor-wallpaper-source")
                 .intercept(
@@ -661,7 +661,22 @@ final class DepthEffects {
                         });
         module.deoptimize(draw);
         try {
-            Class<?> weather = Class.forName(legacy ? "l3.h" : "i7.g", false, loader);
+            Class<?> surfaceType =
+                    Class.forName(
+                            "com.samsung.android.app.dressroom.editorcomponent.component.wallpaper.image.effects.weather.WeatherSurfaceView",
+                            false,
+                            loader);
+            Class<?> weather =
+                    NativeContract.findClass(
+                            loader,
+                            type ->
+                                    NativeContract.hasField(type, cropType)
+                                            && NativeContract.hasField(type, surfaceType),
+                            legacy ? "l3.h" : "i7.g",
+                            legacy ? "i7.g" : "l3.h");
+            java.lang.reflect.Field cropField = NativeContract.findField(weather, "d", cropType);
+            java.lang.reflect.Field surfaceField =
+                    NativeContract.findField(weather, legacy ? "j" : "l", surfaceType);
             for (Method method : weather.getDeclaredMethods())
                 if (method.getName().equals(legacy ? "u" : "e")
                         && method.getParameterCount() == (legacy ? 1 : 0)) {
@@ -672,10 +687,8 @@ final class DepthEffects {
                                         Object result = chain.proceed();
                                         Object owner = chain.getThisObject();
                                         try {
-                                            Object crop = Reflect.field(owner, "d"),
-                                                    surface =
-                                                            Reflect.field(
-                                                                    owner, legacy ? "j" : "l");
+                                            Object crop = cropField.get(owner),
+                                                    surface = surfaceField.get(owner);
                                             if (crop instanceof View image
                                                     && surface instanceof View layer) {
                                                 EditorWallpaperSource.bind(image, layer);

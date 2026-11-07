@@ -460,7 +460,7 @@ public final class DressroomModule extends XposedModule {
             installLegacySave(loader);
             return;
         }
-        Class<?> saveController = Class.forName("dc.p", false, loader);
+        Class<?> saveController = OneUi9Editor.saveController(loader);
         for (Method request : saveController.getDeclaredMethods()) {
             if (!request.getName().equals("Y") || request.getParameterCount() != 2) continue;
             record(
@@ -514,8 +514,7 @@ public final class DressroomModule extends XposedModule {
                                     for (Object arg : chain.getArgs()) {
                                         if (arg instanceof Number && ((Number) arg).intValue() == 5)
                                             tagged = true;
-                                        else if (arg != null
-                                                && arg.getClass().getName().equals("dc.p"))
+                                        else if (arg != null && arg.getClass() == saveController)
                                             owner = true;
                                     }
                                     if (tagged && owner) nativeSaveStarted.set(true);
@@ -535,10 +534,8 @@ public final class DressroomModule extends XposedModule {
                                         nativeSave =
                                                 ((Number) Reflect.field(callback, "a")).intValue()
                                                                 == 5
-                                                        && Reflect.field(callback, "c")
-                                                                .getClass()
-                                                                .getName()
-                                                                .equals("dc.p");
+                                                        && Reflect.field(callback, "c").getClass()
+                                                                == saveController;
                                         if (nativeSave) {
                                             android.os.Bundle snapshot = saving.complete();
                                             android.os.Bundle widgets = savingWidgets.complete();
@@ -589,16 +586,14 @@ public final class DressroomModule extends XposedModule {
     }
 
     private void preflightLegacySave(ClassLoader loader) throws ReflectiveOperationException {
-        Class<?> save =
-                Class.forName("com.samsung.android.lockscreen.editor.component.H$e", false, loader);
+        Class<?> save = Class.forName(OneUi85Editor.SAVE_COMPONENT, false, loader);
         NativeContract.field(save, "b", int.class);
         NativeContract.method(save, "invokeSuspend", Object.class, Object.class);
         Class.forName("kotlin.Unit", false, loader).getField("INSTANCE");
     }
 
     private void installLegacySave(ClassLoader loader) throws ReflectiveOperationException {
-        Class<?> save =
-                Class.forName("com.samsung.android.lockscreen.editor.component.H$e", false, loader);
+        Class<?> save = Class.forName(OneUi85Editor.SAVE_COMPONENT, false, loader);
         java.lang.reflect.Field label = NativeContract.field(save, "b", int.class);
         Method resume = NativeContract.method(save, "invokeSuspend", Object.class, Object.class);
         Object unit = Class.forName("kotlin.Unit", false, loader).getField("INSTANCE").get(null);
@@ -1729,8 +1724,9 @@ public final class DressroomModule extends XposedModule {
                             "com.samsung.android.clockpack.plugins.clock.extension.ClockBlurExtension",
                             false,
                             loader);
-            Class<?> helper = Class.forName("ah.g", false, loader);
-            Method enable = helper.getDeclaredMethod("m", clockView, boolean.class);
+            Class<?> helper = OneUi9Editor.blurHelper(loader, clockView);
+            Method enable =
+                    NativeContract.findMethod(helper, "m", void.class, clockView, boolean.class);
             record(
                     hook(enable)
                             .setId("dressroom-advanced.blur-helper")
@@ -1751,7 +1747,7 @@ public final class DressroomModule extends XposedModule {
                                         }
                                         return chain.proceed();
                                     }));
-            Method text = helper.getDeclaredMethod("o", clockView);
+            Method text = NativeContract.findMethod(helper, "o", void.class, clockView);
             record(
                     hook(text)
                             .setId("dressroom-advanced.text-blur-helper")

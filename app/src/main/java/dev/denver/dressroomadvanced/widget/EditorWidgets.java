@@ -470,8 +470,7 @@ final class EditorWidgets {
 
     void install(ClassLoader loader) throws ReflectiveOperationException {
         DepthEffects.watchEditorWallpaper(module, loader);
-        Class<?> toolbar = Class.forName("v8.y", false, loader);
-        Method rebuild = toolbar.getDeclaredMethod("l");
+        Method rebuild = OneUi9WidgetEditor.toolbar(loader);
         module.hook(rebuild)
                 .setId("dressroom-advanced.widgets-toolbar")
                 .intercept(
@@ -484,8 +483,7 @@ final class EditorWidgets {
                             return chain.proceed();
                         });
         module.deoptimize(rebuild);
-        Class<?> wrapper = Class.forName("pc.h", false, loader);
-        Method getGrid = wrapper.getDeclaredMethod("d");
+        Method getGrid = OneUi9WidgetEditor.getGrid(loader);
         module.hook(getGrid)
                 .setId("dressroom-advanced.editor-widget-provider")
                 .intercept(
@@ -496,7 +494,7 @@ final class EditorWidgets {
                             return result;
                         });
         module.deoptimize(getGrid);
-        Method create = Class.forName("op.m", false, loader).getDeclaredMethod("b");
+        Method create = OneUi9WidgetEditor.create(loader);
         module.hook(create)
                 .setId("dressroom-advanced.widget-editor-binding")
                 .intercept(
@@ -525,29 +523,29 @@ final class EditorWidgets {
                             return result;
                         });
         module.deoptimize(create);
-        Class<?> store = Class.forName("sd.q", false, loader);
-        for (Method m : store.getDeclaredMethods())
-            if (m.getName().equals("b") && m.getParameterCount() == 2) {
-                module.hook(m)
-                        .setId("dressroom-advanced.restore-widget-draft")
-                        .intercept(
-                                chain -> {
-                                    Object model = chain.proceed();
-                                    if (model != null
-                                            && (Boolean)
-                                                    Reflect.call(chain.getArg(1), "isLockScreen")) {
-                                        Context c =
-                                                (Context) Reflect.field(chain.getThisObject(), "a");
-                                        settings(c);
-                                        restoreModel(model);
-                                    }
-                                    return model;
-                                });
-                module.deoptimize(m);
-            }
+        Method restore = OneUi9WidgetEditor.restore(loader);
+        module.hook(restore)
+                .setId("dressroom-advanced.restore-widget-draft")
+                .intercept(
+                        chain -> {
+                            Object model = chain.proceed();
+                            if (model != null
+                                    && (Boolean) Reflect.call(chain.getArg(1), "isLockScreen")) {
+                                Context c = (Context) Reflect.field(chain.getThisObject(), "a");
+                                settings(c);
+                                restoreModel(model);
+                            }
+                            return model;
+                        });
+        module.deoptimize(restore);
         installMetrics(loader);
         installPicker(loader);
-        Method trimmed = Class.forName("rh.a", false, loader).getDeclaredMethod("i");
+        Class<?> alignType =
+                Class.forName(
+                        "com.samsung.android.clockpack.plugins.briefwidget.WidgetAlignType",
+                        false,
+                        loader);
+        Method trimmed = OneUi9WidgetEditor.rotationTrimmed(loader, alignType);
         module.hook(trimmed)
                 .setId("dressroom-advanced.portrait-widget-arrangement")
                 .intercept(
@@ -578,14 +576,7 @@ final class EditorWidgets {
                             return chain.proceed();
                         });
         module.deoptimize(editable);
-        Class<?> alignType =
-                Class.forName(
-                        "com.samsung.android.clockpack.plugins.briefwidget.WidgetAlignType",
-                        false,
-                        loader);
-        Method lifecycle =
-                Class.forName("cg.n", false, loader)
-                        .getDeclaredMethod("c", Class.forName("gf.c", false, loader));
+        Method lifecycle = OneUi9WidgetEditor.lifecycle(loader);
         module.hook(lifecycle)
                 .setId("dressroom-advanced.widget-resume-scope")
                 .intercept(
@@ -602,8 +593,7 @@ final class EditorWidgets {
                             }
                         });
         module.deoptimize(lifecycle);
-        Method providerAlign =
-                Class.forName("pc.h", false, loader).getDeclaredMethod("a", alignType);
+        Method providerAlign = OneUi9WidgetEditor.providerAlign(loader, alignType);
         module.hook(providerAlign)
                 .setId("dressroom-advanced.widget-resume-arrangement")
                 .intercept(
@@ -617,7 +607,7 @@ final class EditorWidgets {
                             return chain.proceed();
                         });
         module.deoptimize(providerAlign);
-        Method rotate = Class.forName("cg.v", false, loader).getDeclaredMethod("a", alignType);
+        Method rotate = OneUi9WidgetEditor.rotate(loader, alignType);
         module.hook(rotate)
                 .setId("dressroom-advanced.native-widget-rotation")
                 .intercept(
@@ -888,7 +878,7 @@ final class EditorWidgets {
     }
 
     private void installMetrics(ClassLoader loader) throws ReflectiveOperationException {
-        Method guide = Class.forName("sp.y1", false, loader).getDeclaredMethod("executeBindings");
+        Method guide = OneUi9WidgetEditor.guide(loader);
         module.hook(guide)
                 .setId("dressroom-advanced.hide-widget-rotation-guide")
                 .intercept(
@@ -901,116 +891,77 @@ final class EditorWidgets {
         module.deoptimize(guide);
         installDrag(loader);
         installDirectDragBinding(loader);
-        for (Method m : Class.forName("sd.h", false, loader).getDeclaredMethods())
-            if (m.getName().equals("a")) {
-                module.hook(m)
-                        .setId("dressroom-advanced.widget-editor-grid-metrics")
-                        .intercept(
-                                chain -> {
-                                    Object result = chain.proceed();
-                                    if (draft != null && draft.getBoolean("layout")) {
-                                        boolean vertical =
-                                                (Boolean)
-                                                        Reflect.call(chain.getArg(1), "isVertical");
-                                        int[] dimensions =
-                                                WidgetLayout.dimensions(
-                                                        draft.getInt("columns"),
-                                                        draft.getInt("rows"),
-                                                        draft.getBoolean("vertical"),
-                                                        vertical);
-                                        Reflect.call(chain.getArg(0), "setCol", dimensions[0]);
-                                        Reflect.call(chain.getArg(0), "setRow", dimensions[1]);
-                                    }
-                                    return result;
-                                });
-                module.deoptimize(m);
-            }
-        for (Method m : Class.forName("sd.o", false, loader).getDeclaredMethods())
-            if (m.getName().equals("a")) {
-                module.hook(m)
-                        .setId("dressroom-advanced.widget-editor-cell-metrics")
-                        .intercept(
-                                chain -> {
-                                    Object result = chain.proceed();
-                                    if (draft != null
-                                            && (draft.getBoolean("layout")
-                                                    || draft.getFloat("scale", 1) != 1)
-                                            && (Boolean)
-                                                    Reflect.call(chain.getArg(7), "isLockScreen")) {
-                                        Object manager =
-                                                Reflect.call(
-                                                        Reflect.field(chain.getThisObject(), "c"),
-                                                        "getValue");
-                                        Object size = chain.getArg(1), grid = chain.getArg(0);
+        Class<?> gridType =
+                Class.forName(
+                        "com.samsung.android.lockscreen.editor.item.domain.entity.item.widget.WidgetGridData",
+                        false,
+                        loader);
+        Class<?> alignType =
+                Class.forName(
+                        "com.samsung.android.clockpack.plugins.briefwidget.WidgetAlignType",
+                        false,
+                        loader);
+        Class<?> sizeType =
+                Class.forName(
+                        "com.samsung.android.lockscreen.editor.item.domain.entity.item.widget.WidgetSizeData",
+                        false,
+                        loader);
+        Class<?> widgetDataType =
+                Class.forName(
+                        "com.samsung.android.lockscreen.editor.item.domain.entity.item.widget.WidgetData",
+                        false,
+                        loader);
+        Class<?> widgetAssistType =
+                Class.forName(
+                        "com.samsung.android.lockscreen.editor.item.domain.entity.item.widget.WidgetAssistData",
+                        false,
+                        loader);
+        Method gridMetrics = OneUi9WidgetEditor.gridMetrics(loader, gridType, alignType);
+        module.hook(gridMetrics)
+                .setId("dressroom-advanced.widget-editor-grid-metrics")
+                .intercept(
+                        chain -> {
+                            Object result = chain.proceed();
+                            if (draft != null && draft.getBoolean("layout")) {
+                                boolean vertical =
+                                        (Boolean)
+                                                Reflect.call(chain.getArg(1), "isVertical");
+                                int[] dimensions =
+                                        WidgetLayout.dimensions(
+                                                draft.getInt("columns"),
+                                                draft.getInt("rows"),
+                                                draft.getBoolean("vertical"),
+                                                vertical);
+                                Reflect.call(chain.getArg(0), "setCol", dimensions[0]);
+                                Reflect.call(chain.getArg(0), "setRow", dimensions[1]);
+                            }
+                            return result;
+                        });
+        module.deoptimize(gridMetrics);
+        Method cellMetrics = OneUi9WidgetEditor.cellMetrics(loader, gridType, sizeType);
+        module.hook(cellMetrics)
+                .setId("dressroom-advanced.widget-editor-cell-metrics")
+                .intercept(
+                        chain -> {
+                            Object result = chain.proceed();
+                            if (draft != null
+                                    && (draft.getBoolean("layout")
+                                            || draft.getFloat("scale", 1) != 1)
+                                    && (Boolean)
+                                            Reflect.call(chain.getArg(7), "isLockScreen")) {
+                                Object manager =
                                         Reflect.call(
-                                                grid,
-                                                "setCol",
-                                                ((Number) Reflect.call(manager, "getColumn"))
-                                                        .intValue());
-                                        Reflect.call(
-                                                grid,
-                                                "setRow",
-                                                ((Number) Reflect.call(manager, "getRow"))
-                                                        .intValue());
-                                        int unit =
-                                                (int)
-                                                        Math.ceil(
-                                                                ((Number)
-                                                                                Reflect.call(
-                                                                                        manager,
-                                                                                        "getUnitSize"))
-                                                                        .floatValue());
-                                        int padding =
-                                                ((Number) Reflect.call(manager, "getPadding"))
-                                                        .intValue();
-                                        float scale =
-                                                ((Number) Reflect.call(manager, "getScaleFactor"))
-                                                        .floatValue();
-                                        int
-                                                columns =
-                                                        ((Number) Reflect.call(grid, "getCol"))
-                                                                .intValue(),
-                                                rows =
-                                                        ((Number) Reflect.call(grid, "getRow"))
-                                                                .intValue();
-                                        Reflect.call(size, "setWidgetUnitSize", unit);
-                                        Reflect.call(size, "setWidgetInnerSizePadding", padding);
-                                        Reflect.call(size, "setWidgetSideMargin", padding);
-                                        Reflect.call(size, "setScaleFactor", scale);
-                                        Reflect.call(size, "setPreviewLayoutScale", scale);
-                                        Reflect.call(
-                                                size,
-                                                "setContainerWidth",
-                                                columns * unit + (columns - 1) * padding * 2);
-                                        Reflect.call(
-                                                size,
-                                                "setContainerHeight",
-                                                rows * unit + (rows - 1) * padding * 2);
-                                        Reflect.call(
-                                                size,
-                                                "setDisableWidth",
-                                                columns * unit + (columns - 1) * padding * 2);
-                                        Reflect.call(
-                                                size,
-                                                "setDisableHeight",
-                                                rows * unit + (rows - 1) * padding * 2);
-                                        Reflect.call(
-                                                size,
-                                                "setDisableExpandWidth",
-                                                columns * unit + (columns - 1) * padding * 2);
-                                        float radius =
-                                                ((Number) Reflect.call(manager, "radius", 1))
-                                                        .floatValue();
-                                        Reflect.call(size, "setRadius", radius);
-                                        Reflect.call(size, "setPreviewRadius", radius / scale);
-                                    }
-                                    return result;
-                                });
-                module.deoptimize(m);
-            }
-        for (Method m : Class.forName("sd.m", false, loader).getDeclaredMethods())
-            if (m.getName().equals("f")) {
-                module.hook(m)
+                                                Reflect.field(chain.getThisObject(), "c"),
+                                                "getValue");
+                                WidgetEditorBinding.metrics(
+                                        chain.getArg(1), chain.getArg(0), manager);
+                            }
+                            return result;
+                        });
+        module.deoptimize(cellMetrics);
+        Method placement =
+                OneUi9WidgetEditor.placement(loader, widgetDataType, widgetAssistType);
+        module.hook(placement)
                         .setId("dressroom-advanced.widget-editor-placement")
                         .intercept(
                                 chain -> {
@@ -1123,16 +1074,8 @@ final class EditorWidgets {
                                                     y + Math.round(height)));
                                     return result;
                                 });
-                module.deoptimize(m);
-            }
-        Method alignFeedback =
-                Class.forName("yc.b", false, loader)
-                        .getDeclaredMethod(
-                                "c",
-                                Class.forName(
-                                        "com.samsung.android.lockscreen.editor.item.domain.entity.item.widget.WidgetData",
-                                        false,
-                                        loader));
+        module.deoptimize(placement);
+        Method alignFeedback = OneUi9WidgetEditor.alignFeedback(loader, widgetDataType);
         module.hook(alignFeedback)
                 .setId("dressroom-advanced.widget-clock-feedback")
                 .intercept(
@@ -1253,10 +1196,17 @@ final class EditorWidgets {
 
     private io.github.libxposed.api.XposedInterface.HookHandle installDirectDragBinding(
             ClassLoader loader) throws ReflectiveOperationException {
-        Class<?> adapter = Class.forName(legacy() ? "lb.c" : "rp.e", false, loader);
+        Class<?> adapter =
+                legacy()
+                        ? OneUi85WidgetEditor.adapter(loader)
+                        : OneUi9WidgetEditor.adapter(loader);
         Method position =
-                adapter.getDeclaredMethod(
-                        legacy() ? "r" : "b",
+                NativeContract.findStaticMethod(
+                        adapter,
+                        legacy()
+                                ? OneUi85WidgetEditor.ADAPTER_METHOD
+                                : OneUi9WidgetEditor.ADAPTER_METHOD,
+                        void.class,
                         View.class,
                         int.class,
                         int.class,
@@ -1264,7 +1214,6 @@ final class EditorWidgets {
                         int.class,
                         int.class,
                         boolean.class);
-        position.setAccessible(true);
         var handle =
                 module.hook(position)
                         .setId("dressroom-advanced.widget-drag-immediate-binding")
@@ -1344,29 +1293,26 @@ final class EditorWidgets {
                 .setId("dressroom-advanced.two-row-widget-eligibility")
                 .intercept(chain -> largePicker.get() ? true : chain.proceed());
         module.deoptimize(tablet);
-        for (Method m : Class.forName("sd.d", false, loader).getDeclaredMethods())
-            if (m.getName().equals("a") && m.getParameterCount() == 2) {
-                module.hook(m)
-                        .setId("dressroom-advanced.widget-picker-size-scope")
-                        .intercept(
-                                chain -> {
-                                    boolean old = largePicker.get();
-                                    largePicker.set(
-                                            draft != null
-                                                    && draft.getBoolean("layout")
-                                                    && draft.getInt("rows") >= 2
-                                                    && (Boolean)
-                                                            Reflect.call(
-                                                                    chain.getArg(0),
-                                                                    "isLockScreen"));
-                                    try {
-                                        return chain.proceed();
-                                    } finally {
-                                        largePicker.set(old);
-                                    }
-                                });
-                module.deoptimize(m);
-            }
+        Method pickerScope = OneUi9WidgetEditor.pickerScope(loader);
+        module.hook(pickerScope)
+                .setId("dressroom-advanced.widget-picker-size-scope")
+                .intercept(
+                        chain -> {
+                            boolean old = largePicker.get();
+                            largePicker.set(
+                                    draft != null
+                                            && draft.getBoolean("layout")
+                                            && draft.getInt("rows") >= 2
+                                            && (Boolean)
+                                                    Reflect.call(
+                                                            chain.getArg(0), "isLockScreen"));
+                            try {
+                                return chain.proceed();
+                            } finally {
+                                largePicker.set(old);
+                            }
+                        });
+        module.deoptimize(pickerScope);
     }
 
     private void addMenu(Object toolbar, ClassLoader loader) throws Exception {
@@ -1378,7 +1324,8 @@ final class EditorWidgets {
         Object models = Reflect.field(toolbar, "g");
         if (models == null || Array.getLength(models) == 0) return;
         Context c = (Context) Reflect.field(toolbar, "a");
-        Class<?> model = Class.forName("k6.m", false, loader);
+        Class<?> model = models.getClass().getComponentType();
+        if (model == null) model = Class.forName(OneUi9WidgetEditor.MENU_ITEM, false, loader);
         List<Object> list = new ArrayList<>();
         for (int i = 0; i < Array.getLength(models); i++) {
             Object value = Array.get(models, i);

@@ -895,7 +895,7 @@ final class MediaFullscreenExtras {
     static void install(DressroomModule owner, ClassLoader loader)
             throws ReflectiveOperationException {
         module = owner;
-        Class<?> holder = Class.forName("aod.fa2", false, loader);
+        Class<?> holder = OneUi9MediaBinding.holder(loader);
         for (java.lang.reflect.Constructor<?> constructor : holder.getDeclaredConstructors())
             owner.hook(constructor)
                     .setId("dressroom-advanced.media-art-owner")
@@ -969,10 +969,10 @@ final class MediaFullscreenExtras {
                         "com.samsung.android.uniform.nowbar.MediaMaskingFrameLayout",
                         false,
                         loader);
-        Class<?> coordinator = Class.forName("aod.ag4", false, loader);
+        Class<?> coordinator = OneUi9MediaBinding.coordinator(loader);
         Method progress = masking.getDeclaredMethod("setAnimationProgress", float.class),
                 random = masking.getDeclaredMethod("setRandomOffset", float.class);
-        Method reveal = coordinator.getDeclaredMethod("d", Drawable.class),
+        Method reveal = NativeContract.findMethod(coordinator, "d", void.class, Drawable.class),
                 start = android.animation.AnimatorSet.class.getDeclaredMethod("start");
         try (HookTransaction hooks = new HookTransaction()) {
             hooks.add(
@@ -1060,11 +1060,9 @@ final class MediaFullscreenExtras {
             owner.deoptimize(random);
             owner.deoptimize(reveal);
             owner.deoptimize(start);
-            owner.deoptimize(coordinator.getDeclaredMethod("e", Drawable.class));
             owner.deoptimize(
-                    Class.forName("aod.o8", false, loader)
-                            .getDeclaredMethod(
-                                    "onAnimationUpdate", android.animation.ValueAnimator.class));
+                    NativeContract.findMethod(coordinator, "e", void.class, Drawable.class));
+            owner.deoptimize(OneUi9MediaBinding.animatorUpdate(loader));
             hooks.commit();
         }
     }
@@ -1094,8 +1092,7 @@ final class MediaFullscreenExtras {
             } catch (Exception error) {
                 module.report("Pill touch bounds unavailable", error);
             }
-            Class<?> expand = Class.forName("aod.n82", false, card.getClassLoader());
-            Method invoke = expand.getDeclaredMethod("invoke");
+            Method invoke = OneUi9MediaBinding.expandInvoke(card.getClassLoader());
             module.hook(invoke)
                     .setId("dressroom-advanced.media-expansion-overlay")
                     .intercept(
