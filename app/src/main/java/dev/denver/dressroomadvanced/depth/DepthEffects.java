@@ -164,8 +164,10 @@ final class DepthEffects {
 
     private static void drawMask(Canvas canvas, View view, Entry entry) {
         if (entry.live != null) {
-            Matrix source = entry.live.global(), global = new Matrix(), inverse = new Matrix();
+            Matrix source = entry.live.global();
+            if (source == null) source = entry.live.lastGlobal();
             if (source == null) return;
+            Matrix global = new Matrix(), inverse = new Matrix();
             view.transformMatrixToGlobal(global);
             if (!global.invert(inverse)) return;
             Matrix local = new Matrix();
@@ -546,10 +548,11 @@ final class DepthEffects {
             png = editorMask(png);
         apply(widgets, enabled, png);
         Entry entry = entries.get(widgets);
-        boolean active = entry != null && entry.enabled;
-        if (entry != null) entry.nodeClip = active && WidgetContentClip.supported();
-        WidgetContentClip.apply(widgets, active);
-        WidgetDepthBlur.watch(widgets, active || WidgetMediaOcclusion.active(widgets));
+        if (entry != null) {
+            entry.nodeClip = false;
+        }
+        WidgetContentClip.apply(widgets, false);
+        WidgetDepthBlur.watch(widgets, false);
     }
 
     static void applyDigits(View clock, boolean enabled, byte[] png) {
@@ -852,19 +855,7 @@ final class DepthEffects {
                     try {
                         if (request != scanRequest || generation != editorGeneration) return;
                         ClassLoader loader = editorContext.getClassLoader();
-                        Class<?> provider =
-                                Class.forName(
-                                        "com.samsung.android.app.sdk.deepsky.objectcapture.ObjectCaptureProvider",
-                                        false,
-                                        loader);
-                        detector =
-                                provider.getMethod("getInstance", android.content.Context.class)
-                                        .invoke(null, editorContext);
-                        if (!Boolean.TRUE.equals(
-                                Reflect.call(detector, "isObjectCaptureSupported")))
-                            throw new IllegalStateException(
-                                    "Samsung object capture is unavailable on this device");
-                        Reflect.call(detector, "init");
+                        detector = initializeDetector(editorContext, loader);
                         prepared = MaskAlpha.detect(detector, wallpaper, "full image");
                         if (prepared == null && request == scanRequest) {
                             try {
@@ -970,6 +961,106 @@ final class DepthEffects {
         }
     }
 
+    private static Object initializeDetector(
+            android.content.Context editorContext, ClassLoader loader) throws Exception {
+        Class<?> provider =
+                Class.forName(
+                        "com.samsung.android.app.sdk.deepsky.objectcapture.ObjectCaptureProvider",
+                        false,
+                        loader);
+        Object detector = null;
+        try {
+            detector =
+                    provider.getMethod("getInstance", android.content.Context.class)
+                            .invoke(null, editorContext);
+        } catch (Exception e) {
+            android.util.Log.w(
+                    DressroomModule.TAG, "Failed to get default ObjectCaptureProvider instance", e);
+        }
+        if (detector != null
+                && Boolean.TRUE.equals(Reflect.call(detector, "isObjectCaptureSupported"))) {
+            try {
+                Reflect.call(detector, "init");
+                return detector;
+            } catch (Exception e) {
+                android.util.Log.w(
+                        DressroomModule.TAG,
+                        "Primary detector init failed, attempting fallback",
+                        e);
+                if (tryInitArcSoft(detector)) {
+                    return detector;
+                }
+            }
+        }
+        String primaryName = detector != null ? detector.getClass().getName() : "";
+        String fallbackName =
+                primaryName.contains("Srib")
+                        ? "com.samsung.android.app.sdk.deepsky.objectcapture.impl.ArcSoftObjectCaptureImpl"
+                        : "com.samsung.android.app.sdk.deepsky.objectcapture.impl.SribObjectCaptureImpl";
+        try {
+            Class<?> fallbackClass = Class.forName(fallbackName, false, loader);
+            Object fallback =
+                    fallbackClass
+                            .getConstructor(android.content.Context.class)
+                            .newInstance(editorContext);
+            if (Boolean.TRUE.equals(Reflect.call(fallback, "isObjectCaptureSupported"))) {
+                try {
+                    Reflect.call(fallback, "init");
+                    return fallback;
+                } catch (Exception e) {
+                    if (tryInitArcSoft(fallback)) {
+                        return fallback;
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        throw new IllegalStateException(
+                "Samsung object capture is unavailable on this device chipset (ret: 3)");
+    }
+
+    private static boolean tryInitArcSoft(Object detector) {
+        if (detector == null || !detector.getClass().getName().contains("ArcSoft")) return false;
+        try {
+            Object wrapper = null;
+            try {
+                wrapper = Reflect.call(detector, "getInstance");
+            } catch (Exception ignored) {
+                try {
+                    Object delegate = Reflect.field(detector, "instance$delegate");
+                    if (delegate != null) wrapper = Reflect.call(delegate, "getValue");
+                } catch (Exception ignored2) {
+                }
+            }
+            if (wrapper == null) return false;
+            Object jniInstance = Reflect.field(wrapper, "instance");
+            if (jniInstance == null) return false;
+            int[] platformIds = {5, 0, 4, 1, 2, 6};
+            for (int id : platformIds) {
+                try {
+                    Object ret = Reflect.call(jniInstance, "OBJECT_CAPTURE_Init", id);
+                    if (ret instanceof Number n && n.intValue() == 0) {
+                        java.lang.reflect.Field initStateField =
+                                detector.getClass().getDeclaredField("IS_INIT_STATE");
+                        initStateField.setAccessible(true);
+                        java.util.concurrent.atomic.AtomicBoolean initState =
+                                (java.util.concurrent.atomic.AtomicBoolean) initStateField.get(null);
+                        if (initState != null) initState.set(true);
+                        android.util.Log.i(
+                                DressroomModule.TAG,
+                                "ArcSoft object capture initialized with fallback platformId="
+                                        + id);
+                        return true;
+                    }
+                } catch (Exception ignored) {
+                }
+            }
+        } catch (Exception error) {
+            android.util.Log.w(DressroomModule.TAG, "ArcSoft fallback initialization failed", error);
+        }
+        return false;
+    }
+
     private static View findCropView(View root) {
         View largest =
                 root.getClass()
@@ -997,8 +1088,9 @@ final class DepthEffects {
         boolean stale =
                 activeSubject != null
                         && activeSubject.matches(copy.getByteArray("depthMask"))
-                        && activeSubject.global() == null;
-        if (sourcePending || stale) {
+                        && activeSubject.global() == null
+                        && activeSubject.lastGlobal() == null;
+        if (stale) {
             for (String field : DepthMetadata.BLOBS) {
                 copy.remove(field);
                 copy.remove(field + "Ref");

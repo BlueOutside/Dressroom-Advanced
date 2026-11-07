@@ -118,8 +118,16 @@ final class RuntimeClockHooks {
                     GlyphFontCache.install(module, base);
                     GlyphDrawReuse.install(module, loader);
                 }
-                module.widgetEngine.install(loader);
-                widgets.install(loader);
+                try {
+                    module.widgetEngine.install(loader);
+                } catch (Exception | LinkageError error) {
+                    module.report("Widget engine install failed", error);
+                }
+                try {
+                    widgets.install(loader);
+                } catch (Exception | LinkageError error) {
+                    module.report("Widget hooks install failed", error);
+                }
             } else {
                 if (!binding.clockStyle) DepthBlurHooks.install(module, base);
                 try {

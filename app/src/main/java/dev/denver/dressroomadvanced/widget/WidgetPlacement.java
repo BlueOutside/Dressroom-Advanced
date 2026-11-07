@@ -17,6 +17,7 @@ final class WidgetPlacement {
         final WeakReference<View> root;
         WeakReference<View> clock = new WeakReference<>(null);
         WeakReference<ViewTreeObserver> observer = new WeakReference<>(null);
+        View.OnLayoutChangeListener layoutListener;
         Bundle settings;
         final RectF lastClockRect = new RectF();
         float deltaX, deltaY, appliedX, appliedY;
@@ -117,6 +118,10 @@ final class WidgetPlacement {
             state.observer = new WeakReference<>(observer);
             observer.addOnPreDrawListener(state);
         }
+        if (state.layoutListener == null) {
+            state.layoutListener = (v, l, t, r, b, ol, ot, or, ob) -> state.onPreDraw();
+            root.addOnLayoutChangeListener(state.layoutListener);
+        }
         root.invalidate();
     }
 
@@ -125,14 +130,22 @@ final class WidgetPlacement {
         if (state == null) return;
         ViewTreeObserver observer = state.observer.get();
         if (observer != null && observer.isAlive()) observer.removeOnPreDrawListener(state);
+        if (state.layoutListener != null) {
+            root.removeOnLayoutChangeListener(state.layoutListener);
+            state.layoutListener = null;
+        }
         state.restore(root);
     }
 
     static boolean isCustomPlacement(View root) {
         if (root == null) return false;
-        State state = states.get(root);
-        if (state != null && state.settings != null && state.settings.getInt("anchor") != 0)
-            return true;
+        for (View current = root; current != null; ) {
+            State state = states.get(current);
+            if (state != null && state.settings != null && state.settings.getInt("anchor") != 0)
+                return true;
+            Object parent = current.getParent();
+            current = parent instanceof View view ? view : null;
+        }
         if (root instanceof ViewGroup group) {
             for (int i = 0; i < group.getChildCount(); i++) {
                 if (isCustomPlacement(group.getChildAt(i))) return true;

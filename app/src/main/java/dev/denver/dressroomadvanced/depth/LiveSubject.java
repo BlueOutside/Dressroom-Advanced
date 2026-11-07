@@ -45,7 +45,16 @@ final class LiveSubject {
     private android.view.ViewTreeObserver observer;
     private android.view.ViewTreeObserver.OnPreDrawListener listener;
 
-    private record Stamp(Drawable drawable, Bitmap bitmap, int generation) {}
+    static boolean isSameWallpaper(Object s1, Object s2) {
+        if (java.util.Objects.equals(s1, s2)) return true;
+        if (s1 instanceof Stamp stamp1 && s2 instanceof Stamp stamp2) {
+            if (stamp1.original != null && java.util.Objects.equals(stamp1.original, stamp2.original))
+                return true;
+        }
+        return false;
+    }
+
+    private record Stamp(Drawable drawable, Bitmap bitmap, int generation, Object original) {}
 
     private LiveSubject(View image, Drawable drawable, int width, int height, String fingerprint)
             throws Exception {
@@ -70,7 +79,13 @@ final class LiveSubject {
         Drawable inner = inner(image);
         Drawable plain = ((android.widget.ImageView) image).getDrawable();
         Bitmap bitmap = plain instanceof BitmapDrawable b ? b.getBitmap() : null;
-        return new Stamp(inner, bitmap, bitmap == null ? 0 : bitmap.getGenerationId());
+        Object original = null;
+        try {
+            original = image.getClass().getMethod("getOriginalDrawable").invoke(image);
+        } catch (NoSuchMethodException ignored) {
+        }
+        return new Stamp(
+                inner, bitmap, bitmap == null ? 0 : bitmap.getGenerationId(), original);
     }
 
     static record Capture(LiveSubject subject, Bitmap bitmap) {}
@@ -206,22 +221,51 @@ final class LiveSubject {
         return result;
     }
 
+    boolean isSameWallpaper(View view) {
+        if (view == null) return false;
+        if (image.get() == view) {
+            try {
+                Object current = stamp(view);
+                if (source.equals(current)) return true;
+                if (source instanceof Stamp s1 && current instanceof Stamp s2) {
+                    if (s1.original != null && s1.original.equals(s2.original)) return true;
+                }
+                String fp = fingerprint(view);
+                return fp != null && fp.equals(this.fingerprint);
+            } catch (Exception ignored) {
+                return true;
+            }
+        }
+        try {
+            return source.equals(stamp(view));
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     Matrix global() {
         View view = image.get();
-        if (!EditorWallpaperSource.available(view)) return null;
+        if (!EditorWallpaperSource.available(view)) return lastGlobal;
         try {
-            if (!source.equals(stamp(view))) return null;
+            if (!isSameWallpaper(view)) return lastGlobal;
             Matrix global = new Matrix();
             view.transformMatrixToGlobal(global);
-            return compose(
-                    width,
-                    height,
-                    new RectF(drawable.getBounds()),
-                    ((android.widget.ImageView) view).getImageMatrix(),
-                    global);
+            Matrix matrix =
+                    compose(
+                            width,
+                            height,
+                            new RectF(drawable.getBounds()),
+                            ((android.widget.ImageView) view).getImageMatrix(),
+                            global);
+            lastGlobal = matrix;
+            return matrix;
         } catch (Exception error) {
-            return null;
+            return lastGlobal;
         }
+    }
+
+    Matrix lastGlobal() {
+        return lastGlobal;
     }
 
     boolean matches(byte[] bytes) {
@@ -259,7 +303,9 @@ final class LiveSubject {
 
     byte[] bake(Bitmap mask) throws Exception {
         View view = image.get();
-        if (view == null || global() == null || mask == null || mask.isRecycled())
+        Matrix matrix = global();
+        if (matrix == null) matrix = lastGlobal;
+        if (view == null || matrix == null || mask == null || mask.isRecycled())
             throw new IllegalStateException("Wallpaper source changed during detection");
         int width = Math.min(1440, view.getWidth()),
                 height =

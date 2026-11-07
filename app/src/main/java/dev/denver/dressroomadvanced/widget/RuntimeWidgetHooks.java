@@ -154,6 +154,27 @@ final class RuntimeWidgetHooks {
             for (Method method : controller.getDeclaredMethods()) {
                 if (method.isBridge()) continue;
                 String name = method.getName();
+                if (name.equals("updateClockGravity")) {
+                    handles.add(
+                            module.hook(method)
+                                    .setId("dressroom-advanced.prevent-plugin-gravity-reset")
+                                    .intercept(
+                                            chain -> {
+                                                Object controllerObj = chain.getThisObject();
+                                                ViewGroup container =
+                                                        (ViewGroup)
+                                                                Reflect.field(
+                                                                        controllerObj, "container");
+                                                if (container != null
+                                                        && WidgetPlacement.isCustomPlacement(
+                                                                container)) {
+                                                    return null;
+                                                }
+                                                return chain.proceed();
+                                            }));
+                    module.deoptimize(method);
+                    continue;
+                }
                 if (!((name.equals("initialize")
                                 && method.getParameterCount() == 1
                                 && method.getParameterTypes()[0] == ViewGroup.class)
@@ -213,10 +234,11 @@ final class RuntimeWidgetHooks {
                                 false,
                                 loader);
                 for (Method m : containerClass.getDeclaredMethods()) {
-                    if (m.getName().equals("applyComplicationX")) {
+                    if (m.getName().equals("applyComplicationX")
+                            || m.getName().equals("updateClockGravity")) {
                         handles.add(
                                 module.hook(m)
-                                        .setId("dressroom-advanced.prevent-widget-snap")
+                                        .setId("dressroom-advanced.prevent-widget-snap-" + m.getName())
                                         .intercept(
                                                 chain -> {
                                                     View target = (View) chain.getThisObject();
@@ -238,10 +260,12 @@ final class RuntimeWidgetHooks {
                                 false,
                                 loader);
                 for (Method m : compManagerClass.getDeclaredMethods()) {
-                    if (m.getName().equals("onClockTransitionEnded")) {
+                    if (m.getName().equals("onClockTransitionEnded")
+                            || m.getName().equals("onClockTransitionStarted")) {
+                        final boolean starting = m.getName().equals("onClockTransitionStarted");
                         handles.add(
                                 module.hook(m)
-                                        .setId("dressroom-advanced.prevent-widget-transition-reset")
+                                        .setId("dressroom-advanced.prevent-widget-transition-" + m.getName())
                                         .intercept(
                                                 chain -> {
                                                     Object manager = chain.getThisObject();
@@ -255,7 +279,7 @@ final class RuntimeWidgetHooks {
                                                         Reflect.call(
                                                                 manager,
                                                                 "updateContainerAlpha",
-                                                                false);
+                                                                starting);
                                                         return null;
                                                     }
                                                     return chain.proceed();
@@ -425,7 +449,11 @@ final class RuntimeWidgetHooks {
                     align = WidgetEngine.enumValue(align.getClass(), "Default");
                 if (align != Reflect.field(grid, "widgetAlignType")) {
                     Reflect.call(grid, "changeAlignType", align);
-                    module.widgetEngine.reflow(grid);
+                    try {
+                        module.widgetEngine.reflow(grid);
+                    } catch (Exception e) {
+                        module.report("Widget reflow skipped", e);
+                    }
                 }
             }
             String layout =

@@ -114,6 +114,8 @@ final class DepthAuto {
         try {
             Object current = LiveSubject.stamp(view);
             if (image.get() != view || !Objects.equals(stamp, current)) {
+                boolean sameWallpaper =
+                        image.get() == view && LiveSubject.isSameWallpaper(stamp, current);
                 image = new WeakReference<>(view);
                 stamp = current;
                 settlingRetries = 0;
@@ -121,7 +123,9 @@ final class DepthAuto {
                 revision++;
                 jobs.clear();
                 DepthEffects.cancelScan();
-                DepthEffects.pendingSource(true);
+                if (!sameWallpaper) {
+                    DepthEffects.pendingSource(true);
+                }
                 schedule(350, false);
             } else if (resolved == null && check == null) schedule(350, false);
         } catch (Exception ignored) {
