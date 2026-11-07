@@ -1,4 +1,4 @@
-# 0.8.0 alpha — live crop masks and depth performance
+# 0.8.0 alpha - live crop masks and depth performance
 
 Installed versionCode 58. The user confirms that AOD screen-off/on is noticeably smoother than 0.7.8.
 

@@ -1,4 +1,4 @@
-# Media return and render hot paths — 0.13.1 alpha
+# Media return and render hot paths - 0.13.1 alpha
 
 Installed versionCode 94, signed with the existing local module key. Includes 0.13.0 (versionCode 93).
 

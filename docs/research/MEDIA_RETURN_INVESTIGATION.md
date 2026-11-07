@@ -1,4 +1,4 @@
-# Compact clock on media return — investigation
+# Compact clock on media return - investigation
 
 Status: **user confirmed fixed on 0.13.11** after the long-open physical-tap test. The real native cache defect was not the complete cause: 0.13.10 traced our artwork layer restoring a compact BackgroundBlurDrawable at +785 ms before the correct stretched submission at +823 ms. 0.13.11 leaves that native drawable attached and suppresses host alpha while artwork is active, preventing stale-drawable restoration. See RELEASE_0.13.11.md. Earlier failed candidates and the investigation sequence remain below for context.
 
@@ -6,7 +6,7 @@ Status: **user confirmed fixed on 0.13.11** after the long-open physical-tap tes
 
 Leave the full music player open for several seconds, then close it by tapping the clock/outside the artwork. Immediate open/close can avoid the problem. The user confirmed the compact clock appeared during the recorded physical close on 0.13.8.
 
-Recording: phone `/sdcard/media0138-user-close.mp4`. Local samples: `work/media0138-user-fine/frame-50.png` through `frame-53.png`, sampled at 16 ms from video offset 25,000 ms. These correspond to approximately 25,800–25,848 ms. Frame 49 is clean and frame 54 is clean: roughly a 64 ms flash. The stretched clock is already visible beneath the small bright clock and its weather. The normal large clock brightens later. This establishes overlapping rendered output, but does not establish the owner of the compact output.
+Recording: phone `/sdcard/media0138-user-close.mp4`. Local samples: `work/media0138-user-fine/frame-50.png` through `frame-53.png`, sampled at 16 ms from video offset 25,000 ms. These correspond to approximately 25,800-25,848 ms. Frame 49 is clean and frame 54 is clean: roughly a 64 ms flash. The stretched clock is already visible beneath the small bright clock and its weather. The normal large clock brightens later. This establishes overlapping rendered output, but does not establish the owner of the compact output.
 
 0.13.4/0.13.5 timing changes, 0.13.7 compositor-outline clear, and 0.13.8 readiness guard have not resolved the user's reproduction. Passing helper tests do not prove visual correctness.
 

@@ -1,12 +1,12 @@
-## Current: 0.14.0 artwork/stretch optimization — smoother motion user confirmed
+## Current: 0.14.0 artwork/stretch optimization - smoother motion user confirmed
 
-Installed versionCode 105; SystemUI startup and exact-font/gradient-outline hooks confirmed under PID 19404. Build/v3 signing, 361 Android contract checks and eight native cache/outline checks pass. The user confirms smoother motion; compact flash remains resolved. Isolated contrast sampling improves from 62.95–107.03 ms to 2.05–4.48 ms per 20,000 calls. User exercise windows show median frame 13→10 ms and GPU p95 14→11 ms, but frame p95 25→29 ms and missed-deadline ratio 5.01→5.93%; unequal holding times, startup and idle frames prevent an overall jank/FPS claim. Full results/limits are in RELEASE_0.14.0.md. Temporary probe removed; keep-awake remains 0; no saved-setting changes.
+Installed versionCode 105; SystemUI startup and exact-font/gradient-outline hooks confirmed under PID 19404. Build/v3 signing, 361 Android contract checks and eight native cache/outline checks pass. The user confirms smoother motion; compact flash remains resolved. Isolated contrast sampling improves from 62.95-107.03 ms to 2.05-4.48 ms per 20,000 calls. User exercise windows show median frame 13→10 ms and GPU p95 14→11 ms, but frame p95 25→29 ms and missed-deadline ratio 5.01→5.93%; unequal holding times, startup and idle frames prevent an overall jank/FPS claim. Full results/limits are in RELEASE_0.14.0.md. Temporary probe removed; keep-awake remains 0; no saved-setting changes.
 
-## Historical: 0.13.11 compact-clock flash — user confirmed fixed
+## Historical: 0.13.11 compact-clock flash - user confirmed fixed
 
 Installed versionCode 104. The user confirms “Flash is gone” after leaving the full player open and closing by the usual physical tap. The 0.13.10 trace captured the native compact BackgroundBlurDrawable being restored at +785 ms, before the correct stretched outline at +823 ms. 0.13.11 leaves that drawable attached and suppresses the host alpha, retaining the latest native alpha requests. Build/v3 signing and all 222 Android contract checks pass; startup/provider/artwork hooks confirmed under SystemUI PID 28804, with no fatal exception or unavailable hook in the inspected logs. Keep-awake remains 0; no wallpaper/settings changes. Four earlier real Samsung cache checks cover the unchanged native glyph guard. Stock non-fullscreen media and other devices are not newly certified. See RELEASE_0.13.11.md.
 
-## Historical: 0.13.9 native glyph-cache guard — failed visual verification
+## Historical: 0.13.9 native glyph-cache guard - failed visual verification
 
 Installed versionCode 102; SystemUI startup and native hook installation confirmed under PID 15834. Build/v3 signing, all 212 Android contract checks and four real Samsung glyph-cache/guard checks pass. Actual AOD ClockNonePaddingTextView returns its old cached path marked ready after a size change until onDraw. The runtime submission guard covers cq0.c and its direct callers, not only setClockTextBlur. The user still reproduced the compact-clock flash. The temporary native probe app was removed and keep-awake restored to 0. See RELEASE_0.13.9.md.
 
@@ -14,7 +14,7 @@ Installed versionCode 102; SystemUI startup and native hook installation confirm
 
 Installed versionCode 101. Build/signing and 212 isolated Android checks pass. The user's physical tap-to-close recording still reproduces the compact clock for roughly 64 ms over the already-stretched clock, after leaving the player open. 0.13.7 and 0.13.8 must not be described as visually fixed. The resumed review uses JADX MCP and the module source; no new build/restart has been performed. See MEDIA_RETURN_INVESTIGATION.md for source facts, rejected assumptions and remaining questions. USB keep-awake was restored to its original 0 after the recording.
 
-## Historical candidate: 0.13.7 compact media blur retirement — failed user verification
+## Historical candidate: 0.13.7 compact media blur retirement - failed user verification
 
 VersionCode 100: build/v3 signing and 204 Android checks pass. 0.13.6's bounded trace shows a valid stretched native blur submission late in return, supporting stale compositor content as the remaining candidate; it does not identify every native callback. 0.13.7 invokes the native blur strategy's clear operation at saved-manual-height return without disabling blur. Installed and SystemUI reloaded. A >6-second-open Back-collapse test logs compact-outline cleanup, after-draw rebuild and saved-height restoration. Fine-frame inspection and user confirmation remain pending. Temporary trace code removed, USB keep-awake restored to 0. See RELEASE_0.13.7.md.
 
@@ -96,7 +96,7 @@ Direct Region cuts reduce the saved-mask first-cut probe from about 37 ms to 1.6
 
 Installed versionCode 58; 54 JVM checks and 16 native Android geometry checks passed. User confirms noticeably smoother AOD transitions. Live editor crop and immediate depth/manual transitions await direct verification. See RELEASE_0.8.0.md for benchmark scope and remaining checks.
 
-## 0.7.8 detailed subject depth — user confirmed
+## 0.7.8 detailed subject depth - user confirmed
 
 Signed versionCode 57 installed. The user confirmed the unapplied flower is detected correctly and depth persists after release. Device trace reports native Path intersection failure for the detailed flower mask; the normal bitmap draw path had worked, while native blur previously fell back to an uncut clock. Region subtraction now handles that failure. Eight minimal Android rasterizer checks passed on the phone, in addition to 54 JVM checks. Free/snap widget dragging and native picker taps were tested; dock-offset Apply/reopen and all runtime transitions still need broader checks. See RELEASE_0.7.8.md. The 0.7.6 binding-only attempt was user-reported unsuccessful.
 ## 0.7.6 widget dragging and candidate wallpaper scan
@@ -134,7 +134,7 @@ The user confirmed that 0.6.0 keeps clock depth while idle in Dressroom. Logcat 
 The user confirmed post-reboot depth on both lockscreen and AOD, and no duplicate after date/weather/blur/shadow edits and tab changes. AOD's initial clock appearance corrected after reapplying; complication contents were masked but their native blur backgrounds remained in front of the subject.
 
 0.6.2 targets those complication backgrounds. The on-phone geometry probe passed rounded background subtraction and non-overlap preservation, and verified installed native complication methods. The 26 Java contract checks and signed APK build passed. Visual validation after reboot is pending; see RELEASE_0.6.2.md.
-# Validation — 0.5.6 alpha, 2026-10-24
+# Validation - 0.5.6 alpha, 2026-10-24
 
 On 0.5.5 the user reported that the gray duplicate still appeared after turning Custom shadow off and that the Weather information switch showed Off after reopening while AOD weather remained On. The captured editor showed saved shadow offset 27 and softness 4. Inspection of `DigitalHorizontalClockView.d0` showed that it clears native shadows only when passed `null` or a style with color zero; 0.5.5 left a nonzero color when its radius became zero. Version 0.5.6 explicitly clears that native shadow path. It also migrates older weather-only records that lack the new editor switch mirror. Both fixes await the user's visual check.
 

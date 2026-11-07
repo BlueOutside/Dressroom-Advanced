@@ -1,4 +1,4 @@
-# Media-return glyph/blur synchronization — 0.13.5 alpha
+# Media-return glyph/blur synchronization - 0.13.5 alpha
 
 VersionCode 98. **The user reports this candidate did not fix the long-open player case.** See RELEASE_0.13.7.md for the subsequent native cache-clear change. The user reported a small compact clock appearing over the restored stretched clock near the end of full-player collapse. A baseline 0.13.3 recording reproduced the exact artifact (`work/media0133-correct-frames/frame-46.png`, approximately 2.3 seconds into the recording).
 

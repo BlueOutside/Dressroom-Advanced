@@ -1,4 +1,4 @@
-# Other clock styles: editor depth correction — 0.12.5 alpha
+# Other clock styles: editor depth correction - 0.12.5 alpha
 
 Installed versionCode 87. The user reports all other built-in clock styles fail in Dressroom, except the normal horizontal/vertical pair. Lockscreen/AOD failures were not reported/tested.
 

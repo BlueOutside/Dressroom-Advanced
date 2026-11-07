@@ -1,4 +1,4 @@
-# Section separators and wallpaper-based tinted blur — 0.12.3 alpha
+# Section separators and wallpaper-based tinted blur - 0.12.3 alpha
 
 Installed versionCode 85. The user clarified that separators should divide major sections, not every setting; the 0.12.2 colored-blur result was not visibly convincing.
 

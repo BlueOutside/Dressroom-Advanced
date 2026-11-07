@@ -1,4 +1,4 @@
-# Depth quality and live tracking research — 2026-10-27
+# Depth quality and live tracking research - 2026-10-27
 
 **Implementation update:** static-image automatic detection, source-space crop tracking, contour conversion and file-backed persistence are integrated in [0.11.2](../releases/RELEASE_0.11.2.md). The findings/prototype measurements below describe the pre-upgrade baseline and research; subject editing and video remain deferred.
 

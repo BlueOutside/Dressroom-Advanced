@@ -1,4 +1,4 @@
-# Automatic source-space depth and edge quality — 0.11.2 alpha
+# Automatic source-space depth and edge quality - 0.11.2 alpha
 
 Installed versionCode 78. Scope: automatic static-image detection and live editor crop/zoom tracking, with improved mask geometry. Subject editing/application UI and animated/video wallpaper are deferred as requested.
 
@@ -35,7 +35,7 @@ Native Apply/Done remains the commit boundary. If Apply is pressed before the so
 
 ## Performance evidence and limits
 
-The earlier isolated contour benchmark on the saved 1152×2496 flower mask measured approximately 11–25 ms versus 77–134 ms for the old preparation path, with 2418 versus 3198 simplified points. This is CPU mask preparation, not inference time, AOD FPS or battery consumption. The complementary detail pass adds detection work once per source; it is not run per frame.
+The earlier isolated contour benchmark on the saved 1152×2496 flower mask measured approximately 11-25 ms versus 77-134 ms for the old preparation path, with 2418 versus 3198 simplified points. This is CPU mask preparation, not inference time, AOD FPS or battery consumption. The complementary detail pass adds detection work once per source; it is not run per frame.
 
 JADX shows this phone's `ImageWallpaper.CanvasEngine.shouldZoomOutWallpaper()` returns false. The build preserves native runtime cropping and uses the committed screen fallback, rather than inventing a framework zoom formula. Other wallpaper engines, external display/rotation changes and other device families are not certified. The blueprint remains in DEPTH_UPGRADE_RESEARCH.md; its prototype-only status is historical now that this static-image implementation is integrated.
 

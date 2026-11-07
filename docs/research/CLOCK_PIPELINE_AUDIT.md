@@ -153,13 +153,13 @@ The module's current callback target is authentic: raw `androidx.work.impl.utils
 | Depth editor enabled/mask/transform fields are process-global and late callbacks can outlive the originating view/session | Old wallpaper coordinates or settings can be applied to newer previews | Scope depth state to the session and active preview host; validate generation on every async completion |
 | Several provider hook install sets are marked installed before all optional hooks succeed | A partial failure may suppress a later retry | Track hook capabilities individually and complete or roll back partial installation |
 
-## Remaining rendering questions — do not claim fixed
+## Remaining rendering questions - do not claim fixed
 
 1. **Provider boundary now traced:** see [AOD_RENDER_PIPELINE.md](AOD_RENDER_PIPELINE.md). `tx0` combines glyph/weather Paths and assigns `SemBlurInfo` to a separate root-level host via `setBackgroundClipPath`. That host lies outside the current clock-canvas mask. Subtracting the subject from that native Path is the missing integration point; the corrected path and real native-blur-off case still require device validation.
 2. Establish which provider view/layer supplies the visible idle pixels and whether a foreground image or native blur copy is recreated after layout/time updates. Lack of an intercepted TextView `onDraw` event does not prove the TextView is unused; hardware display lists and overrides must be considered.
 3. Verify preview coordinate mapping against native transform and wallpaper crop at one fixed placement. Prior mapping changes did not fix the failure.
 4. Check process identity when AOD's APK is loaded into Dressroom. `onPackageReady` currently chooses runtime hooks by package name alone, while plugin ClockViews can have `LOCK_SCREEN` category inside Dressroom. Logs showed runtime discovery starting in the Dressroom PID; this is a process-isolation risk, not proof that runtime provider hooks installed there.
-5. Capture a complete foreground-overlay attempt: current logs showed no overlay attach/draw event. Therefore 0.5.21–0.5.23 did not prove that an attached overlay rendered and was covered by a sibling. Check enabled/mask selection, host attachment, file decode, and completion acceptance before further layering changes.
+5. Capture a complete foreground-overlay attempt: current logs showed no overlay attach/draw event. Therefore 0.5.21-0.5.23 did not prove that an attached overlay rendered and was covered by a sibling. Check enabled/mask selection, host attachment, file decode, and completion acceptance before further layering changes.
 
 ## Implementation order after the remaining renderer trace
 

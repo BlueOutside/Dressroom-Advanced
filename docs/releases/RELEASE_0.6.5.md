@@ -1,4 +1,4 @@
-# 0.6.5 — native ownership of runtime widget depth
+# 0.6.5 - native ownership of runtime widget depth
 
 An unprofiled temporary clock could clear the shared widget grid's depth state. Samsung creates multiple clock views while the widget panel belongs to its own native controller. Versions through 0.6.4 updated that panel from individual clock hooks.
 

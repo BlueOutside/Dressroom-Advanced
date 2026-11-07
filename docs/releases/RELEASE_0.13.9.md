@@ -1,4 +1,4 @@
-# Native glyph-cache submission guard — 0.13.9 alpha
+# Native glyph-cache submission guard - 0.13.9 alpha
 
 VersionCode 102. Installed and exercised under SystemUI PID 15834. **User verification failed:** the compact clock still flashes. The native glyph-cache experiment is valid, but the submission guard does not resolve the full media-return artifact. The user describes a transparent/effectless large returning clock followed by a briefly finished compact clock and finally the correct large clock.
 

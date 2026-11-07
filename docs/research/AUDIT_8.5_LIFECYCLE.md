@@ -1,4 +1,4 @@
-# One UI 8.5 lifecycle audit — first pass
+# One UI 8.5 lifecycle audit - first pass
 
 Target: P613 custom ROM, Dressroom 2.9.60.50 and Clock Style 8.9.35.60. Inspected through JADX MCP on 2026-11-04. These findings do not establish stock 8.5 AOD or foldable compatibility.
 

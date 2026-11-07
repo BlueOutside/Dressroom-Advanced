@@ -49,7 +49,7 @@ clock return, controls blur and thumbnail layers are unchanged.
 `MediaExpandStateObserver.onChanged` owns a separate wallpaper blur/dim animator.
 Clock Style stores it in `C`, with expanded state `E` and status-view host `u`.
 AOD stores the equivalent in `D`, with state `F` and host `v`. Both sources use
-integer opacity 0–255: opening is 300ms (or immediate for the native nonzero
+integer opacity 0-255: opening is 300ms (or immediate for the native nonzero
 transition condition), while closing is 200ms. This is not the clock's 300ms
 return animator.
 

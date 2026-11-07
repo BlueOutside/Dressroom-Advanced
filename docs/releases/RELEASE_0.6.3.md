@@ -1,4 +1,4 @@
-# 0.6.3 — final widget blur submission and startup stretch restoration
+# 0.6.3 - final widget blur submission and startup stretch restoration
 
 0.6.2 did not fix the widget background problem. The user reported that backgrounds move behind the subject while entering full-screen AOD, then move in front as the clock stretches on screen-on. The previous helper/builder hook is replaced, not treated as verified.
 

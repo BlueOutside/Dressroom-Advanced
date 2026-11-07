@@ -1,4 +1,4 @@
-# Rendering allocations and cache cleanup — 0.13.3 alpha
+# Rendering allocations and cache cleanup - 0.13.3 alpha
 
 VersionCode 96. Installed as an update, signed with the existing module key. Source-only optimization pass; no JADX inspection.
 

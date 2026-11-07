@@ -1,4 +1,4 @@
-# 0.20.1 — Native 8.5 media depth lifecycle
+# 0.20.1 - Native 8.5 media depth lifecycle
 
 Fix the missing connection between 8.5's native media-expanded flag and the
 module's wallpaper-depth suspension. The clock should not retain subject cuts

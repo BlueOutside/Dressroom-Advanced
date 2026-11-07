@@ -1,4 +1,4 @@
-# 0.7.6 alpha — widget dragging and editor wallpaper detection
+# 0.7.6 alpha - widget dragging and editor wallpaper detection
 
 Follow-up: the user reported that 0.7.6 still failed while idle. The confirmed correction is in RELEASE_0.7.8.md: detailed flower contours caused native Path.op to fail, and Region subtraction now supplies the fallback. The user confirmed idle flower depth in 0.7.8.
 

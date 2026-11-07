@@ -1,4 +1,4 @@
-# Charging liquid restoration — 0.11.5 alpha
+# Charging liquid restoration - 0.11.5 alpha
 
 Installed versionCode 81. The user confirmed 0.11.4 preserves charging percentage text when cycling cards, but reported an odd wave/meniscus redraw.
 

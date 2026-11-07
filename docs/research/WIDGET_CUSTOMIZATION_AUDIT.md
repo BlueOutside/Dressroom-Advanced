@@ -2,7 +2,7 @@
 
 Inspected with the JADX MCP on 2026-10-26. Dressroom is 3.0.10.38 / 301038000. AOD provider sources were captured before switching JADX back to Dressroom. Source snapshots are in [work/widget-expansion-audit](../ARCHIVE.md). Raw obfuscated names below are the names used by reflection in the installed APK; JADX aliases are included where useful.
 
-This document began as the pre-implementation design for the confirmed 0.6.6 baseline. Versions 0.7.0–0.7.1 subsequently added controls, but the user reported broken layout and scrolling. The [native-feature inventory and integration-defect analysis](WIDGET_NATIVE_FEATURES.md) supersedes assumptions in this design. Independent widget depth is confirmed after SystemUI reload; custom layout is not validated.
+This document began as the pre-implementation design for the confirmed 0.6.6 baseline. Versions 0.7.0-0.7.1 subsequently added controls, but the user reported broken layout and scrolling. The [native-feature inventory and integration-defect analysis](WIDGET_NATIVE_FEATURES.md) supersedes assumptions in this design. Independent widget depth is confirmed after SystemUI reload; custom layout is not validated.
 
 ## UI decision
 

@@ -1,4 +1,4 @@
-# 0.20.0 — Initial One UI 8.5 AOD shim
+# 0.20.0 - Initial One UI 8.5 AOD shim
 
 Targets the inspected AOD 8.9.32.95 with the existing 8.5 Dressroom bindings.
 Dressroom version selection remains separate from the runtime clock provider.

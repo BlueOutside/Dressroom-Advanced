@@ -1,4 +1,4 @@
-# World Clock editor ownership — 0.12.7 alpha
+# World Clock editor ownership - 0.12.7 alpha
 
 VersionCode 89, follow-up to [0.12.6](RELEASE_0.12.6.md). No preference migration or new runtime/AOD style clipping.
 

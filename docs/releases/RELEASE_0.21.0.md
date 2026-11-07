@@ -1,4 +1,4 @@
-# 0.21.0 — Fullscreen artwork on One UI 8.5
+# 0.21.0 - Fullscreen artwork on One UI 8.5
 
 Add a separate 8.5 artwork backend and expose the existing Full-screen album
 artwork switch in Extras. The native music-holder constructor is mapped for

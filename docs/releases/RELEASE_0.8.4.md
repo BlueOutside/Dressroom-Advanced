@@ -1,4 +1,4 @@
-# 0.8.4 alpha — deferred runtime installation
+# 0.8.4 alpha - deferred runtime installation
 
 Current installed build: versionCode 62. SystemUI, AOD main and AOD provider processes have completed runtime hook installation. Recovery bypass is removed. Saved preferences were not cleared or rewritten by the update.
 
@@ -8,7 +8,7 @@ Previously the ClassLoader.loadClass hook called installProvider synchronously w
 
 The discovery callback now only enqueues a class loader through DeferredDiscovery. Reflection and hook installation run on the main Handler after the loading callback returns. Duplicate/reentrant offers for the same loader are suppressed, failed installation can be retried, and bootstrap unhooking happens after deferred installation. The broad depth/shadow drawing hooks are installed only when the provider is available, rather than before provider discovery during SystemUI package startup.
 
-0.8.4 retains the 0.8.0–0.8.2 manual-hold, live crop tracking, restored cropped-preview extraction, bounded geometry caching, direct Region cuts for detailed masks, and single bitmap-mask pass changes. It is not a feature rollback.
+0.8.4 retains the 0.8.0-0.8.2 manual-hold, live crop tracking, restored cropped-preview extraction, bounded geometry caching, direct Region cuts for detailed masks, and single bitmap-mask pass changes. It is not a feature rollback.
 
 ## Validation
 

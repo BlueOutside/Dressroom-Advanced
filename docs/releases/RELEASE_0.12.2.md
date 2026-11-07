@@ -1,4 +1,4 @@
-# Native settings pages and color/blur — 0.12.2 alpha
+# Native settings pages and color/blur - 0.12.2 alpha
 
 Installed versionCode 84. The user authorized discarding the test color draft before restarting Dressroom. No settings-schema migration.
 
@@ -24,7 +24,7 @@ Nine opacity checks and all 100 current JVM checks pass. Signed APK/v3 verificat
 | --- | --- | --- |
 | Landscape depth | Runtime skips loading the full source matte and center-crops the baked screen mask into current metrics. | Map the canonical matte through Samsung's actual rotation/crop transform. Rotating a baked portrait mask cannot restore omitted subject pixels. |
 | Foldable/cover profiles | Clock settings reject nonzero display IDs; widgets exclude cover/informative types. Settings use main-wallpaper identity. | Resolve display/which-mode identity and independent crop/profile ownership before removing guards. |
-| Tablet UI | Clock panel uses a 190–310 dp height range; bottom widget panel requests 376 dp. Real wide-window layouts are untested. | Inspect native wide-screen owners and available panel/window constraints. |
+| Tablet UI | Clock panel uses a 190-310 dp height range; bottom widget panel requests 376 dp. Real wide-window layouts are untested. | Inspect native wide-screen owners and available panel/window constraints. |
 | A-series Now Bar blur | Current firmware provides Samsung's native SemBlurInfo renderer; another model's eligibility and implementation are unverified. | Inspect target firmware's gates, blur renderer/assets and capabilities. A gate override alone cannot establish support. |
 
 These are open work, not newly supported features. Recovery snapshot: `work/source-before-ui-012/` contains the 0.11.5 source/APK.

@@ -1,4 +1,4 @@
-# World Clock idle depth and manual-stretch eligibility — 0.12.10 alpha
+# World Clock idle depth and manual-stretch eligibility - 0.12.10 alpha
 
 Installed versionCode 92. Carries the selected-model type/font and composite container fix from [0.12.9](RELEASE_0.12.9.md), plus a correction to manual-stretch restoration. No new runtime/AOD render-node clipping or preference-schema migration.
 

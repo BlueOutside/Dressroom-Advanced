@@ -1,4 +1,4 @@
-# 0.7.4 alpha — native widget integration
+# 0.7.4 alpha - native widget integration
 
 Fixes the 0.7.1 custom widget layout and non-scrolling Advanced panel. The panel now uses Samsung's NestedScrollView host. Its Rotate action invokes Samsung's existing `cg.v.a` transaction, including the native animation, provider update, assist geometry and completion callback. The stock rotation guide and Advanced share the same model.
 

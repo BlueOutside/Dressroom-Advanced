@@ -1,4 +1,4 @@
-# Rendering and lifecycle audit — 0.10.4 alpha
+# Rendering and lifecycle audit - 0.10.4 alpha
 
 Installed versionCode 75. Research uses the current phone's AOD APK through JADX MCP, targeted classes, the local module source, Android platform probes, and ADB recordings. This is a device-specific alpha audit, not a compatibility certification.
 

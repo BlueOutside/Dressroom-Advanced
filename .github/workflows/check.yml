@@ -1,7 +1,8 @@
-name: Build and JVM checks
+name: Build
 
 on:
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -9,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: checks-${{ github.ref }}
+  group: checks-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -35,9 +36,35 @@ jobs:
         run: |
           ./scripts/check-repository.ps1
           ./scripts/check-layout.ps1
-      - name: Compile and package without signing secrets
+          python scripts/compatibility-inventory.py --check
+      - name: Build unsigned APK
+        id: build
         shell: pwsh
         run: ./build-local.ps1 -Sdk $env:ANDROID_HOME -Unsigned
       - name: Run JVM contracts
         shell: pwsh
         run: ./test-local.ps1 -Sdk $env:ANDROID_HOME -Suite Jvm -SkipBuild
+      - name: Upload unsigned APK and check results
+        if: always() && steps.build.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: unsigned-apk-${{ github.sha }}
+          path: |
+            artifacts/current/*-unsigned.apk
+            .build/tests/Jvm/results.txt
+          if-no-files-found: error
+          retention-days: 7
+          include-hidden-files: true
+      - name: Build summary
+        if: success()
+        shell: pwsh
+        run: |
+          $apk = Get-Item artifacts/current/*-unsigned.apk
+          $hash = (Get-FileHash $apk -Algorithm SHA256).Hash.ToLowerInvariant()
+          @"
+          APK: $($apk.Name)
+
+          SHA-256: $hash
+
+          This build is unsigned. Sign it with your own key before installing.
+          "@ >> $env:GITHUB_STEP_SUMMARY

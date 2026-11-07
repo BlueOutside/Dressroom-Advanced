@@ -1,4 +1,4 @@
-# Code-only bug audit — 0.13.2 alpha
+# Code-only bug audit - 0.13.2 alpha
 
 VersionCode 95. This pass used the module's own source and isolated Android probes; no JADX or Samsung binary inspection was used. The user confirmed that 0.13.1 made the animation substantially smoother.
 

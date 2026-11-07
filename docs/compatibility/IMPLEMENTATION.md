@@ -1,6 +1,6 @@
-# Adapter implementation history: 0.15–0.16 alpha
+# Adapter implementation history: 0.15-0.16 alpha
 
-This document records the initial adapter rollout. Subsequent 0.17–0.19 feature ports and device results are tracked in [current validation](../VALIDATION.md); the initial feature boundaries below are historical.
+This document records the initial adapter rollout. Subsequent 0.17-0.19 feature ports and device results are tracked in [current validation](../VALIDATION.md); the initial feature boundaries below are historical.
 
 P613 update (2026-10-30): the user confirmed the Advanced controls work on 0.15.2, saving applies the tested settings to the lockscreen, and reopening Dressroom restores them. This validates the tested tablet core editor/save/lockscreen path; it does not establish unported-feature or AOD-phone compatibility.
 

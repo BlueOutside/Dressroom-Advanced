@@ -1,4 +1,4 @@
-# 0.6.6 — fully covered widget blur surfaces
+# 0.6.6 - fully covered widget blur surfaces
 
 The user confirmed this build working on 2026-10-26.
 

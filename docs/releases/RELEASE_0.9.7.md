@@ -1,4 +1,4 @@
-# Media collapse and manual-stretch restoration — 0.9.7 alpha
+# Media collapse and manual-stretch restoration - 0.9.7 alpha
 
 Installed versionCode 70. Builds on the 0.9.6 separate artwork layer, native spring tracking and lower artwork blur.
 

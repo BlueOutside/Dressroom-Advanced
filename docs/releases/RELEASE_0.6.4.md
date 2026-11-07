@@ -1,4 +1,4 @@
-# 0.6.4 — widget content clipping through AOD transitions
+# 0.6.4 - widget content clipping through AOD transitions
 
 The user confirmed in 0.6.3 that saved placement, manual stretch and depth restore correctly without reapplying. Widget rendering still fails: partial widget UI remains from the cutout during AOD, then its background returns over the mountain on wake-up.
 

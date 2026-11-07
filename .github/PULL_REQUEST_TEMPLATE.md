@@ -1,13 +1,9 @@
-## Change
+## Changes
 
-What problem does this fix, and what happens after the change?
+Describe the problem and resulting behavior.
 
-## Verification
+## Checks
 
-- Build / helper tests:
-- Device, One UI, Dressroom and AOD versions (if tested):
-- Editor Apply/cancel/reopen and lockscreen/AOD transitions (if affected):
-
-## Limits
-
-Anything still unverified or requiring another device?
+- Build or helper checks:
+- Device, One UI and app versions, if tested:
+- Anything still unverified:

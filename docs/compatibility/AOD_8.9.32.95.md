@@ -24,7 +24,7 @@ JADX could not decompile `setFontType(ClockFontData)`. Its actual smali was insp
 
 1. It returns immediately when the requested font equals stored `L0`.
 2. It copies the incoming font, including a separate height list.
-3. For clock type 1 and font IDs 803–805 it calls `PO.k(List)`.
+3. For clock type 1 and font IDs 803-805 it calls `PO.k(List)`.
 4. If attached and a native stretch animator (`S0`) exists, it can replace the new font's heights with the previous heights while asking that animator to move toward the target.
 5. It stores the font in `L0`, updates `O0.d` and its active axes, then calls `b0` and `refresh`.
 

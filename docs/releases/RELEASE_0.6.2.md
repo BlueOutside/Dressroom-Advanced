@@ -1,4 +1,4 @@
-# 0.6.2 — complication background depth
+# 0.6.2 - complication background depth
 
 The user confirmed 0.6.1 depth on both lockscreen and AOD after reboot, weather restoration in the editor, and no remaining pale duplicate after controls settled. AOD's initial clock appearance corrected itself after reapplying. Its widget contents were masked while their blurred containers remained over the subject.
 

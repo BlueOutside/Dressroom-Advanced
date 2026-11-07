@@ -1,4 +1,4 @@
-# Retire the compact media blur outline — 0.13.7 alpha
+# Retire the compact media blur outline - 0.13.7 alpha
 
 **Subsequent result: failed visual verification.** The user reports the compact clock still flashes after a long-open player return. 0.13.8 also fails. The investigation is tracked in MEDIA_RETURN_INVESTIGATION.md; the pending wording below records the original test status only.
 
@@ -32,4 +32,4 @@ On the phone, the player was held open for over 6 seconds and collapsed with Bac
 
 Recording: `/sdcard/media0137-long-return.mp4`; 20 ms frame samples are being inspected in `work/media0137-long-frames`. User confirmation remains pending. Closing via tap and the stock non-fullscreen player are not yet certified by this test.
 
-No wallpaper edits or saved-setting rewrites. USB keep-awake restored to original 0. Existing signed fallback APKs remain; 0.13.4–0.13.6 should be treated as incomplete/diagnostic candidates.
+No wallpaper edits or saved-setting rewrites. USB keep-awake restored to original 0. Existing signed fallback APKs remain; 0.13.4-0.13.6 should be treated as incomplete/diagnostic candidates.

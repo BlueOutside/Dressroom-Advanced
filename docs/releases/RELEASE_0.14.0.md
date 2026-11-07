@@ -1,4 +1,4 @@
-# Artwork and stretch rendering reuse — 0.14.0 alpha
+# Artwork and stretch rendering reuse - 0.14.0 alpha
 
 VersionCode 105. Installed; SystemUI started under PID 19404 with all optimization hooks present. **The user confirms the cover/clock transition feels smoother.** The compact-clock flash remains resolved by 0.13.11's live blur-host handling.
 

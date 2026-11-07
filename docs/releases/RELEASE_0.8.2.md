@@ -1,6 +1,6 @@
 **WITHDRAWN FROM PHONE: SystemUI startup stalled. Current installed build is 0.8.3 recovery with runtime hooks bypassed. See RECOVERY_0.8.3.md. The geometry checks below do not establish startup safety.**
 
-# 0.8.2 alpha — faster animation cuts and one mask pass
+# 0.8.2 alpha - faster animation cuts and one mask pass
 
 Installed as versionCode 60 with v3 signature verification. Dressroom, SystemUI and AOD were reloaded. Includes the manual hold, source-coordinate tracking and bounded geometry caches from 0.8.0.
 

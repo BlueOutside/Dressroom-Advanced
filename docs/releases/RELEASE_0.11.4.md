@@ -1,4 +1,4 @@
-# Now Bar and clock/widget lifecycle audit — 0.11.4 alpha
+# Now Bar and clock/widget lifecycle audit - 0.11.4 alpha
 
 Installed versionCode 80, signed with the existing key. The 0.11.2 automatic depth, source-space tracking, manual-stretch initialization and grid-transfer fixes remain.
 

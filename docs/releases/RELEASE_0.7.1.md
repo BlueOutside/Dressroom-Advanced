@@ -1,4 +1,4 @@
-# 0.7.1 alpha — widget customization
+# 0.7.1 alpha - widget customization
 
 Adds a native Advanced button to the editor toolbar, opening a Widgets panel with separate grid capacity and physical scale, horizontal/vertical arrangement, clock-side docking or free placement, independent depth, and native live-blur policy. Widget drafts commit through the native Apply completion independently of the clock Advanced tab. Settings are scoped to the wallpaper; existing clock settings are retained.
 

@@ -1,4 +1,4 @@
-# Clock-style depth and wallpaper effects — 0.12.6 alpha
+# Clock-style depth and wallpaper effects - 0.12.6 alpha
 
 Installed versionCode 88. No preference-schema migration. Dressroom is reloaded; no SystemUI restart was requested for this editor-only change. Existing SystemUI hooks remain 0.12.5.
 

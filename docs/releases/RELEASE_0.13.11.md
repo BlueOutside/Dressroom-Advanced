@@ -1,4 +1,4 @@
-# Keep the native clock blur drawable live — 0.13.11 alpha
+# Keep the native clock blur drawable live - 0.13.11 alpha
 
 VersionCode 104. Installed; SystemUI started normally under PID 28804 with the runtime provider and artwork hooks. **User confirmed: “Flash is gone”** after leaving the full player open and closing with the usual physical tap. USB keep-awake remains at its original 0.
 

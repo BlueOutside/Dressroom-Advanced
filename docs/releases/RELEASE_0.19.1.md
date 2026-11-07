@@ -1,4 +1,4 @@
-# 0.19.1 — Clock Style stability backport
+# 0.19.1 - Clock Style stability backport
 
 The 8.5 Clock Style runtime now supplies saved manual heights to Samsung's font
 source and measurement paths, instead of restoring only the visible clock.

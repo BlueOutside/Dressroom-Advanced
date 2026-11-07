@@ -1,4 +1,4 @@
-# Extras and fullscreen media — 0.9.6 alpha
+# Extras and fullscreen media - 0.9.6 alpha
 
 Installed versionCode 69. This continues the stable 0.8.4 runtime discovery and existing clock/widget functionality. Extras is a second native tab in the bottom-toolbar Advanced panel.
 

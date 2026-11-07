@@ -1,4 +1,4 @@
-# 0.21.1 — Follow the native wallpaper fade
+# 0.21.1 - Follow the native wallpaper fade
 
 The user confirms 0.21.0 fullscreen artwork works on the tablet, but closing
 removes it immediately with the native framed view. Follow the separate native

@@ -1,6 +1,6 @@
-# 0.7.8 alpha — draggable widgets and detailed subject depth
+# 0.7.8 alpha - draggable widgets and detailed subject depth
 
-Installed versionCode 57. This includes the widget-drag and preview-wallpaper changes introduced in 0.7.5–0.7.6, plus the confirmed idle-flower correction.
+Installed versionCode 57. This includes the widget-drag and preview-wallpaper changes introduced in 0.7.5-0.7.6, plus the confirmed idle-flower correction.
 
 ## Widget controls
 

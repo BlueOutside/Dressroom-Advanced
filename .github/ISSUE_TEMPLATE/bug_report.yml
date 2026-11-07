@@ -1,0 +1,67 @@
+name: Bug report
+description: Report a problem with the module.
+body:
+  - type: input
+    id: module
+    attributes:
+      label: Module version
+      placeholder: Version shown in LSPosed
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device and ROM
+      placeholder: Model number, stock or custom ROM
+    validations:
+      required: true
+  - type: dropdown
+    id: provider
+    attributes:
+      label: One UI and clock provider
+      options:
+        - One UI 9.0 / AOD
+        - One UI 8.5 / Clock Style
+        - One UI 8.5 / AOD (experimental)
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: apps
+    attributes:
+      label: App versions
+      description: Dressroom, AOD or Clock Style, and LSPosed.
+    validations:
+      required: true
+  - type: dropdown
+    id: screen
+    attributes:
+      label: Where does it happen?
+      multiple: true
+      options:
+        - Dressroom editor
+        - Lockscreen
+        - AOD
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Include the expected result and steps to reproduce it.
+    validations:
+      required: true
+  - type: textarea
+    id: transitions
+    attributes:
+      label: Does it change after saving, reopening, rotating, or turning the screen off/on?
+  - type: textarea
+    id: modules
+    attributes:
+      label: Other modules affecting this feature
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Logs or recording (optional)
+      description: Remove personal information. Do not upload Samsung APKs or preference backups.

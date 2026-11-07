@@ -1,4 +1,4 @@
-# Selected World Clock identity and composite clipping — 0.12.9 alpha
+# Selected World Clock identity and composite clipping - 0.12.9 alpha
 
 VersionCode 91. The user confirms wallpaper-style detection now seemingly works across their styles for the current subject. They confirm World Clock still fails on 0.12.7; the assistant also reproduced failure in the 0.12.8 container experiment.
 

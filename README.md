@@ -12,16 +12,17 @@ An LSPosed API 102 module for Samsung's lockscreen editor. Adds clock, widget an
 - Widget scaling, custom grids, free placement and separate depth controls.
 - Portrait and landscape settings on supported large-screen layouts.
 - Keep the charging Now Bar card visible and add a custom text card.
+- Show up to eight cards in the Now Bar stack (9.0 AOD and 8.5 Clock Style; experimental on 8.5 AOD).
 - Fullscreen media artwork on One UI 9 AOD, plus an experimental 8.5 port.
 
 ## Support
 
 | One UI | Apps | Support |
 | --- | --- | --- |
-| 9.0 | AOD + Dressroom | Supported â€” tested on SM-S948B |
-| 8.5 | Clock Style + Dressroom | Supported â€” tested on SM-P613 with a custom ROM |
+| 9.0 | AOD + Dressroom | Supported - tested on SM-S948B |
+| 8.5 | Clock Style + Dressroom | Supported - tested on SM-P613 with a custom ROM |
 | 9.0 | Clock Style + Dressroom | Unsupported |
-| 8.5 | AOD + Dressroom | Experimental shim — not yet tested on an AOD device |
+| 8.5 | AOD + Dressroom | Experimental shim - not yet tested on an AOD device |
 | 8.0 | Any combination | Unsupported |
 
 Not every feature is available on both supported setups. The 8.5 fullscreen artwork port is experimental. Other devices and app versions may behave differently.
@@ -34,9 +35,9 @@ Not every feature is available on both supported setups. The 8.5 fullscreen artw
 4. Tap the clock for **Advanced**, or use the bottom-bar **Advanced** button for **Widgets** and **Extras**.
 5. Tap Apply/Done to save your changes.
 
-## Known issues
+Development notes and build instructions are in [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/](docs/README.md).
 
-- Now Bar stack overlap: a 9.0 workaround is included, awaiting confirmation.
+## Known issues
 
 - Widgets disappear immediately when opening the media player; closing has a fade.
 - The fullscreen song-change effect still needs some visual polish.

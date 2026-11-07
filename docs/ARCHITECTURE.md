@@ -11,8 +11,8 @@ Source directories under `app/src/main/java/dev/denver/dressroomadvanced/`:
 | `editor/` | Editor panels and Apply/cancel handling |
 | `media/` | Artwork, contrast and media transitions |
 | `blur/` | Blur controls and draw synchronization |
-| `compat/shared/` | Editor, clock, depth and widget binding contracts |
-| `compat/oneui85/` | Clock Style 8.5 method mappings |
+| `compat/shared/` | Editor, clock, depth, widget and Now Bar contracts; shared stack engines |
+| `compat/oneui85/` | Clock Style and experimental AOD 8.5 mappings |
 | `compat/oneui9/` | AOD 9.0 method mappings |
 
 These are source folders. Classes still share the Java package
@@ -32,6 +32,6 @@ The native height spring owns animation timing. The module restores committed ma
 
 ## Diagnostics and tests
 
-Production retains installation/capability messages and error reporting. Repeated profile/shadow success logs, the delayed date-state dump and temporary media-return tracing are removed. Diagnostics, APK-derived snapshots and recordings live in the research archive; only curated regression evidence remains in `docs/validation/`.
+Production retains installation/capability messages and error reporting. Repeated profile/shadow success logs, the delayed date-state dump and temporary media-return tracing are removed. Diagnostics, APK-derived snapshots and recordings live in the research archive; regression evidence remains in `docs/validation/`.
 
 Tests compile separately and are never included by the module build. Native APK-dependent integration probes are opt-in, documented fixtures rather than assumed passing checks. Test runner lists are centralized in `tests/suites.json`.

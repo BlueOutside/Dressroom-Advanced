@@ -1,4 +1,4 @@
-# Codebase cleanup — 0.14.1
+# Codebase cleanup - 0.14.1
 
 VersionCode 106. Built and signature-verified; not installed. The user-confirmed on-phone baseline remains 0.14.0.
 
