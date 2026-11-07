@@ -94,6 +94,22 @@ public final class ScreenProfileProbe {
         coverScope.putInt(ScreenIdentity.FIELD, ScreenIdentity.SUB);
         String oldBase = "wallpaper_90_main", newBase = "wallpaper_91_main";
         valuesForWallpaper(preferences, data, coverScope, oldBase, newBase);
+        Bundle beforeApply = new Bundle(coverScope);
+        beforeApply.putInt("wallpaperId", 66);
+        beforeApply.putBoolean("depthEnabled", true);
+        Bundle afterApply = SettingsBridge.committedIdentity(beforeApply, screen -> screen == 2 ? 68 : 62);
+        equal(68, afterApply.getInt("wallpaperId"), "Apply reused the pre-save cover wallpaper ID");
+        equal(2, ScreenIdentity.value(afterApply), "Apply followed current posture instead of frozen cover screen");
+        equal(1, afterApply.getInt(LayoutOrientation.FIELD), "Apply lost frozen portrait layout");
+        equal(true, afterApply.getBoolean("depthEnabled"), "Apply lost the depth selection");
+        equal(66, beforeApply.getInt("wallpaperId"), "Apply mutated the frozen editor snapshot");
+        Bundle frozenMain = new Bundle(main);
+        equal(62, SettingsBridge.committedIdentity(frozenMain, screen -> screen == 1 ? 62 : 68).getInt("wallpaperId"),
+                "Main Apply picked the active cover wallpaper");
+        boolean unavailable = false;
+        try { SettingsBridge.committedIdentity(beforeApply, screen -> -1); }
+        catch (IllegalStateException expected) { unavailable = true; }
+        equal(true, unavailable, "Unavailable committed wallpaper silently used an obsolete ID");
     }
 
     private static void valuesForWallpaper(SharedPreferences preferences, Map<String, Object> data,

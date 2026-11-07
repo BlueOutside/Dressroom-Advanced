@@ -5,6 +5,16 @@ clamshell policies, both supported Android API levels, and rejection of
 non-fold/unknown hardware and other platform versions. Current fold eligibility
 is documented in [One UI 9 foldable support](../docs/compatibility/ONE_UI_9_FOLDABLES.md).
 
+`ScreenProfileProbe` now has 32 checks. Post-Apply identity cases verify that a
+new wallpaper ID replaces the frozen pre-save ID without changing the captured
+screen, orientation, depth selection or original snapshot. This applies to both
+clock and widget commit paths.
+
+`PostApplyWallpaperProbe` adds 16 deterministic checks for native wallpaper IDs
+changing after the save acknowledgement. It covers multiple late updates,
+immutable profiles, overlapping saves, independent screen requests, bounded
+expiry and unavailable IDs. No wallpaper or saved app settings are modified.
+
 Tests are outside the production source tree and are not packaged in the module.
 
 | Directory | Purpose | Command |

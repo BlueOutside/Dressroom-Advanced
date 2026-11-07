@@ -31,3 +31,39 @@ Validation: 264 JVM checks (including 12 model-independent capability cases),
 206 targeted Android checks, 25 migration/settings checks, 24 Extras/wallpaper
 checks and 34 synthetic native-profile checks pass. The installed-APK binding
 probe also validates the full native storage contract before hook installation.
+
+## Post-Apply wallpaper identity: 1.0.12
+
+A cover-clock/depth save exposed a separate timing bug: the current cover
+wallpaper ID was 68 while the last clock profile was saved under the frozen
+pre-Apply ID 66. The inner wallpaper ID remained unchanged, so inner settings
+continued to work.
+
+Clock and widget commits now resolve the committed wallpaper ID after native
+Apply completes. They use the snapshot's captured screen, not the phone's
+current posture, and retain its orientation. A missing committed ID fails
+instead of silently saving under an obsolete one. Existing records are retained.
+
+ScreenProfileProbe has 32 checks, including changed post-Apply IDs, an Apply
+completing after a posture change, retained depth/orientation, immutable editor
+snapshots and unavailable-ID handling. The 206 targeted Android regressions,
+24 parity checks, 34 native profile checks and APK binding probe pass as well.
+The initial re-read at the acknowledgement was still too early: another live
+save landed under 68 while the native cover ID advanced to 70.
+
+1.0.13 adds provider-owned, bounded post-Apply rebinding. For five seconds after
+a successful fold-screen clock/widget commit, it follows changes to that
+snapshot's screen-specific wallpaper ID and writes the same frozen profile to
+the new identity. Unchanged IDs cause no extra settings write. Overlapping
+commits are serialized with the follow-up and replace the older request for
+the same layout; other screen/orientation requests remain independent.
+After expiry, unrelated wallpaper changes are ignored. Non-fold and Extras
+commits do not enter this path. Existing pre-save records remain intact.
+
+PostApplyWallpaperProbe adds 16 deterministic checks for delayed/repeated ID
+updates, frozen screen/orientation, depth retention, overlapping Apply,
+independent widget requests, expiry and unavailable IDs. The 1.0.13 corrective
+build is installed. After reapplying on the cover, the user confirmed manual
+stretch remains applied. A read-only check found the active cover wallpaper ID
+and saved clock profile both at 74, with manual stretch, depth and a mask
+reference retained. The inner wallpaper remained at 62.

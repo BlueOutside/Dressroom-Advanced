@@ -77,9 +77,8 @@ final class WidgetPreferences {
             return;
         }
         Bundle b = clean(snapshot);
-        if (b.getInt("wallpaperId", -1) < 0)
-            b.putInt("wallpaperId", SettingsBridge.wallpaperId(context));
         LayoutOrientation.stamp(context, b);
+        b = SettingsBridge.committedIdentity(b, screen -> SettingsBridge.wallpaperId(context, screen));
         Bundle result =
                 context.getContentResolver()
                         .call(

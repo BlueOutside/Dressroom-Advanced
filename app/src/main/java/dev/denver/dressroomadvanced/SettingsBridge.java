@@ -42,11 +42,18 @@ final class SettingsBridge {
         }
         Bundle saved = new Bundle(snapshot);
         LayoutOrientation.stamp(context, saved);
-        if (saved.getInt("wallpaperId", -1) < 0)
-            saved.putInt("wallpaperId", wallpaperId(context, ScreenIdentity.value(saved)));
-        if (saved.getInt("wallpaperId", -1) < 0)
-            throw new IllegalStateException("Wallpaper identity is unavailable");
+        saved = committedIdentity(saved, screen -> wallpaperId(context, screen));
         return context.getContentResolver()
                 .call(SettingsProvider.URI, "commit", null, DepthStorage.pack(context, saved));
+    }
+
+    static Bundle committedIdentity(Bundle snapshot, java.util.function.IntUnaryOperator wallpaper) {
+        Bundle saved = new Bundle(snapshot);
+        // Samsung may assign a new wallpaper ID during Apply. Resolve it after native
+        // completion, using the frozen screen rather than the current fold posture.
+        int id = wallpaper.applyAsInt(ScreenIdentity.value(saved));
+        if (id < 0) throw new IllegalStateException("Committed wallpaper identity is unavailable");
+        saved.putInt("wallpaperId", id);
+        return saved;
     }
 }

@@ -15,6 +15,7 @@ import java.util.HashSet;
 import java.util.Set;
 
 public final class SettingsProvider extends ContentProvider {
+    private PostApplyWallpaper postApply;
     private final Object maskReady = new Object();
     private final java.util.concurrent.ExecutorService maskWriter =
             java.util.concurrent.Executors.newSingleThreadExecutor();
@@ -29,6 +30,17 @@ public final class SettingsProvider extends ContentProvider {
 
     @Override
     public boolean onCreate() {
+        android.os.Handler main = new android.os.Handler(android.os.Looper.getMainLooper());
+        postApply = new PostApplyWallpaper((task, delay) -> main.postDelayed(task, delay),
+                android.os.SystemClock::uptimeMillis,
+                screen -> SettingsBridge.wallpaperId(getContext(), screen),
+                (method, data) -> {
+                    Bundle result = dispatch(method, data, true);
+                    if (result == null || !result.getBoolean("saved"))
+                        throw new IllegalStateException("Post-Apply settings were not saved");
+                    android.util.Log.i(DressroomModule.TAG, "Settings rebound to committed wallpaper: screen="
+                            + ScreenIdentity.value(data) + ", id=" + data.getInt("wallpaperId"));
+                });
         new android.os.Handler(android.os.Looper.getMainLooper())
                 .post(() -> getContext().getContentResolver().notifyChange(URI, null));
         return true;
@@ -75,6 +87,14 @@ public final class SettingsProvider extends ContentProvider {
                         || "commitExtras".equals(method);
         checkCaller(write);
         if (write && extras != null) awaitMasks(extras);
+        if (write && postApply != null) {
+            synchronized (postApply) {
+                Bundle result = dispatch(method, extras, true);
+                if (extras != null && result != null && result.getBoolean("saved"))
+                    postApply.follow(method, extras);
+                return result;
+            }
+        }
         return dispatch(method, extras, write);
     }
 

@@ -6,7 +6,7 @@
     "Constructors, method signatures, enum values and behavioral contracts",
     "Resource names matched by traversal rather than getIdentifier literals"
   ],
-  "sourceFiles": 124,
+  "sourceFiles": 125,
   "entries": [
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/DressroomModule.java",
