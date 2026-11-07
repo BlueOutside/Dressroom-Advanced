@@ -9,6 +9,10 @@ final class WidgetLayout {
                 : new int[] {rows, columns};
     }
 
+    static int effectiveAnchor(int anchor, boolean custom, boolean vertical, boolean fold8) {
+        return anchor == 0 && custom && vertical && fold8 ? 4 : anchor;
+    }
+
     static boolean matchesOrientation(int columns, int rows, boolean vertical) {
         return vertical ? rows > columns : columns >= rows;
     }

@@ -89,6 +89,7 @@ public final class OrientationProfileProbe {
     }
 
     private static void run() throws Exception {
+        if (android.os.Looper.getMainLooper() == null) android.os.Looper.prepareMainLooper();
         check(SettingsScope.orientation(1200, 2000) == 1, "Portrait preview identity");
         check(SettingsScope.orientation(2000, 1200) == 2, "Landscape preview identity");
         check(SettingsScope.orientation(0, 1200) == 0, "Unmeasured preview is not landscape");

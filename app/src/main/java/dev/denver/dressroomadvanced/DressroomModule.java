@@ -33,9 +33,10 @@ public final class DressroomModule extends XposedModule {
     private final ThreadLocal<Boolean> manualFontCall = ThreadLocal.withInitial(() -> false);
     private android.content.Context editorContext;
     private android.os.Bundle draftSettings;
-    private int editorOrientation;
+    private int editorOrientation, editorScreen;
+    private boolean foldEditorObserved;
     private boolean layoutCheckpointed;
-    private final java.util.Map<Integer, android.os.Bundle> layoutClocks =
+    private final java.util.Map<String, android.os.Bundle> layoutClocks =
             new java.util.HashMap<>();
     private final java.util.Map<String, android.os.Bundle> editorDrafts = new java.util.HashMap<>();
     private final Set<String> restoredSelections = new java.util.HashSet<>();
@@ -186,9 +187,13 @@ public final class DressroomModule extends XposedModule {
                 && application.getPackageName().equals("com.samsung.android.app.dressroom"))
             editorContext = application;
         else if (editorContext == null) editorContext = context;
+        int orientation = layoutOrientation(context);
         draftSettings = new android.os.Bundle(settings);
         layoutCheckpointed = false;
-        draftSettings.putInt(LayoutOrientation.FIELD, layoutOrientation(context));
+        draftSettings.putInt(LayoutOrientation.FIELD, orientation);
+        draftSettings.putInt(ScreenIdentity.FIELD, editorScreen);
+        if (draftSettings.getInt("wallpaperId", -1) < 0)
+            draftSettings.putInt("wallpaperId", SettingsBridge.wallpaperId(context));
         draftSettings.putString("scene", scene);
         editorDrafts.put(
                 selectionKey(
@@ -277,7 +282,9 @@ public final class DressroomModule extends XposedModule {
     }
 
     int layoutOrientation(android.content.Context context) {
-        return editorOrientation == 0 ? LayoutOrientation.current(context) : editorOrientation;
+        int orientation = editorOrientation == 0 ? LayoutOrientation.current(context) : editorOrientation;
+        if (editorScreen != ScreenIdentity.current()) switchLayout(orientation);
+        return orientation;
     }
 
     private String selectionKey(int type, int font) {
@@ -285,7 +292,7 @@ public final class DressroomModule extends XposedModule {
     }
 
     private String selectionKey(int type, int font, String fontPath) {
-        String key = scene + ":" + editorOrientation + ":" + type + ":" + font;
+        String key = scene + ":" + editorOrientation + ":" + editorScreen + ":" + type + ":" + font;
         return fontPath == null || fontPath.isEmpty()
                 ? key
                 : key + ":" + Integer.toHexString(fontPath.hashCode());
@@ -304,6 +311,7 @@ public final class DressroomModule extends XposedModule {
         query.putInt("font", font);
         query.putString("scene", scene);
         query.putInt(LayoutOrientation.FIELD, layoutOrientation(context));
+        query.putInt(ScreenIdentity.FIELD, editorScreen);
         if (fontPath != null && !fontPath.isEmpty()) query.putString("fontPath", fontPath);
         android.os.Bundle saved =
                 SettingsBridge.read(editorContext == null ? context : editorContext, query);
@@ -342,7 +350,7 @@ public final class DressroomModule extends XposedModule {
         draftSettings = null;
         editorContext = null;
         scene = "";
-        editorOrientation = 0;
+        editorOrientation = editorScreen = 0;
         layoutCheckpointed = false;
         layoutClocks.clear();
         editorDrafts.clear();
@@ -367,7 +375,7 @@ public final class DressroomModule extends XposedModule {
     }
 
     private void installCommitHook(ClassLoader loader) throws ReflectiveOperationException {
-        wallpaperSourceBinding = new WallpaperSourceBinding(loader, editorBinding.legacy);
+        wallpaperSourceBinding = new WallpaperSourceBinding(loader, editorBinding.legacy, editorBinding.fold8);
         java.util.ArrayList<Method> sourceChanges = new java.util.ArrayList<>();
         sourceChanges.add(wallpaperSourceBinding.changed);
         for (Method method : wallpaperSourceBinding.dataType.getDeclaredMethods())
@@ -404,7 +412,7 @@ public final class DressroomModule extends XposedModule {
                                     int next =
                                             ((android.content.res.Configuration) chain.getArg(0))
                                                     .orientation;
-                                    if (next != editorOrientation) checkpointLayout();
+                                    if (next != editorOrientation || editorScreen != ScreenIdentity.current()) checkpointLayout();
                                     Object result = chain.proceed();
                                     Object owner = activeClockController.get();
                                     if (owner != null)
@@ -726,7 +734,7 @@ public final class DressroomModule extends XposedModule {
     }
 
     private android.os.Bundle freezeClockLayouts(android.os.Bundle current) {
-        if (current != null) layoutClocks.put(current.getInt(LayoutOrientation.FIELD), current);
+        if (current != null) layoutClocks.put(ScreenIdentity.draft(current), current);
         java.util.ArrayList<android.os.Bundle> layouts = new java.util.ArrayList<>();
         for (android.os.Bundle value : layoutClocks.values()) {
             if (SettingsScope.sceneMatches(scene, value.getString("scene", "")))
@@ -741,7 +749,7 @@ public final class DressroomModule extends XposedModule {
     private void checkpointLayout() {
         if (draftSettings != null) {
             android.os.Bundle frozen = DepthEffects.freezeMask(draftSettings);
-            layoutClocks.put(editorOrientation, frozen);
+            layoutClocks.put(ScreenIdentity.draft(frozen), frozen);
             editorDrafts.put(
                     selectionKey(
                             frozen.getInt("type"),
@@ -778,10 +786,13 @@ public final class DressroomModule extends XposedModule {
     }
 
     private void switchLayout(int nextOrientation) {
-        if (nextOrientation == 0 || nextOrientation == editorOrientation) return;
+        int nextScreen = ScreenIdentity.current();
+        if (nextOrientation == 0
+                || (nextOrientation == editorOrientation && nextScreen == editorScreen)) return;
         if (!layoutCheckpointed) checkpointLayout();
         layoutCheckpointed = false;
         editorOrientation = nextOrientation;
+        editorScreen = nextScreen;
         sessionGeneration++;
         draftSettings = null;
         manualRenderer.clear();
@@ -978,10 +989,10 @@ public final class DressroomModule extends XposedModule {
                                                                     : new android.os.Bundle(saved))
                                                             : new android.os.Bundle(draft);
                                             if (draftSettings == null)
-                                                layoutClocks.remove(editorOrientation);
+                                                layoutClocks.remove(editorOrientation + ":" + editorScreen);
                                             else
                                                 layoutClocks.put(
-                                                        editorOrientation,
+                                                        editorOrientation + ":" + editorScreen,
                                                         new android.os.Bundle(draftSettings));
                                             if (draft != null
                                                     && draft.getInt("type", -1) == type
@@ -1503,6 +1514,8 @@ public final class DressroomModule extends XposedModule {
                     || processName.startsWith("com.samsung.android.app.aodservice:")
                     || processName.equals("com.samsung.android.app.clockpack")
                     || processName.startsWith("com.samsung.android.app.clockpack:"))) return;
+            if ("com.samsung.android.app.aodservice".equals(param.getPackageName()))
+                OneUi9Fold8Profiles.install(this, param.getClassLoader());
             if (runtimeHooks == null) {
                 runtimeHooks = new RuntimeClockHooks(this);
                 runtimeHooks.install(param.getClassLoader());
@@ -1524,6 +1537,12 @@ public final class DressroomModule extends XposedModule {
         if (!"com.samsung.android.app.dressroom".equals(param.getPackageName())) return;
         if (!processName.equals("com.samsung.android.app.dressroom")
                 && !processName.startsWith("com.samsung.android.app.dressroom:")) return;
+        if (!foldEditorObserved) {
+            foldEditorObserved = true;
+            ScreenIdentity.observe(() -> sourceMain.post(() -> {
+                if (editorContext != null) switchLayout(layoutOrientation(editorContext));
+            }));
+        }
         ClassLoader loader = param.getClassLoader();
         synchronized (installed) {
             if (installed.contains(loader) || !installing.add(loader)) return;
@@ -1571,14 +1590,18 @@ public final class DressroomModule extends XposedModule {
                 deoptimize(open);
                 transaction.commit();
                 installed.add(loader);
-                if (editorBinding.legacy) {
+                if (editorBinding.legacy || editorBinding.fold8) {
                     try {
                         DepthBinding.validateEditor(loader);
-                        DepthEffects.watchEditorWallpaper(this, loader, true);
+                        // Reference installs tracking through EditorWidgets. Fold8 installs it
+                        // here so depth remains independent of widget toolbar support.
+                        DepthEffects.watchEditorWallpaper(this, loader, editorBinding.legacy);
                         legacyDepthReady = true;
                     } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
-                        report("8.5 depth source unavailable", error);
+                        report("Core editor depth source unavailable", error);
                     }
+                }
+                if (editorBinding.legacy) {
                     try {
                         EditorWidgets candidate = new EditorWidgets(this);
                         candidate.installLegacy(loader);
@@ -1593,7 +1616,7 @@ public final class DressroomModule extends XposedModule {
                         "Editor adapter installed: "
                                 + (editorBinding.legacy
                                         ? "Dressroom 2.9.60.50/51 (core controls)"
-                                        : "Dressroom 3.0.10.38"));
+                                        : editorBinding.fold8 ? "Dressroom 3.0.01.20 (Fold8)" : "Dressroom 3.0.10.38"));
             } catch (ReflectiveOperationException | LinkageError | RuntimeException e) {
                 report("Unsupported Dressroom; clock panel injection rolled back", e);
             } finally {

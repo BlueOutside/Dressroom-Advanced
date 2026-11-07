@@ -31,3 +31,15 @@ SongRevealProbe loads the reference provider's installed shader asset and checks
 `integration/ProviderBindingProbe` accepts a provider APK path without a matching editor. It checks clock source/measurement, native blur owner traversal and widget declarations for the inspected providers. It never installs the APK or creates a Samsung service; it does not establish rendering or plugin compatibility.
 
 The 8.5 media return cases in MediaReturnProbe check suspension until native completion, the final frame, close/reopen cancellation and missing/failed animator lookup. They use real Android animators with queued frame callbacks; the binding probes separately resolve each provider's native observer and animator fields.
+
+`integration/Fold8BindingProbe` resolves the Fold8 Dressroom 3.0.01.20 and AOD 8.9.57.1 core bindings without constructing views or saving data. See [the Fold8 adapter notes](../docs/compatibility/FOLD8_3.0.01.20.md) for scope and runtime limits.
+
+`integration/Fold8ScreenProfileProbe` exercises AOD 8.9.57.1's real profile builder, candidate screen policy and Samsung serializer in an isolated process using synthetic widget IDs. Its 34 checks include the production seed/read helpers and fingerprint stability. Build it with the module/API classes on the test classpath. It changes only detached objects and calls no provider, DB or widget-host API. Use the system-UID app_process harness, not plain dalvikvm; its single argument is the installed AOD APK path. See [the screen-profile investigation](../docs/compatibility/FOLD8_SCREEN_PROFILES.md) for scope and limits. These checks do not prove live editor Apply, actual widget binding cleanup or fold/unfold rendering.
+
+`ScreenProfileProbe` adds 21 in-memory checks for separate main/sub keys at matching orientations, retained legacy records, baked-mask isolation, immutable deletion filtering, profile-ID aliases and recovery before/after a native write. It does not touch real saved profiles.
+
+`WidgetDepthClipProbe` verifies the Fold8 widget-depth content path preserves native blur rounding, avoids stationary outline invalidation, updates moving content, and restores original content outlines when disabled.
+
+`WidgetPlacementOrderProbe` checks that free vertical placement precedes depth-blur geometry sampling in the same draw, then verifies stationary convergence and native translation restoration.
+
+`FoldParityProbe` adds 24 checks for explicit main/sub wallpaper IDs, independent Extras options and paired legacy migration, dirty snapshots spanning both screens, and late acknowledgements retaining newer edits. Preferences are in-memory; actual wallpaper ID lookups are read-only. `ScreenProfileProbe` now has 25 checks, including one-time migration from generic wallpaper identity without importing an old mask into a later wallpaper. MediaReturnProbe now has 68 checks, including fold-during-return cancellation and stale completion isolation. See [the foldable follow-up](../docs/compatibility/FOLDABLE_PARITY.md) for scope and live limits.

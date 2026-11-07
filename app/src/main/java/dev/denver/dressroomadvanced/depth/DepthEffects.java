@@ -548,7 +548,7 @@ final class DepthEffects {
         Entry entry = entries.get(widgets);
         boolean active = entry != null && entry.enabled;
         if (entry != null) entry.nodeClip = active && WidgetContentClip.supported();
-        WidgetContentClip.apply(widgets, active);
+        WidgetDepthBlur.clipWidgets(widgets, active);
         WidgetDepthBlur.watch(widgets, active || WidgetMediaOcclusion.active(widgets));
     }
 

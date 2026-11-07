@@ -57,7 +57,7 @@ final class NowBarStackBinding {
         ClockBinding provider = ClockBinding.of(clock);
         return new NowBarStackBinding(
                 clock.getClassLoader(),
-                provider.legacy
+                provider.fold8 ? OneUi9Fold8Stack.names() : provider.legacy
                         ? (provider.clockStyle ? OneUi85Stack.names() : OneUi85AodStack.names())
                         : (provider.clockStyle
                                 ? OneUi9ClockStyleStack.names()

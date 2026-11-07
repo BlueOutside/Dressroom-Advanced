@@ -27,7 +27,7 @@ final class AodStretchExtras {
     }
 
     static void install(DressroomModule module, Class<?> base) throws ReflectiveOperationException {
-        Method transition = base.getDeclaredMethod("K0", float.class, boolean.class);
+        Method transition = base.getDeclaredMethod(ClockBinding.of(base).fold8 ? "G0" : "K0", float.class, boolean.class);
         module.hook(transition)
                 .setId("dressroom-advanced.aod-keep-stretch")
                 .intercept(
@@ -37,10 +37,10 @@ final class AodStretchExtras {
                             boolean expanded, dozing;
                             float doze;
                             try {
-                                controller = Reflect.field(clock, "W0");
-                                expanded = Boolean.TRUE.equals(Reflect.field(controller, "h"));
-                                dozing = Boolean.TRUE.equals(Reflect.field(controller, "d"));
-                                doze = ((Number) Reflect.field(clock, "t0")).floatValue();
+                                controller = OneUi9Fold8Runtime.field(clock, "W0");
+                                expanded = Boolean.TRUE.equals(OneUi9Fold8Runtime.field(controller, "h"));
+                                dozing = Boolean.TRUE.equals(OneUi9Fold8Runtime.field(controller, "d"));
+                                doze = ((Number) OneUi9Fold8Runtime.field(clock, "t0")).floatValue();
                             } catch (Exception error) {
                                 return chain.proceed();
                             }
@@ -53,7 +53,7 @@ final class AodStretchExtras {
                             Object axis;
                             ArrayList<Object> remaining = new ArrayList<>();
                             try {
-                                axis = Reflect.field(controller, "j");
+                                axis = OneUi9Fold8Runtime.field(controller, "j");
                                 if (!(axis instanceof List<?> list) || !list.contains("HEGT"))
                                     return chain.proceed();
                                 for (Object value : list)

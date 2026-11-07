@@ -18,7 +18,7 @@ final class NativeEdits {
             }
             return launch(controller, model, "Pa.L$b", value, false);
         }
-        return launch(controller, model, "vo.g", value, weather);
+        return launch(controller, model, EditorBinding.of(controller).fold8 ? "so.h" : "vo.g", value, weather);
     }
 
     private static Object launch(
@@ -27,7 +27,7 @@ final class NativeEdits {
         ClassLoader loader = controller.getClass().getClassLoader();
         Class<?> continuation = Class.forName("kotlin.coroutines.Continuation", false, loader);
         java.lang.reflect.Constructor<?> constructor =
-                owner.equals("vo.g")
+                (owner.equals("vo.g") || owner.equals("so.h"))
                         ? Class.forName(owner, false, loader)
                                 .getDeclaredConstructor(
                                         model.getClass(), boolean.class, continuation, int.class)
@@ -36,7 +36,7 @@ final class NativeEdits {
                                         model.getClass(), boolean.class, continuation);
         constructor.setAccessible(true);
         Object transaction =
-                owner.equals("vo.g")
+                (owner.equals("vo.g") || owner.equals("so.h"))
                         ? constructor.newInstance(model, value, null, weather ? 0 : 1)
                         : constructor.newInstance(model, value, null);
         Class<?> scope = Class.forName("kotlinx.coroutines.CoroutineScope", false, loader);

@@ -41,6 +41,23 @@ final class RuntimeClockHooks {
     RuntimeClockHooks(DressroomModule module) {
         this.module = module;
         widgets = new RuntimeWidgetHooks(module);
+        ScreenIdentity.observe(() -> main.post(() -> {
+            MediaDepthTransition.screenChanged();
+            MediaFullscreenExtras.screenChanged();
+            mediaReturnStarted.clear();
+            mediaRestorePending.clear();
+            RuntimeClockData.invalidate();
+            module.widgetEngine.invalidate();
+            clocks.removeIf(ref -> ref.get() == null);
+            for (WeakReference<View> ref : clocks) {
+                View clock = ref.get();
+                if (clock != null && clock.isAttachedToWindow()) {
+                    apply(clock);
+                    applyBlur(clock);
+                    DateEffects.apply(clock);
+                }
+            }
+        }));
         discovery =
                 new DeferredDiscovery<>(
                         task -> main.post(task),
@@ -108,6 +125,7 @@ final class RuntimeClockHooks {
         try (HookTransaction transaction = new HookTransaction()) {
             installation = transaction;
             ClockBinding binding = ClockBinding.of(base);
+            if (binding.fold8) OneUi9Fold8Profiles.install(module, loader);
             DepthEffects.install(module);
             ShadowEffects.install(module);
             if (!binding.legacy) {
@@ -316,7 +334,7 @@ final class RuntimeClockHooks {
                                             try {
                                                 wasExpanded =
                                                         Boolean.TRUE.equals(
-                                                                Reflect.field(clock, "d1"));
+                                                                OneUi9Fold8Runtime.field(clock, "d1"));
                                             } catch (Exception ignored) {
                                             }
                                             if (wasExpanded
@@ -367,7 +385,7 @@ final class RuntimeClockHooks {
             android.util.Log.i(
                     DressroomModule.TAG,
                     "Runtime clock provider hooks installed: "
-                            + (binding.legacy ? "8.5 core" : "reference"));
+                            + (binding.fold8 ? "Fold8 8.9.57.1" : binding.legacy ? "8.5 core" : "reference"));
             transaction.commit();
             installed.add(loader);
         } finally {
@@ -388,7 +406,7 @@ final class RuntimeClockHooks {
         try {
             String category = String.valueOf(Reflect.call(view, "getCategory"));
             if (!category.equals("LOCK_SCREEN") && !category.equals("AOD")) return null;
-            if (view.getDisplay() != null && view.getDisplay().getDisplayId() != 0) return null;
+            if (!ScreenIdentity.supported() && view.getDisplay() != null && view.getDisplay().getDisplayId() != 0) return null;
             if (SettingsBridge.wallpaperId(view.getContext()) < 0)
                 throw new IllegalStateException("Wallpaper identity is not ready");
             Bundle query = new Bundle();
@@ -410,7 +428,7 @@ final class RuntimeClockHooks {
         try {
             String category = String.valueOf(Reflect.call(view, "getCategory"));
             if (!category.equals("LOCK_SCREEN") && !category.equals("AOD")) return null;
-            if (view.getDisplay() != null && view.getDisplay().getDisplayId() != 0) return null;
+            if (!ScreenIdentity.supported() && view.getDisplay() != null && view.getDisplay().getDisplayId() != 0) return null;
             if (SettingsBridge.wallpaperId(view.getContext()) < 0)
                 throw new IllegalStateException("Wallpaper identity is not ready");
             Bundle query = new Bundle();
@@ -426,7 +444,7 @@ final class RuntimeClockHooks {
         try {
             if (!mediaRestorePending.contains(clock)) return;
             if (!clock.isAttachedToWindow()) return;
-            Object controller = Reflect.field(clock, "W0");
+            Object controller = OneUi9Fold8Runtime.field(clock, "W0");
             if (Boolean.TRUE.equals(Reflect.field(controller, "h"))) {
                 finishMediaReturn(clock);
                 return;
@@ -453,7 +471,7 @@ final class RuntimeClockHooks {
                         (android.animation.Animator) Reflect.field(controller, "i");
                 if (animation != null && animation.isStarted()) mediaReturnStarted.add(clock);
                 if (mediaReturnStarted.add(clock)) {
-                    Reflect.call(clock, "K0", 0f, false);
+                    Reflect.call(clock, ClockBinding.of(clock).fold8 ? "G0" : "K0", 0f, false);
                     animation = (android.animation.Animator) Reflect.field(controller, "i");
                 }
                 WeakReference<View> reference = new WeakReference<>(clock);
@@ -604,7 +622,8 @@ final class RuntimeClockHooks {
                     Bundle profile = profiles.get(clock);
                     if (profile == null
                             || profile.getInt(LayoutOrientation.FIELD)
-                                    != LayoutOrientation.current(clock.getContext())) {
+                                    != LayoutOrientation.current(clock.getContext())
+                            || ScreenIdentity.value(profile) != ScreenIdentity.current()) {
                         apply(clock);
                         applyBlur(clock);
                         DateEffects.apply(clock);

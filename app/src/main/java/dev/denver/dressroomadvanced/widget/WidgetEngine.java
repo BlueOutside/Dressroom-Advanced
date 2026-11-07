@@ -15,6 +15,7 @@ final class WidgetEngine {
     static final String SIZE =
             "com.samsung.android.app.facewidget.complication.ComplicationWidgetSizeManager";
     private final DressroomModule module;
+    private int runtimeScreen;
     private final Set<ClassLoader> installed = Collections.newSetFromMap(new WeakHashMap<>());
     private final Set<Object> grids = Collections.newSetFromMap(new WeakHashMap<>());
     private final ThreadLocal<Boolean> nativeMetrics = ThreadLocal.withInitial(() -> false);
@@ -60,9 +61,11 @@ final class WidgetEngine {
     Bundle settings(Context c) {
         if (module.editorWidgets != null) return module.editorWidgets.settings(c);
         int orientation = LayoutOrientation.current(c);
-        if (runtime == null || runtimeOrientation != orientation) {
+        int screen = ScreenIdentity.current();
+        if (runtime == null || runtimeOrientation != orientation || runtimeScreen != screen) {
             runtime = WidgetPreferences.read(c, "");
             runtimeOrientation = orientation;
+            runtimeScreen = screen;
             runtimeWallpaper = runtime.getInt("wallpaperId", -1);
         }
         return runtime;

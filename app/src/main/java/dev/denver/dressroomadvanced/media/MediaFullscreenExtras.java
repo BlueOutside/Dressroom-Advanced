@@ -49,6 +49,27 @@ final class MediaFullscreenExtras {
     private static DressroomModule module;
     private static boolean rootInstalled;
 
+    static void screenChanged() {
+        clockPaths.clear();
+        for (WeakReference<Backdrop> reference : new ArrayList<>(hosts.values())) {
+            Backdrop backdrop = reference.get();
+            if (backdrop == null) continue;
+            backdrop.restore();
+            backdrop.current = null;
+            backdrop.showing = false;
+            backdrop.returnBounds.setEmpty();
+            backdrop.returnExclusion.setEmpty();
+            ViewGroup root = backdrop.root.get();
+            if (root != null) MediaClockContrast.clear(root);
+            backdrop.invalidate();
+        }
+        for (Art state : new ArrayList<>(art.values())) {
+            state.reveal.discard();
+            state.overlayActive = state.closing = false;
+            state.returningCard.clear();
+        }
+    }
+
     static void clockPath(View clock, float x, float y, Path path) {
         ClockPath old = clockPaths.get(clock);
         if (path == null) {
@@ -79,7 +100,7 @@ final class MediaFullscreenExtras {
         try {
             MediaBlurHost.install(owner);
             Class<?> shade =
-                    Class.forName(
+                    OneUi9Fold8Runtime.type(
                             "com.android.systemui.shade.NotificationShadeWindowView",
                             false,
                             loader);
@@ -162,8 +183,8 @@ final class MediaFullscreenExtras {
             bitmapField = holder.getClass().getDeclaredField("G0");
             bitmapField.setAccessible(true);
 
-            controls = new WeakReference<>((View) Reflect.field(holder, "t0"));
-            controlHost = new WeakReference<>((View) Reflect.field(holder, "o0"));
+            controls = new WeakReference<>((View) OneUi9Fold8Runtime.field(holder, "t0"));
+            controlHost = new WeakReference<>((View) OneUi9Fold8Runtime.field(holder, "o0"));
             View mask = optionalView(holder, "Q"), lighting = optionalView(holder, "S");
             View prior = optionalView(holder, "P");
             reveal =
@@ -174,7 +195,7 @@ final class MediaFullscreenExtras {
 
         private static View optionalView(Object holder, String field) {
             try {
-                return (View) Reflect.field(holder, field);
+                return (View) OneUi9Fold8Runtime.field(holder, field);
             } catch (Exception ignored) {
                 DressroomModule.note("Fullscreen optional holder field", ignored);
                 return null;
@@ -895,7 +916,7 @@ final class MediaFullscreenExtras {
     static void install(DressroomModule owner, ClassLoader loader)
             throws ReflectiveOperationException {
         module = owner;
-        Class<?> holder = Class.forName("aod.fa2", false, loader);
+        Class<?> holder = OneUi9Fold8Runtime.type("aod.fa2", false, loader);
         for (java.lang.reflect.Constructor<?> constructor : holder.getDeclaredConstructors())
             owner.hook(constructor)
                     .setId("dressroom-advanced.media-art-owner")
@@ -904,8 +925,8 @@ final class MediaFullscreenExtras {
                                 Object result = chain.proceed();
                                 Object object = chain.getThisObject();
                                 try {
-                                    View view = (View) Reflect.field(object, "U");
-                                    ImageView image = (ImageView) Reflect.field(object, "O");
+                                    View view = (View) OneUi9Fold8Runtime.field(object, "U");
+                                    ImageView image = (ImageView) OneUi9Fold8Runtime.field(object, "O");
                                     if (view != null) {
                                         art.put(view, new Art(view, image, object));
                                         try {
@@ -965,11 +986,11 @@ final class MediaFullscreenExtras {
     private static void installSongMotion(DressroomModule owner, ClassLoader loader)
             throws ReflectiveOperationException {
         Class<?> masking =
-                Class.forName(
+                OneUi9Fold8Runtime.type(
                         "com.samsung.android.uniform.nowbar.MediaMaskingFrameLayout",
                         false,
                         loader);
-        Class<?> coordinator = Class.forName("aod.ag4", false, loader);
+        Class<?> coordinator = OneUi9Fold8Runtime.type("aod.ag4", false, loader);
         Method progress = masking.getDeclaredMethod("setAnimationProgress", float.class),
                 random = masking.getDeclaredMethod("setRandomOffset", float.class);
         Method reveal = coordinator.getDeclaredMethod("d", Drawable.class),
@@ -1024,7 +1045,7 @@ final class MediaFullscreenExtras {
                                                 try {
                                                     state =
                                                             maskOwners.get(
-                                                                    Reflect.field(
+                                                                    OneUi9Fold8Runtime.field(
                                                                             chain.getThisObject(),
                                                                             "g"));
                                                 } catch (Exception ignored) {
@@ -1062,7 +1083,7 @@ final class MediaFullscreenExtras {
             owner.deoptimize(start);
             owner.deoptimize(coordinator.getDeclaredMethod("e", Drawable.class));
             owner.deoptimize(
-                    Class.forName("aod.o8", false, loader)
+                    OneUi9Fold8Runtime.type("aod.o8", false, loader)
                             .getDeclaredMethod(
                                     "onAnimationUpdate", android.animation.ValueAnimator.class));
             hooks.commit();
@@ -1084,7 +1105,7 @@ final class MediaFullscreenExtras {
     private static void installMotion(ClassLoader loader) {
         try {
             Class<?> card =
-                    Class.forName(
+                    OneUi9Fold8Runtime.type(
                             "com.samsung.android.app.facewidget.presentation.NowBarMediaCardView",
                             false,
                             loader);
@@ -1094,7 +1115,7 @@ final class MediaFullscreenExtras {
             } catch (Exception error) {
                 module.report("Pill touch bounds unavailable", error);
             }
-            Class<?> expand = Class.forName("aod.n82", false, card.getClassLoader());
+            Class<?> expand = OneUi9Fold8Runtime.type("aod.n82", false, card.getClassLoader());
             Method invoke = expand.getDeclaredMethod("invoke");
             module.hook(invoke)
                     .setId("dressroom-advanced.media-expansion-overlay")
@@ -1106,10 +1127,10 @@ final class MediaFullscreenExtras {
                                 ViewParent before = null;
                                 try {
                                     if (lambda != null
-                                            && ((Number) Reflect.field(lambda, "o")).intValue()
+                                            && ((Number) OneUi9Fold8Runtime.field(lambda, "o")).intValue()
                                                     == 5) {
-                                        View page = (View) Reflect.field(lambda, "q"),
-                                                overlay = (View) Reflect.field(lambda, "r");
+                                        View page = (View) OneUi9Fold8Runtime.field(lambda, "q"),
+                                                overlay = (View) OneUi9Fold8Runtime.field(lambda, "r");
                                         target =
                                                 find(
                                                         page,
@@ -1147,7 +1168,7 @@ final class MediaFullscreenExtras {
                                         try {
                                             View page =
                                                     (View)
-                                                            Reflect.field(
+                                                            OneUi9Fold8Runtime.field(
                                                                     chain.getThisObject(), "I1");
                                             Art state =
                                                     art.get(

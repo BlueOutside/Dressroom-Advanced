@@ -12,6 +12,7 @@ final class ExtrasPreferences {
 
     static Bundle clean(Bundle input) {
         Bundle b = new Bundle();
+        if (input != null) ScreenIdentity.copy(input, b);
         for (String flag : FLAGS) b.putBoolean(flag, input != null && input.getBoolean(flag));
         b.putInt(
                 "stackCards",
@@ -30,24 +31,49 @@ final class ExtrasPreferences {
     }
 
     static Bundle read(Context context) {
+        Bundle query = new Bundle();
+        ScreenIdentity.stamp(query);
         Bundle result =
                 context.getContentResolver()
-                        .call(SettingsProvider.URI, "readExtras", null, new Bundle());
+                        .call(SettingsProvider.URI, "readExtras", null, query);
         return clean(result);
     }
 
     static void commit(Context context, Bundle settings) {
+        java.util.ArrayList<Bundle> screens = settings.getParcelableArrayList("screenProfiles", Bundle.class);
+        if (screens != null) { for (Bundle screen : screens) commit(context, screen); return; }
+        Bundle snapshot = clean(settings);
+        ScreenIdentity.stamp(snapshot);
         Bundle result =
                 context.getContentResolver()
-                        .call(SettingsProvider.URI, "commitExtras", null, clean(settings));
+                        .call(SettingsProvider.URI, "commitExtras", null, snapshot);
         if (result == null || !result.getBoolean("saved"))
             throw new IllegalStateException("Extra settings were not saved");
     }
 
     static Bundle store(Context context, String method, Bundle input)
             throws org.json.JSONException {
-        android.content.SharedPreferences prefs =
-                context.getSharedPreferences("committed_lockscreen_extras", 0);
+        Bundle result = store(context.getSharedPreferences("committed_lockscreen_extras", 0), method, input);
+        if (method.equals("commitExtras")) context.getContentResolver().notifyChange(SettingsProvider.URI, null);
+        return result;
+    }
+
+    static Bundle store(android.content.SharedPreferences prefs, String method, Bundle input)
+            throws org.json.JSONException {
+        String key = ScreenIdentity.key("options", input == null ? new Bundle() : input);
+        if (input != null && ScreenIdentity.value(input) != 0) {
+            String old = prefs.getString("options", null);
+            if (old != null) {
+                android.content.SharedPreferences.Editor seed = prefs.edit();
+                for (int screen : new int[] {ScreenIdentity.MAIN, ScreenIdentity.SUB}) {
+                    Bundle scope = new Bundle();
+                    scope.putInt(ScreenIdentity.FIELD, screen);
+                    String sibling = ScreenIdentity.key("options", scope);
+                    if (!prefs.contains(sibling)) seed.putString(sibling, old);
+                }
+                if (!seed.commit()) throw new IllegalStateException("Could not separate Extras settings");
+            }
+        }
         if (method.equals("commitExtras")) {
             Bundle b = clean(input);
             JSONObject json = new JSONObject();
@@ -55,15 +81,15 @@ final class ExtrasPreferences {
             json.put("stackCards", b.getInt("stackCards", 3));
             json.put("title", b.getString("title"));
             json.put("message", b.getString("message"));
-            if (!prefs.edit().putString("options", json.toString()).commit())
+            if (!prefs.edit().putString(key, json.toString()).commit())
                 throw new IllegalStateException("Could not save lockscreen extras");
-            context.getContentResolver().notifyChange(SettingsProvider.URI, null);
             Bundle result = new Bundle();
             result.putBoolean("saved", true);
             return result;
         }
-        JSONObject json = new JSONObject(prefs.getString("options", "{}"));
+        JSONObject json = new JSONObject(prefs.getString(key, "{}"));
         Bundle b = new Bundle();
+        if (input != null) ScreenIdentity.copy(input, b);
         for (String flag : FLAGS) b.putBoolean(flag, json.optBoolean(flag));
         b.putInt("stackCards", json.optInt("stackCards", 3));
         b.putString("title", json.optString("title"));

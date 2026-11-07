@@ -4,9 +4,9 @@
     "LatestDepthWorkTest", "LifecycleContractTest", "ReflectContractTest", "WidgetLayoutTest", "AdapterContractsTest", "DeferredRefreshTest", "DepthSourcePolicyTest"
   ],
   "Android": [
-    "MediaPerformanceProbe", "ClockBlurSyncProbe", "OptimizationProbe", "ClockContentClipProbe",
+    "MediaPerformanceProbe", "ClockBlurSyncProbe", "OptimizationProbe", "ClockContentClipProbe", "WidgetDepthClipProbe", "WidgetPlacementOrderProbe",
     "CodebaseAuditProbe", "RenderHotPathProbe", "ReflectContractTest", "DepthRegionProbe",
     "DepthV2PlatformProbe", "MediaReturnProbe", "NowBarPipelineProbe", "LatestDepthWorkTest",
-    "LifecycleContractTest", "OrientationProfileProbe", "EditorScrollProbe", "RootLayoutWatchProbe", "DepthSafetyProbe", "SongRevealProbe"
+    "LifecycleContractTest", "OrientationProfileProbe", "ScreenProfileProbe", "FoldParityProbe", "EditorScrollProbe", "RootLayoutWatchProbe", "DepthSafetyProbe", "SongRevealProbe"
   ]
 }

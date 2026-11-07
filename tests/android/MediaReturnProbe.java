@@ -130,6 +130,18 @@ public final class MediaReturnProbe {
         MediaDepthTransition.update(view, false, ignored -> {throw new IllegalStateException("test");});
         view.frame();
         check(!DepthEffects.mediaActive(view), "Failed native animator lookup leaves depth suspended");
+        MediaDepthTransition.update(view, true, ignored -> null);
+        animation[0] = running();
+        MediaDepthTransition.update(view, false, ignored -> animation[0]);
+        view.frame();
+        MediaDepthTransition.screenChanged();
+        check(!DepthEffects.mediaActive(view), "Folding retained the old screen's depth return");
+        check(animation[0].getListeners() == null || animation[0].getListeners().isEmpty(),
+                "Folding retained a callback from the old screen");
+        MediaDepthTransition.update(view, true, ignored -> null);
+        animation[0].end(); view.frame();
+        check(DepthEffects.mediaActive(view), "Old screen completion overrode the new expanded player");
+        MediaDepthTransition.update(view, false, ignored -> null); view.frame();
     }
 
     private static int checks;

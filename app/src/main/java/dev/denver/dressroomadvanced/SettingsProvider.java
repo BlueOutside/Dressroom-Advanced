@@ -48,6 +48,21 @@ public final class SettingsProvider extends ContentProvider {
 
     @Override
     public Bundle call(String method, String argument, Bundle extras) {
+        if ("readFoldProfile".equals(method) || "markFoldProfile".equals(method)) {
+            checkCaller(false);
+            String key = OneUi9Fold8Profiles.profileId(argument);
+            android.content.SharedPreferences state = getContext().getSharedPreferences("fold_profile_ready", 0);
+            if ("markFoldProfile".equals(method)) {
+                String[] packages = getContext().getPackageManager().getPackagesForUid(Binder.getCallingUid());
+                if (packages == null || !Arrays.asList(packages).contains("com.samsung.android.app.aodservice"))
+                    throw new SecurityException("Only the native profile owner can confirm migration");
+                if (!state.edit().putBoolean(key, true).commit())
+                    throw new IllegalStateException("Could not publish profile migration");
+            }
+            Bundle result = new Bundle();
+            result.putBoolean("ready", state.getBoolean(key, false));
+            return result;
+        }
         if ("beginFontPick".equals(method) || "fontPickResult".equals(method)) {
             checkCaller(true);
             return "beginFontPick".equals(method)
@@ -176,7 +191,10 @@ public final class SettingsProvider extends ContentProvider {
             String legacy = "shadow_" + extras.getInt("type", -1) + "_" + extras.getInt("font", -1);
             String migrated =
                     "migrated_" + extras.getInt("type", -1) + "_" + extras.getInt("font", -1);
-            String saved = LayoutOrientation.read(prefs, baseKey(extras), extras);
+            int oldWallpaper = extras.getInt("legacyWallpaperId", extras.getInt("wallpaperId", -1));
+            Bundle oldIdentity = new Bundle(extras);
+            if (oldWallpaper >= 0) oldIdentity.putInt("wallpaperId", oldWallpaper);
+            String saved = LayoutOrientation.readWallpaper(prefs, baseKey(extras), baseKey(oldIdentity), extras);
             if (saved == null
                     && SettingsScope.canImportLegacy(
                             extras.getInt("wallpaperId", -1), prefs.getBoolean(migrated, false))) {

@@ -14,6 +14,38 @@ import java.util.List;
 final class EditorWidgets {
     private static final String TAG = "dressroom.advanced.widgets.menu";
     private final DressroomModule module;
+
+    private boolean fold8() {
+        return module.editorBinding() != null && module.editorBinding().fold8;
+    }
+
+    private Class<?> nativeClass(String name, boolean initialize, ClassLoader loader)
+            throws ClassNotFoundException {
+        if (fold8()) name = switch (name) {
+            case "op.m" -> "lp.l";
+            case "sd.q" -> "sd.p";
+            case "sd.h" -> "sd.g";
+            case "sd.o" -> "sd.n";
+            case "sd.m" -> "sd.l";
+            case "sd.d" -> "sd.c";
+            case "cg.v" -> "cg.u";
+            case "rp.e" -> "u2.a";
+            default -> name;
+        };
+        return Class.forName(name, initialize, loader);
+    }
+
+    private Object field(Object owner, String name) throws ReflectiveOperationException {
+        if (fold8() && owner != null && owner.getClass().getName().equals("lp.l"))
+            name = switch (name) {
+                case "G" -> "F";
+                case "H" -> "G";
+                case "L" -> "K";
+                default -> name;
+            };
+        return Reflect.field(owner, name);
+    }
+
     private WeakReference<Object> owner = new WeakReference<>(null);
     private WeakReference<Object> ui = new WeakReference<>(null);
     private WeakReference<Context> host = new WeakReference<>(null);
@@ -24,6 +56,7 @@ final class EditorWidgets {
     private final java.util.Map<String, Bundle> layoutDrafts = new java.util.HashMap<>();
     private final java.util.Set<String> dirtyLayouts = new java.util.HashSet<>();
     private final ThreadLocal<Boolean> largePicker = ThreadLocal.withInitial(() -> false);
+    private final ThreadLocal<Boolean> nativePreview = ThreadLocal.withInitial(() -> false);
     private final ThreadLocal<Boolean> nativeLifecycle = ThreadLocal.withInitial(() -> false);
     private Bundle dragStart;
     private android.view.MotionEvent dragDown;
@@ -49,7 +82,7 @@ final class EditorWidgets {
         if (!legacy()) return true;
         try {
             NowBarStackBinding.of(
-                    Class.forName(
+                    nativeClass(
                             "com.samsung.android.uniform.widget.clock.AbsClockView",
                             false,
                             grid().getClass().getClassLoader()));
@@ -63,7 +96,7 @@ final class EditorWidgets {
         if (!legacy()) return true;
         try {
             return module.depthAvailable(
-                    Class.forName(
+                    nativeClass(
                             "com.samsung.android.uniform.widget.clock.AbsClockView",
                             false,
                             grid().getClass().getClassLoader()));
@@ -123,11 +156,14 @@ final class EditorWidgets {
         host = new WeakReference<>(application == null ? context : application);
         String current = module.scene();
         int orientation = module.layoutOrientation(context);
+        int screen = ScreenIdentity.current();
         if (draft == null
                 || !current.equals(scene)
-                || draft.getInt(LayoutOrientation.FIELD) != orientation) {
-            if (!current.equals(scene)) depthLayouts = -1;
-            String key = current + ":" + orientation;
+                || draft.getInt(LayoutOrientation.FIELD) != orientation
+                || ScreenIdentity.value(draft) != screen) {
+            if (!current.equals(scene) || draft == null || ScreenIdentity.value(draft) != screen)
+                depthLayouts = -1;
+            String key = current + ":" + orientation + ":" + screen;
             Bundle previous = layoutDrafts.get(key);
             draft =
                     previous == null
@@ -150,7 +186,7 @@ final class EditorWidgets {
     void layoutChanging() {
         cancelScalePreview();
         if (draft == null) return;
-        String key = scene + ":" + draft.getInt(LayoutOrientation.FIELD);
+        String key = scene + ":" + ScreenIdentity.draft(draft);
         Bundle frozen = DepthEffects.freezeMask(draft);
         frozen.putString("scene", scene);
         layoutDrafts.put(key, frozen);
@@ -184,7 +220,7 @@ final class EditorWidgets {
     }
 
     private void overlayDepthPolicy(Bundle value) {
-        if (depthLayouts < 0) return;
+        if (depthLayouts < 0 || (draft != null && ScreenIdentity.value(value) != ScreenIdentity.value(draft))) return;
         value.putInt("depthLayouts", depthLayouts);
         if (depthLayouts != 0) value.putInt("depth", sharedDepth);
     }
@@ -205,7 +241,7 @@ final class EditorWidgets {
         }
         Bundle b = DepthEffects.freezeMask(WidgetPreferences.clean(draft));
         b.putString("scene", module.scene());
-        layoutDrafts.put(scene + ":" + b.getInt(LayoutOrientation.FIELD), b);
+        layoutDrafts.put(scene + ":" + ScreenIdentity.draft(b), b);
         java.util.ArrayList<Bundle> layouts = new java.util.ArrayList<>();
         for (var entry : layoutDrafts.entrySet()) {
             if (module.scene().equals(entry.getValue().getString("scene", ""))) {
@@ -243,7 +279,7 @@ final class EditorWidgets {
                 WidgetEngine.enumValue(
                         Reflect.call(data(), "getWidgetAlignType").getClass(),
                         vertical() ? "Default" : "Vertical");
-        if (!Boolean.TRUE.equals(Reflect.call(Reflect.field(owner.get(), "y"), "a", target)))
+        if (!Boolean.TRUE.equals(Reflect.call(field(owner.get(), "y"), "a", target)))
             throw new IllegalStateException("Wait for the current layout change to finish.");
     }
 
@@ -269,13 +305,13 @@ final class EditorWidgets {
         Object item = owner.get();
         if (item == null) throw new IllegalStateException("Widget preview is not ready");
         if (legacy()) return legacyBinding.grid(item);
-        Object wrapper = Reflect.call(Reflect.field(item, "a"), "get");
+        Object wrapper = Reflect.call(field(item, "a"), "get");
         return Reflect.call(wrapper, "d");
     }
 
     private Object data() throws ReflectiveOperationException {
         if (legacy()) return legacyBinding.data(owner.get());
-        return Reflect.call(Reflect.field(Reflect.field(owner.get(), "l"), "a"), "getData");
+        return Reflect.call(field(field(owner.get(), "l"), "a"), "getData");
     }
 
     void update(Bundle next, boolean structural) throws Exception {
@@ -285,6 +321,10 @@ final class EditorWidgets {
             throw new IllegalStateException("Widget preview is not ready");
         if (!next.containsKey(LayoutOrientation.FIELD) && draft != null)
             LayoutOrientation.copy(draft, next);
+        if (!next.containsKey(ScreenIdentity.FIELD) && draft != null)
+            ScreenIdentity.copy(draft, next);
+        if (ScreenIdentity.value(next) != ScreenIdentity.current())
+            throw new IllegalStateException("Reopen widget controls after switching screens.");
         if (next.getInt(LayoutOrientation.FIELD) != module.layoutOrientation(c))
             throw new IllegalStateException("Layout changed. Open Advanced again.");
         next = WidgetPreferences.clean(next);
@@ -362,7 +402,7 @@ final class EditorWidgets {
                 module.widgetEngine.refreshChecked(grid());
                 module.widgetEngine.reflow(grid());
                 Reflect.call(
-                        Reflect.field(owner.get(), "p"),
+                        field(owner.get(), "p"),
                         "a"); // Refresh native widget list after reflow.
             } else if (previous == null
                     || previous.getFloat("scale", 1) != draft.getFloat("scale", 1)) {
@@ -391,7 +431,7 @@ final class EditorWidgets {
     void previewScale(float zoom) throws ReflectiveOperationException {
         Object item = owner.get();
         if (item == null || draft == null) return;
-        if (Reflect.field(item, legacy() ? "N" : "L") instanceof View view)
+        if (field(item, legacy() ? "N" : "L") instanceof View view)
             scalePreview.show(
                     view, draft.getFloat("scale", 1), WidgetLayout.finite(zoom, 1, .5f, 2));
     }
@@ -419,7 +459,7 @@ final class EditorWidgets {
             return;
         }
         Object item = owner.get();
-        if (item != null) Reflect.call(Reflect.field(item, "z"), "a");
+        if (item != null) Reflect.call(field(item, "z"), "a");
     }
 
     void applyEffects() {
@@ -427,7 +467,7 @@ final class EditorWidgets {
         if (item == null || draft == null) return;
         try {
             if (legacy()) {
-                if (depthAvailable() && Reflect.field(item, "N") instanceof View root) {
+                if (depthAvailable() && field(item, "N") instanceof View root) {
                     DepthEffects.applyEditorWidgets(
                             root,
                             clock != null && clock.getBoolean("depthEnabled"),
@@ -439,13 +479,13 @@ final class EditorWidgets {
                 }
                 return;
             }
-            Object view = Reflect.field(item, "L");
+            Object view = field(item, "L");
             if (view instanceof View root)
                 DepthEffects.applyEditorWidgets(
                         root,
                         clock != null && clock.getBoolean("depthEnabled"),
                         clock == null ? null : clock.getByteArray("depthMask"));
-            Object inner = Reflect.field(item, "H");
+            Object inner = field(item, "H");
             if (inner instanceof View root) WidgetDepthBlur.blur(root, draft.getBoolean("blurOff"));
         } catch (Exception e) {
             module.report("Widget editor effects unavailable", e);
@@ -462,15 +502,16 @@ final class EditorWidgets {
         }
         try {
             return (Boolean)
-                    Reflect.call(Reflect.call(Reflect.field(item, "c"), "b"), "isLockScreen");
+                    Reflect.call(Reflect.call(field(item, "c"), "b"), "isLockScreen");
         } catch (Exception e) {
             return false;
         }
     }
 
     void install(ClassLoader loader) throws ReflectiveOperationException {
-        DepthEffects.watchEditorWallpaper(module, loader);
-        Class<?> toolbar = Class.forName("v8.y", false, loader);
+        if (fold8()) OneUi9Fold8Widgets.validate(loader);
+        if (!fold8()) DepthEffects.watchEditorWallpaper(module, loader);
+        Class<?> toolbar = nativeClass("v8.y", false, loader);
         Method rebuild = toolbar.getDeclaredMethod("l");
         module.hook(rebuild)
                 .setId("dressroom-advanced.widgets-toolbar")
@@ -484,7 +525,7 @@ final class EditorWidgets {
                             return chain.proceed();
                         });
         module.deoptimize(rebuild);
-        Class<?> wrapper = Class.forName("pc.h", false, loader);
+        Class<?> wrapper = nativeClass("pc.h", false, loader);
         Method getGrid = wrapper.getDeclaredMethod("d");
         module.hook(getGrid)
                 .setId("dressroom-advanced.editor-widget-provider")
@@ -496,7 +537,7 @@ final class EditorWidgets {
                             return result;
                         });
         module.deoptimize(getGrid);
-        Method create = Class.forName("op.m", false, loader).getDeclaredMethod("b");
+        Method create = nativeClass("op.m", false, loader).getDeclaredMethod("b");
         module.hook(create)
                 .setId("dressroom-advanced.widget-editor-binding")
                 .intercept(
@@ -504,13 +545,20 @@ final class EditorWidgets {
                             Object item = chain.getThisObject();
                             if (isMain(item)) {
                                 owner = new WeakReference<>(item);
-                                Context c = (Context) Reflect.field(item, "b");
+                                Context c = (Context) field(item, "b");
                                 host = new WeakReference<>(c);
-                                ui = new WeakReference<>(Reflect.field(item, "i"));
+                                ui = new WeakReference<>(field(item, "i"));
                                 settings(c);
-                                restoreModel(Reflect.field(item, "G"));
+                                restoreModel(field(item, "G"));
                             }
-                            Object result = chain.proceed();
+                            Object result;
+                            boolean previousPreview = nativePreview.get();
+                            nativePreview.set(fold8() && item == owner.get());
+                            try {
+                                result = chain.proceed();
+                            } finally {
+                                nativePreview.set(previousPreview);
+                            }
                             if (item == owner.get()) {
                                 applyEffects();
                                 if (result instanceof View view) {
@@ -525,7 +573,7 @@ final class EditorWidgets {
                             return result;
                         });
         module.deoptimize(create);
-        Class<?> store = Class.forName("sd.q", false, loader);
+        Class<?> store = nativeClass("sd.q", false, loader);
         for (Method m : store.getDeclaredMethods())
             if (m.getName().equals("b") && m.getParameterCount() == 2) {
                 module.hook(m)
@@ -537,7 +585,7 @@ final class EditorWidgets {
                                             && (Boolean)
                                                     Reflect.call(chain.getArg(1), "isLockScreen")) {
                                         Context c =
-                                                (Context) Reflect.field(chain.getThisObject(), "a");
+                                                (Context) field(chain.getThisObject(), "a");
                                         settings(c);
                                         restoreModel(model);
                                     }
@@ -547,7 +595,15 @@ final class EditorWidgets {
             }
         installMetrics(loader);
         installPicker(loader);
-        Method trimmed = Class.forName("rh.a", false, loader).getDeclaredMethod("i");
+        if (fold8()) {
+            Method portrait = Class.forName("df.b", false, loader).getDeclaredMethod("a");
+            module.hook(portrait)
+                    .setId("dressroom-advanced.fold8-widget-arrangement")
+                    .intercept(chain -> nativePreview.get() && draft != null && draft.getBoolean("layout")
+                            ? false : chain.proceed());
+            module.deoptimize(portrait);
+        } else {
+        Method trimmed = nativeClass("rh.a", false, loader).getDeclaredMethod("i");
         module.hook(trimmed)
                 .setId("dressroom-advanced.portrait-widget-arrangement")
                 .intercept(
@@ -555,13 +611,14 @@ final class EditorWidgets {
                             if (owner.get() != null
                                     && draft != null
                                     && draft.getBoolean("layout")
-                                    && chain.getThisObject() == Reflect.field(owner.get(), "D"))
+                                    && chain.getThisObject() == field(owner.get(), "D"))
                                 return Reflect.call(data(), "getWidgetAlignType");
                             return chain.proceed();
                         });
         module.deoptimize(trimmed);
+        }
         Method editable =
-                Class.forName(
+                nativeClass(
                                 "com.samsung.android.lockscreen.editor.item.domain.entity.item.widget.WidgetData",
                                 false,
                                 loader)
@@ -573,19 +630,19 @@ final class EditorWidgets {
                             if (owner.get() != null
                                     && draft != null
                                     && draft.getBoolean("layout")
-                                    && chain.getThisObject() == Reflect.field(owner.get(), "G"))
+                                    && chain.getThisObject() == field(owner.get(), "G"))
                                 return chain.proceed(new Object[] {true});
                             return chain.proceed();
                         });
         module.deoptimize(editable);
         Class<?> alignType =
-                Class.forName(
+                nativeClass(
                         "com.samsung.android.clockpack.plugins.briefwidget.WidgetAlignType",
                         false,
                         loader);
         Method lifecycle =
-                Class.forName("cg.n", false, loader)
-                        .getDeclaredMethod("c", Class.forName("gf.c", false, loader));
+                nativeClass("cg.n", false, loader)
+                        .getDeclaredMethod("c", nativeClass("gf.c", false, loader));
         module.hook(lifecycle)
                 .setId("dressroom-advanced.widget-resume-scope")
                 .intercept(
@@ -593,7 +650,7 @@ final class EditorWidgets {
                             boolean previous = nativeLifecycle.get();
                             Object mode =
                                     Reflect.call(
-                                            Reflect.field(chain.getThisObject(), "e"), "getData");
+                                            field(chain.getThisObject(), "e"), "getData");
                             nativeLifecycle.set((Boolean) Reflect.call(mode, "isLockScreen"));
                             try {
                                 return chain.proceed();
@@ -603,7 +660,7 @@ final class EditorWidgets {
                         });
         module.deoptimize(lifecycle);
         Method providerAlign =
-                Class.forName("pc.h", false, loader).getDeclaredMethod("a", alignType);
+                nativeClass("pc.h", false, loader).getDeclaredMethod("a", alignType);
         module.hook(providerAlign)
                 .setId("dressroom-advanced.widget-resume-arrangement")
                 .intercept(
@@ -617,7 +674,7 @@ final class EditorWidgets {
                             return chain.proceed();
                         });
         module.deoptimize(providerAlign);
-        Method rotate = Class.forName("cg.v", false, loader).getDeclaredMethod("a", alignType);
+        Method rotate = nativeClass("cg.v", false, loader).getDeclaredMethod("a", alignType);
         module.hook(rotate)
                 .setId("dressroom-advanced.native-widget-rotation")
                 .intercept(
@@ -625,7 +682,7 @@ final class EditorWidgets {
                             if (owner.get() == null
                                     || draft == null
                                     || !draft.getBoolean("layout")
-                                    || chain.getThisObject() != Reflect.field(owner.get(), "y"))
+                                    || chain.getThisObject() != field(owner.get(), "y"))
                                 return chain.proceed();
                             Object model = data();
                             if ((Boolean) Reflect.call(model, "getWidgetAlignChanging"))
@@ -670,13 +727,13 @@ final class EditorWidgets {
     void installLegacy(ClassLoader loader) throws ReflectiveOperationException {
         WidgetEditorBinding nativeWidgets = new WidgetEditorBinding(loader);
         Class<?> widgetData =
-                Class.forName(
+                nativeClass(
                         "com.samsung.android.lockscreen.editor.item.domain.entity.item.widget.WidgetData",
                         false,
                         loader);
         Method feedback =
                 NativeContract.method(
-                        Class.forName(
+                        nativeClass(
                                 "com.samsung.android.lockscreen.editor.item.data.repository.item.clock.c",
                                 false,
                                 loader),
@@ -726,9 +783,9 @@ final class EditorWidgets {
                                         Object item = chain.getThisObject();
                                         if (isMain(item)) {
                                             owner = new WeakReference<>(item);
-                                            Context context = (Context) Reflect.field(item, "b");
+                                            Context context = (Context) field(item, "b");
                                             host = new WeakReference<>(context);
-                                            ui = new WeakReference<>(Reflect.field(item, "k"));
+                                            ui = new WeakReference<>(field(item, "k"));
                                             settings(context);
                                         }
                                         Object result = chain.proceed();
@@ -774,7 +831,7 @@ final class EditorWidgets {
                                                                 "isLockScreen"))) {
                                             Object manager =
                                                     Reflect.call(
-                                                            Reflect.field(
+                                                            field(
                                                                     chain.getThisObject(), "d"),
                                                             "getValue");
                                             WidgetEditorBinding.metrics(
@@ -812,8 +869,8 @@ final class EditorWidgets {
                                                 && draft != null
                                                 && draft.getInt("anchor") != 0
                                                 && chain.getThisObject()
-                                                        == Reflect.field(
-                                                                Reflect.field(owner.get(), "B"),
+                                                        == field(
+                                                                field(owner.get(), "B"),
                                                                 "l")) return null;
                                         return chain.proceed();
                                     });
@@ -888,7 +945,8 @@ final class EditorWidgets {
     }
 
     private void installMetrics(ClassLoader loader) throws ReflectiveOperationException {
-        Method guide = Class.forName("sp.y1", false, loader).getDeclaredMethod("executeBindings");
+        if (!fold8()) {
+        Method guide = nativeClass("sp.y1", false, loader).getDeclaredMethod("executeBindings");
         module.hook(guide)
                 .setId("dressroom-advanced.hide-widget-rotation-guide")
                 .intercept(
@@ -899,9 +957,10 @@ final class EditorWidgets {
                             return result;
                         });
         module.deoptimize(guide);
+        }
         installDrag(loader);
         installDirectDragBinding(loader);
-        for (Method m : Class.forName("sd.h", false, loader).getDeclaredMethods())
+        for (Method m : nativeClass("sd.h", false, loader).getDeclaredMethods())
             if (m.getName().equals("a")) {
                 module.hook(m)
                         .setId("dressroom-advanced.widget-editor-grid-metrics")
@@ -925,7 +984,7 @@ final class EditorWidgets {
                                 });
                 module.deoptimize(m);
             }
-        for (Method m : Class.forName("sd.o", false, loader).getDeclaredMethods())
+        for (Method m : nativeClass("sd.o", false, loader).getDeclaredMethods())
             if (m.getName().equals("a")) {
                 module.hook(m)
                         .setId("dressroom-advanced.widget-editor-cell-metrics")
@@ -939,7 +998,7 @@ final class EditorWidgets {
                                                     Reflect.call(chain.getArg(7), "isLockScreen")) {
                                         Object manager =
                                                 Reflect.call(
-                                                        Reflect.field(chain.getThisObject(), "c"),
+                                                        field(chain.getThisObject(), "c"),
                                                         "getValue");
                                         Object size = chain.getArg(1), grid = chain.getArg(0);
                                         Reflect.call(
@@ -1008,7 +1067,7 @@ final class EditorWidgets {
                                 });
                 module.deoptimize(m);
             }
-        for (Method m : Class.forName("sd.m", false, loader).getDeclaredMethods())
+        for (Method m : nativeClass("sd.m", false, loader).getDeclaredMethods())
             if (m.getName().equals("f")) {
                 module.hook(m)
                         .setId("dressroom-advanced.widget-editor-placement")
@@ -1020,7 +1079,8 @@ final class EditorWidgets {
                                                     Reflect.call(chain.getArg(3), "isLockScreen"))
                                         return result;
                                     boolean custom = draft.getBoolean("layout");
-                                    int anchor = draft.getInt("anchor");
+                                    int anchor = WidgetLayout.effectiveAnchor(draft.getInt("anchor"), custom,
+                                            draft.getBoolean("vertical"), fold8());
                                     if (!custom && anchor == 0) return result;
                                     Object model = chain.getArg(0),
                                             assist = chain.getArg(1),
@@ -1088,7 +1148,7 @@ final class EditorWidgets {
                                             sh =
                                                     ((Number) Reflect.call(screen, "getHeight"))
                                                             .floatValue();
-                                    Context c = (Context) Reflect.field(chain.getThisObject(), "a");
+                                    Context c = (Context) field(chain.getThisObject(), "a");
                                     float density =
                                             c.getResources().getDisplayMetrics().density
                                                     * sw
@@ -1126,10 +1186,10 @@ final class EditorWidgets {
                 module.deoptimize(m);
             }
         Method alignFeedback =
-                Class.forName("yc.b", false, loader)
+                nativeClass("yc.b", false, loader)
                         .getDeclaredMethod(
                                 "c",
-                                Class.forName(
+                                nativeClass(
                                         "com.samsung.android.lockscreen.editor.item.domain.entity.item.widget.WidgetData",
                                         false,
                                         loader));
@@ -1146,12 +1206,12 @@ final class EditorWidgets {
     private io.github.libxposed.api.XposedInterface.HookHandle installDrag(ClassLoader loader)
             throws ReflectiveOperationException {
         Method touch =
-                Class.forName(
+                nativeClass(
                                 "com.samsung.android.app.dressroom.presentation.preview.activity.EditMainActivity",
                                 false,
                                 loader)
                         .getDeclaredMethod("dispatchTouchEvent", android.view.MotionEvent.class);
-        Class<?> bindingType = Class.forName("androidx.databinding.ViewDataBinding", false, loader);
+        Class<?> bindingType = nativeClass("androidx.databinding.ViewDataBinding", false, loader);
         pendingBinding = bindingType.getDeclaredMethod("getBinding", View.class);
         pendingBinding.setAccessible(true);
         var handle =
@@ -1160,7 +1220,7 @@ final class EditorWidgets {
                         .intercept(
                                 chain -> {
                                     if (owner.get() == null
-                                            || !(Reflect.field(owner.get(), legacy() ? "N" : "L")
+                                            || !(field(owner.get(), legacy() ? "N" : "L")
                                                     instanceof View root)
                                             || !root.isShown()) return chain.proceed();
                                     if (legacy()
@@ -1253,10 +1313,10 @@ final class EditorWidgets {
 
     private io.github.libxposed.api.XposedInterface.HookHandle installDirectDragBinding(
             ClassLoader loader) throws ReflectiveOperationException {
-        Class<?> adapter = Class.forName(legacy() ? "lb.c" : "rp.e", false, loader);
+        Class<?> adapter = nativeClass(legacy() ? "lb.c" : "rp.e", false, loader);
         Method position =
                 adapter.getDeclaredMethod(
-                        legacy() ? "r" : "b",
+                        legacy() ? "r" : fold8() ? "V" : "b",
                         View.class,
                         int.class,
                         int.class,
@@ -1273,7 +1333,7 @@ final class EditorWidgets {
                                     if (dragging
                                             && owner.get() != null
                                             && chain.getArg(0)
-                                                    == Reflect.field(
+                                                    == field(
                                                             owner.get(), legacy() ? "N" : "L")) {
                                         Object[] args = new Object[7];
                                         for (int i = 0; i < args.length; i++)
@@ -1290,7 +1350,7 @@ final class EditorWidgets {
     private void moveGroup(float rawX, float rawY) throws Exception {
         float dx, dy;
         if (legacy()) {
-            View root = (View) Reflect.field(owner.get(), "N");
+            View root = (View) field(owner.get(), "N");
             android.graphics.Matrix global = new android.graphics.Matrix(),
                     inverse = new android.graphics.Matrix();
             root.transformMatrixToGlobal(global);
@@ -1301,7 +1361,7 @@ final class EditorWidgets {
             dy = delta[1];
         } else {
             float previewScale =
-                    ((Number) Reflect.field(Reflect.field(owner.get(), "g"), "r")).floatValue();
+                    ((Number) field(field(owner.get(), "g"), "r")).floatValue();
             if (!Float.isFinite(previewScale) || previewScale <= 0) return;
             dx = rawX / previewScale;
             dy = rawY / previewScale;
@@ -1315,7 +1375,7 @@ final class EditorWidgets {
         } else {
             Object screen =
                     Reflect.call(
-                            Reflect.field(Reflect.field(owner.get(), legacy() ? "E" : "C"), "a"),
+                            field(field(owner.get(), legacy() ? "E" : "C"), "a"),
                             "getData");
             float sw = ((Number) Reflect.call(screen, "getWidth")).floatValue(),
                     sh = ((Number) Reflect.call(screen, "getHeight")).floatValue();
@@ -1327,7 +1387,7 @@ final class EditorWidgets {
         }
         update(next, false);
         if (pendingBinding != null) {
-            View root = (View) Reflect.field(owner.get(), legacy() ? "N" : "L");
+            View root = (View) field(owner.get(), legacy() ? "N" : "L");
             Object binding = pendingBinding.invoke(null, root);
             if (binding != null) Reflect.call(binding, "executePendingBindings");
         }
@@ -1335,7 +1395,7 @@ final class EditorWidgets {
 
     private void installPicker(ClassLoader loader) throws ReflectiveOperationException {
         Method tablet =
-                Class.forName(
+                nativeClass(
                                 "com.samsung.android.lockscreen.editor.item.domain.entity.system.DeviceType",
                                 false,
                                 loader)
@@ -1344,7 +1404,7 @@ final class EditorWidgets {
                 .setId("dressroom-advanced.two-row-widget-eligibility")
                 .intercept(chain -> largePicker.get() ? true : chain.proceed());
         module.deoptimize(tablet);
-        for (Method m : Class.forName("sd.d", false, loader).getDeclaredMethods())
+        for (Method m : nativeClass("sd.d", false, loader).getDeclaredMethods())
             if (m.getName().equals("a") && m.getParameterCount() == 2) {
                 module.hook(m)
                         .setId("dressroom-advanced.widget-picker-size-scope")
@@ -1371,18 +1431,18 @@ final class EditorWidgets {
 
     private void addMenu(Object toolbar, ClassLoader loader) throws Exception {
         if (legacy()) {
-            Context context = (Context) Reflect.field(toolbar, "a");
+            Context context = (Context) field(toolbar, "a");
             legacyBinding.addMenu(toolbar, () -> open(context), TAG);
             return;
         }
-        Object models = Reflect.field(toolbar, "g");
+        Object models = field(toolbar, "g");
         if (models == null || Array.getLength(models) == 0) return;
-        Context c = (Context) Reflect.field(toolbar, "a");
-        Class<?> model = Class.forName("k6.m", false, loader);
+        Context c = (Context) field(toolbar, "a");
+        Class<?> model = nativeClass("k6.m", false, loader);
         List<Object> list = new ArrayList<>();
         for (int i = 0; i < Array.getLength(models); i++) {
             Object value = Array.get(models, i);
-            if (TAG.equals(Reflect.field(value, "e"))) return;
+            if (TAG.equals(field(value, "e"))) return;
             list.add(value);
         }
         int icon =

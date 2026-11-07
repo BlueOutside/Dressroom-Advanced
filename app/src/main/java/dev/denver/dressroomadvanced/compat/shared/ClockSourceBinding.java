@@ -30,7 +30,9 @@ final class ClockSourceBinding {
         var methods = new java.util.ArrayList<Method>();
         methods.add(stretch);
         methods.addAll(
-                !clock.legacy
+                clock.fold8
+                        ? OneUi9Fold8ClockSource.callers(loader)
+                        : !clock.legacy
                         ? (clock.clockStyle
                                 ? OneUi9ClockStyleClockSource.callers(loader)
                                 : OneUi9ClockSource.callers(loader))

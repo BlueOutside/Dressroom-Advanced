@@ -90,12 +90,20 @@ final class WidgetPlacement {
     }
 
     static void apply(View root, Bundle settings, Object provider) {
-        if (settings == null || settings.getInt("anchor") == 0) {
+        if (settings == null) {
+            clear(root);
+            return;
+        }
+        boolean fold8 = provider != null && OneUi9Fold8Runtime.matches(provider.getClass().getClassLoader());
+        int anchor = WidgetLayout.effectiveAnchor(settings.getInt("anchor"), settings.getBoolean("layout"),
+                settings.getBoolean("vertical"), fold8);
+        if (anchor == 0) {
             clear(root);
             return;
         }
         State state = states.computeIfAbsent(root, State::new);
         state.settings = new Bundle(settings);
+        state.settings.putInt("anchor", anchor);
         if (provider != null)
             try {
                 Object clock = Reflect.field(provider, "clockView");
@@ -108,6 +116,8 @@ final class WidgetPlacement {
             state.observer = new WeakReference<>(observer);
             observer.addOnPreDrawListener(state);
         }
+        if (settings.getBoolean("vertical") && (anchor == 5 || fold8 && settings.getInt("anchor") == 0))
+            WidgetDepthBlur.afterPlacement(root);
         root.invalidate();
     }
 

@@ -9,7 +9,7 @@ import java.util.Map;
 import java.util.WeakHashMap;
 
 final class RuntimeClockData {
-    private record Entry(int type, int font, String path, int orientation, List<Float> heights) {}
+    private record Entry(int type, int font, String path, int orientation, int screen, List<Float> heights) {}
 
     private static final Map<Object, Entry> sources =
             java.util.Collections.synchronizedMap(new WeakHashMap<>());
@@ -32,7 +32,7 @@ final class RuntimeClockData {
             throws ReflectiveOperationException {
         Context context = (Context) Reflect.field(provider, "context");
         try {
-            if (context.getDisplay() != null && context.getDisplay().getDisplayId() != 0)
+            if (!ScreenIdentity.supported() && context.getDisplay() != null && context.getDisplay().getDisplayId() != 0)
                 return null;
         } catch (UnsupportedOperationException ignored) {
         } // Package contexts may not carry a Display.
@@ -47,12 +47,13 @@ final class RuntimeClockData {
         } catch (Exception ignored) {
         }
         int orientation = LayoutOrientation.current(context);
+        int screen = ScreenIdentity.current();
         Entry entry = sources.get(provider);
         if (entry == null
                 || entry.type != type
                 || entry.font != id
                 || !entry.path.equals(path)
-                || entry.orientation != orientation) {
+                || entry.orientation != orientation || entry.screen != screen) {
             Bundle query = new Bundle();
             query.putInt("type", type);
             query.putInt("font", id);
@@ -60,7 +61,7 @@ final class RuntimeClockData {
             Bundle settings = SettingsBridge.read(context, query);
             List<Float> values = manualHeights(settings);
             if (settings == null) return null; // Provider may still be starting after an update.
-            entry = new Entry(type, id, path, orientation, values);
+            entry = new Entry(type, id, path, orientation, screen, values);
             sources.put(provider, entry);
         }
         return entry.heights;

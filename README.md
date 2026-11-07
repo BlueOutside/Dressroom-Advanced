@@ -28,9 +28,10 @@ Imported fonts use their own variable axes. Samsung's dynamic per-digit stretchi
 | 8.0 | Any combination | Unsupported |
 
 ZFLip is only supported on the inner screen, not the cover screen.
-No support is currently available for folded/unfolded states on ZFold, only rotation.
-Z series have 0 guarantee of working fine for any version, simply because I do NOT have any.
+ZFold support is experimental and depends on the inspected Samsung app versions.
 Features depend on the device and app versions.
+
+The Fold8 adapter targets Dressroom 3.0.01.20 and AOD 8.9.57.1. Clock saving, lockscreen depth, independent cover/inner widget selections and independent Extras have been confirmed on SM-F971B. See the [adapter notes](docs/compatibility/FOLD8_3.0.01.20.md), [screen profiles](docs/compatibility/FOLD8_SCREEN_PROFILES.md) and [foldable follow-up](docs/compatibility/FOLDABLE_PARITY.md) for implementation details, checks and remaining live-animation/device limits. Existing non-fold adapters remain present; other Fold models and firmware need their own validation.
 
 ## Setup
 

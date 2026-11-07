@@ -75,7 +75,7 @@ final class WidgetMediaOcclusion {
                     && widget.isAttachedToWindow()
                     && widget.getWindowToken() == root.getWindowToken()) {
                 boolean depth = DepthEffects.hasSubject(widget);
-                WidgetContentClip.apply(widget, depth);
+                WidgetDepthBlur.clipWidgets(widget, depth);
                 WidgetContentClip.refresh(widget);
                 WidgetDepthBlur.watch(widget, depth || cover != null);
                 WidgetDepthBlur.mediaChanged(widget);

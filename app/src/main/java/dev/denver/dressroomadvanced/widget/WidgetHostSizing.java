@@ -69,6 +69,11 @@ final class WidgetHostSizing {
         for (AppWidgetHostView host : hosts.values()) savedIds.put(host, savedId);
     }
 
+    private static Class<?> sizingClass(ClassLoader loader) throws ReflectiveOperationException {
+        Class<?> base = Class.forName("com.samsung.android.uniform.widget.clock.AbsClockView", false, loader);
+        return Class.forName(ClockBinding.of(base).fold8 ? "aod.x89" : "aod.v99", false, loader);
+    }
+
     static void validate(ClassLoader loader) throws ReflectiveOperationException {
         creation(loader);
         Class<?> manager = Class.forName(WidgetEngine.SIZE, false, loader);
@@ -81,7 +86,7 @@ final class WidgetHostSizing {
             NativeContract.method(manager, "calculateWidgetSizeSpec", spec, int.class, int.class);
         } catch (NoSuchMethodException reference) {
             var sizing =
-                    Class.forName("aod.v99", false, loader)
+                    sizingClass(loader)
                             .getDeclaredMethod(
                                     "a",
                                     android.content.Context.class,
@@ -137,7 +142,7 @@ final class WidgetHostSizing {
                 spec = Reflect.call(manager, "calculateWidgetSizeSpec", columns, rows);
             } catch (NoSuchMethodException reference) {
                 Class<?> sizing =
-                        Class.forName("aod.v99", false, manager.getClass().getClassLoader());
+                        sizingClass(manager.getClass().getClassLoader());
                 var method =
                         sizing.getDeclaredMethod(
                                 "a",
