@@ -139,7 +139,7 @@ final class WidgetPanel {
                         label(
                                 "Arrangement: "
                                         + (editor.vertical() ? "Vertical" : "Horizontal")
-                                        + "  â€¢  Rotate");
+                                        + "  •  Rotate");
                 rotate.setMinHeight(dp(48));
                 ripple(rotate);
                 rotate.setOnClickListener(
@@ -159,9 +159,6 @@ final class WidgetPanel {
                                 error(e);
                             }
                         });
-                note(
-                        "Rotate uses Samsungâ€™s layout control. Wide grids are horizontal; tall"
-                                + " grids are vertical.");
                 slider(
                         "Columns",
                         1,
@@ -181,15 +178,13 @@ final class WidgetPanel {
                 note(
                         "Grid capacity: "
                                 + b.getInt("columns")
-                                + " Ã— "
+                                + " × "
                                 + b.getInt("rows")
-                                + ". Larger widget variants appear in the widget picker when"
-                                + " supported.");
+                                + ".");
             }
         } else
             note(
-                    "Use Samsungâ€™s widget layout control to switch between horizontal and vertical."
-                            + " Custom grid capacity is not available in this build.");
+                    "Use the stock layout control to rotate the grid.");
         slider(
                 "Widget scale",
                 50,
@@ -198,11 +193,6 @@ final class WidgetPanel {
                 "%",
                 (next, value) -> next.putFloat("scale", value / 100f),
                 false);
-        note(
-                editor.legacy()
-                        ? "Scale changes cell size while keeping Samsungâ€™s arrangement."
-                        : "Scale changes cell size. Rows and columns control how much the grid can"
-                                + " hold.");
         section("Placement");
         choice(
                 "Attach to clock",
@@ -214,8 +204,7 @@ final class WidgetPanel {
                 false);
         int anchor = b.getInt("anchor");
         note(
-                "Drag the widget group in the preview to move it. Snapped groups slide along the"
-                        + " clock edge; Free position moves in both directions.");
+                "Drag in the preview. Attached groups move along the clock edge.");
         if (anchor >= 1 && anchor <= 4) {
             slider(
                     "Gap from clock",
@@ -279,20 +268,13 @@ final class WidgetPanel {
                         "Depth requires a still-image wallpaper. Gyro, video and live wallpapers"
                                 + " are not supported.");
             note(
-                    "Portrait only, Landscape only and Both share the depth choice across layouts."
-                            + " Off disables it in both. Size and placement stay separate.");
-            note(
-                    "On places widgets behind the detected subject independently of clock depth."
-                            + " Detect the subject in Clock â†’ Advanced first.");
+                    "Detect the subject in Clock → Advanced first.");
             if (!editor.legacy()) {
                 toggle(
                         "Live background blur",
                         !b.getBoolean("blurOff"),
                         next -> next.putBoolean("blurOff", !b.getBoolean("blurOff")),
                         false);
-                note(
-                        "When enabled, Samsung controls blur for the current screen and"
-                                + " accessibility settings. Depth clips blur around the subject.");
             }
         }
         section("Reset");
@@ -310,7 +292,8 @@ final class WidgetPanel {
                     }
                 });
         group = content;
-        status = label("Changes preview here. Use the editorâ€™s Done / Apply to save.");
+        status = label("");
+        status.setVisibility(View.GONE);
         binding = false;
         content.requestLayout();
     }
@@ -326,22 +309,27 @@ final class WidgetPanel {
                 b.getBoolean("keepCharging"),
                 next -> next.putBoolean("keepCharging", !b.getBoolean("keepCharging")),
                 false);
-        note("Keep the finished charging card visible while plugged in. It closes when unplugged.");
+        note("Until the charger is unplugged.");
         toggle(
                 "Full-screen album artwork",
                 b.getBoolean("fullscreenArt"),
                 next -> next.putBoolean("fullscreenArt", !b.getBoolean("fullscreenArt")),
                 false);
-        label("Your Now Bar");
+        if (editor.stackAvailable()) {
+            slider("Visible cards", 3, 8, b.getInt("stackCards", 3), "",
+                    (next, value) -> next.putInt("stackCards", value), false);
+            note("Limited to available cards.");
+        }
+        label("Custom message");
         toggle(
-                "Show a custom message",
+                "Show message",
                 b.getBoolean("textCard"),
                 next -> next.putBoolean("textCard", !b.getBoolean("textCard")),
                 false);
         if (b.getBoolean("textCard")) {
             text("Title", "title", b.getString("title"), 80);
             text("Message", "message", b.getString("message"), 180);
-            note("This text is visible on the lockscreen.");
+            note("Shown on the lockscreen.");
         }
         if (!editor.legacy()) {
             label("Always On Display");
@@ -350,9 +338,6 @@ final class WidgetPanel {
                     b.getBoolean("keepStretch"),
                     next -> next.putBoolean("keepStretch", !b.getBoolean("keepStretch")),
                     false);
-            note(
-                    "Keep a dynamic clockâ€™s height when entering AOD. Native color and weight"
-                            + " transitions stay active.");
         }
         TextView reset = label("Reset extra settings");
         reset.setMinHeight(dp(48));
@@ -366,7 +351,8 @@ final class WidgetPanel {
                         error(e);
                     }
                 });
-        status = label("These settings apply to all wallpapers. Use Done / Apply to save.");
+        status = label("");
+        status.setVisibility(View.GONE);
     }
 
     private void text(String caption, String key, String value, int limit) {
@@ -409,18 +395,14 @@ final class WidgetPanel {
                                 error(e);
                             }
                         });
-            else if (status != null)
-                status.setText(
-                        extrasSelected
-                                ? "Use Done / Apply to save extra settings."
-                                : "Preview updated. Apply to save.");
+
         } catch (Exception e) {
             error(e);
             content.post(
                     () -> {
                         try {
                             render();
-                            status.setText(e.getMessage());
+                            setStatus(e.getMessage());
                         } catch (Exception ignored) {
                         }
                     });
@@ -659,9 +641,15 @@ final class WidgetPanel {
         return Math.round(value * context.getResources().getDisplayMetrics().density);
     }
 
+    private void setStatus(String message) {
+        if (status == null) return;
+        status.setText(message);
+        status.setVisibility(message == null || message.isBlank() ? View.GONE : View.VISIBLE);
+    }
+
     private void error(Exception e) {
         android.util.Log.e(DressroomModule.TAG, "Widget control failed", e);
-        if (status != null) status.setText(e.getMessage());
+        if (status != null) setStatus(e.getMessage());
         android.widget.Toast.makeText(context, e.getMessage(), android.widget.Toast.LENGTH_LONG)
                 .show();
     }

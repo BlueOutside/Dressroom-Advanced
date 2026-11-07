@@ -45,6 +45,18 @@ final class EditorWidgets {
         return legacyBinding != null;
     }
 
+    boolean stackAvailable() {
+        if (!legacy()) return true;
+        try {
+            NowBarStackBinding.of(Class.forName(
+                    "com.samsung.android.uniform.widget.clock.AbsClockView", false,
+                    grid().getClass().getClassLoader()));
+            return true;
+        } catch (ReflectiveOperationException | RuntimeException unavailable) {
+            return false;
+        }
+    }
+
     boolean depthAvailable() {
         if (!legacy()) return true;
         try {

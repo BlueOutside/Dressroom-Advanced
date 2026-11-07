@@ -116,11 +116,6 @@ final class RuntimeClockHooks {
                 GlyphDrawReuse.install(module, loader);
                 module.widgetEngine.install(loader);
                 widgets.install(loader);
-                try {
-                    NowBarStackRepair.install(module, loader);
-                } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
-                    module.report("Now Bar stack repair unavailable", error);
-                }
             } else {
                 if (!binding.clockStyle) DepthBlurHooks.install(module, base);
                 try {
@@ -128,6 +123,15 @@ final class RuntimeClockHooks {
                     widgets.installLegacy(loader);
                 } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
                     module.report("Optional 8.5 widget runtime unavailable", error);
+                }
+            }
+            {
+                try {
+                    NowBarStackBinding stack = NowBarStackBinding.of(base);
+                    NowBarStackRepair.install(module, stack);
+                    NowBarStackLayers.install(module, stack);
+                } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+                    module.report("Now Bar stack controls unavailable", error);
                 }
             }
             Class<?> font =

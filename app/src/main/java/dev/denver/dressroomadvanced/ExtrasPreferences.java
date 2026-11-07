@@ -13,6 +13,7 @@ final class ExtrasPreferences {
     static Bundle clean(Bundle input) {
         Bundle b = new Bundle();
         for (String flag : FLAGS) b.putBoolean(flag, input != null && input.getBoolean(flag));
+        b.putInt("stackCards", Math.max(3, Math.min(8, input == null ? 3 : input.getInt("stackCards", 3))));
         b.putString("title", text(input == null ? null : input.getString("title"), 80));
         b.putString("message", text(input == null ? null : input.getString("message"), 180));
         return b;
@@ -49,6 +50,7 @@ final class ExtrasPreferences {
             Bundle b = clean(input);
             JSONObject json = new JSONObject();
             for (String flag : FLAGS) json.put(flag, b.getBoolean(flag));
+            json.put("stackCards", b.getInt("stackCards", 3));
             json.put("title", b.getString("title"));
             json.put("message", b.getString("message"));
             if (!prefs.edit().putString("options", json.toString()).commit())
@@ -61,6 +63,7 @@ final class ExtrasPreferences {
         JSONObject json = new JSONObject(prefs.getString("options", "{}"));
         Bundle b = new Bundle();
         for (String flag : FLAGS) b.putBoolean(flag, json.optBoolean(flag));
+        b.putInt("stackCards", json.optInt("stackCards", 3));
         b.putString("title", json.optString("title"));
         b.putString("message", json.optString("message"));
         return clean(b);

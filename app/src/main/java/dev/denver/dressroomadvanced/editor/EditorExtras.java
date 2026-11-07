@@ -35,6 +35,7 @@ final class EditorExtras {
         if (draft == null || saved == null) return;
         for (String key : ExtrasPreferences.FLAGS)
             if (draft.getBoolean(key) != saved.getBoolean(key)) return;
+        if (draft.getInt("stackCards", 3) != saved.getInt("stackCards", 3)) return;
         if (!draft.getString("title", "").equals(saved.getString("title", ""))
                 || !draft.getString("message", "").equals(saved.getString("message", ""))) return;
         dirty = false;

@@ -191,6 +191,7 @@ final class NativeClockPanel {
             status = label("", 12, false);
             status.setMinHeight(0);
             status.setMinimumHeight(0);
+            status.setVisibility(View.GONE);
             Object data = data();
             currentRenderer();
             module.prepareRenderer(renderer);
@@ -305,7 +306,6 @@ final class NativeClockPanel {
                         false,
                         v -> edit("y", d -> move(d, movedX, Math.round(v))));
             }
-            label("Available space and Samsung's fit rules still apply.", 12, false);
             section("Appearance");
             toggle(
                     "Adaptive color",
@@ -395,8 +395,7 @@ final class NativeClockPanel {
                 TextView detectSubject =
                         action(
                                 "Detect wallpaper subject again",
-                                "Detection is automatic when depth is enabled. Crop and zoom follow"
-                                        + " the full-image mask.");
+                                "");
                 detectSubject.setEnabled(imageAvailable);
                 if (!imageAvailable)
                     label(
@@ -415,14 +414,13 @@ final class NativeClockPanel {
                                     stage(data());
                                 }
                                 module.detectDepth();
-                                status.setText("Detecting subject…");
+                                setStatus("Detecting subject…");
                             } catch (Exception error) {
                                 error(error);
                             }
                         });
                 label(
-                        "Dynamic clocks use manual stretch with depth so wallpaper avoidance cannot"
-                                + " resize them.",
+                        "Depth uses manual stretch for dynamic clocks.",
                         12,
                         false);
             }
@@ -484,7 +482,7 @@ final class NativeClockPanel {
                         NativeEdits.remeasure(controller, bool(data(), "getShowWeatherInfo"));
                         finishNativeEdit();
                         stage(data());
-                        status.setText("Live preview · use Done or Apply to save");
+                        setStatus("");
                     });
             dateOrderControl =
                     toggle(
@@ -604,7 +602,7 @@ final class NativeClockPanel {
                 });
         if (!extension) {
             label(
-                    "This clock has no Samsung text-blur renderer, so blur cannot be forced.",
+                    "Blur is unavailable for this clock.",
                     12,
                     false);
             return;
@@ -1130,7 +1128,7 @@ final class NativeClockPanel {
                 clock.requestLayout();
                 clock.invalidate();
             }
-            status.setText("Live preview · use Done or Apply to save");
+            setStatus("");
         } catch (Exception e) {
             try {
                 if (weatherJob == null) NativeEdits.changing(controller, false);
@@ -1216,7 +1214,7 @@ final class NativeClockPanel {
     }
 
     void depthStatus(String message) {
-        if (status != null && ready) status.setText(message);
+        if (status != null && ready) setStatus(message);
     }
 
     void clearDepth(String message) {
@@ -1500,7 +1498,7 @@ final class NativeClockPanel {
     }
 
     private TextView action(String title, String summary) {
-        TextView row = label(title + "\n" + summary, 15, false);
+        TextView row = label(summary.isEmpty() ? title : title + "\n" + summary, 15, false);
         row.setMinHeight(dp(56));
         row.setFocusable(true);
         row.setClickable(true);
@@ -1609,6 +1607,12 @@ final class NativeClockPanel {
                 });
     }
 
+    private void setStatus(String message) {
+        if (status == null) return;
+        status.setText(message);
+        status.setVisibility(message == null || message.isBlank() ? View.GONE : View.VISIBLE);
+    }
+
     private void error(Exception e) {
         module.report("Native Advanced control failed", e);
         if (status == null) {
@@ -1616,7 +1620,7 @@ final class NativeClockPanel {
             content.addView(status, new LinearLayout.LayoutParams(-1, -2));
         }
         if (status != null)
-            status.setText(
+            setStatus(
                     "Could not update: "
                             + (e.getMessage() == null ? "select Advanced again" : e.getMessage()));
     }
