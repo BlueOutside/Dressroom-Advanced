@@ -466,37 +466,37 @@
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/RuntimeClockHooks.java",
-      "line": 210,
+      "line": 220,
       "kind": "declared-method",
       "target": "isStretchable"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/RuntimeClockHooks.java",
-      "line": 235,
+      "line": 245,
       "kind": "declared-method",
       "target": "onAttachedToWindow"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/RuntimeClockHooks.java",
-      "line": 258,
+      "line": 268,
       "kind": "class",
       "target": "com.samsung.android.clockpack.plugins.clock.ShadowStyle"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/RuntimeClockHooks.java",
-      "line": 262,
+      "line": 272,
       "kind": "declared-method",
       "target": "setShadowStyle"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/RuntimeClockHooks.java",
-      "line": 272,
+      "line": 282,
       "kind": "declared-method",
       "target": "setDozing"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/RuntimeClockHooks.java",
-      "line": 307,
+      "line": 317,
       "kind": "declared-method",
       "target": "setMediaExpanded"
     },
@@ -1024,31 +1024,31 @@
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/depth/DepthEffects.java",
-      "line": 644,
+      "line": 654,
       "kind": "class",
       "target": "com.samsung.android.app.dressroom.presentation.preview.widget.CropImageView"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/depth/DepthEffects.java",
-      "line": 648,
+      "line": 658,
       "kind": "declared-method",
       "target": "onDraw"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/depth/DepthEffects.java",
-      "line": 665,
+      "line": 675,
       "kind": "class",
       "target": "com.samsung.android.app.dressroom.editorcomponent.component.wallpaper.image.effects.weather.WeatherSurfaceView"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/depth/DepthEffects.java",
-      "line": 851,
+      "line": 861,
       "kind": "class",
       "target": "com.samsung.android.app.sdk.deepsky.objectcapture.ObjectCaptureProvider"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/depth/DepthEffects.java",
-      "line": 856,
+      "line": 866,
       "kind": "public-method",
       "target": "getInstance"
     },

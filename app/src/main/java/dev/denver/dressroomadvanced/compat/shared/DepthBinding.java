@@ -40,11 +40,11 @@ final class DepthBinding {
     }
 
     static boolean provider(Object clock) {
-        ClockBinding binding = ClockBinding.of(clock);
-        return !binding.legacy
-                || binding.clockStyle
-                || DepthBlurHooks.ready(
-                        (clock instanceof Class<?> type ? type : clock.getClass())
-                                .getClassLoader());
+        try {
+            ClockBinding.of(clock);
+            return true;
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 }

@@ -194,6 +194,16 @@ final class RuntimeClockHooks {
                                                     (View) chain.getThisObject(),
                                                     profiles.get((View) chain.getThisObject()));
                                             VariableFonts.forget((View) chain.getThisObject());
+                                            Bundle fontProfile =
+                                                    profiles.get((View) chain.getThisObject());
+                                            if (fontProfile != null
+                                                    && DepthBinding.provider(
+                                                            (View) chain.getThisObject())) {
+                                                DepthEffects.apply(
+                                                        (View) chain.getThisObject(),
+                                                        fontProfile.getBoolean("depthEnabled"),
+                                                        fontProfile.getByteArray("depthMask"));
+                                            }
                                             Object result =
                                                     requestedFont == chain.getArg(0)
                                                             ? chain.proceed()
@@ -611,10 +621,10 @@ final class RuntimeClockHooks {
                         profile = profiles.get(clock);
                     }
                     if (profile != null && DepthBinding.provider(clock)) {
-                        DepthEffects.applyDigits(
-                                clock,
-                                profile.getBoolean("depthEnabled"),
-                                profile.getByteArray("depthMask"));
+                        boolean depthOn = profile.getBoolean("depthEnabled");
+                        byte[] mask = profile.getByteArray("depthMask");
+                        DepthEffects.apply(clock, depthOn, mask);
+                        DepthEffects.applyDigits(clock, depthOn, mask);
                     }
                 });
         if (!observing.compareAndSet(false, true)) return;

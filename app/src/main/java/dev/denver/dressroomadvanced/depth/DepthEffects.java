@@ -138,6 +138,10 @@ final class DepthEffects {
                         chain -> {
                             View view = (View) chain.getThisObject();
                             Entry entry = entries.get(view);
+                            if (entry == null) {
+                                entry = inheritedSubject(view);
+                                if (entry != null && entry.nodeClip) entry = null;
+                            }
                             if (entry == null
                                     || entry.mask == null
                                     || !entry.enabled
@@ -234,6 +238,7 @@ final class DepthEffects {
                 cachedSubject = null;
             }
             if (mask == null) {
+                ClockContentClip.watch(view, false);
                 if (entries.remove(view) != null) {
                     view.invalidate();
                     refreshNativeBlur(view);
@@ -245,7 +250,7 @@ final class DepthEffects {
         }
         entry.enabled = true;
         entry.wholeDraw = isClockView(view);
-        if (entry.wholeDraw && ClockBinding.of(view).clockStyle && WidgetContentClip.supported()) {
+        if (entry.wholeDraw && ClockContentClip.needed(view)) {
             entry.nodeClip = true;
             entry.wholeDraw = false;
             ClockContentClip.watch(view, true);
@@ -568,12 +573,17 @@ final class DepthEffects {
 
     private static void applyDigitChildren(View root, boolean enabled, byte[] png, boolean editor) {
         if (root == null) return;
-        if (root instanceof TextView && root.getId() != View.NO_ID)
+        if (root.getId() != View.NO_ID)
             try {
                 String name = root.getResources().getResourceEntryName(root.getId());
                 if (name.startsWith("common_stretch_hour")
                         || name.startsWith("common_stretch_minute")
-                        || name.equals("common_stretch_colon")) {
+                        || name.equals("common_stretch_colon")
+                        || name.startsWith("common_hour")
+                        || name.startsWith("common_minute")
+                        || name.equals("common_colon")
+                        || name.equals("common_time_area")
+                        || name.equals("common_stretch_time_area")) {
                     if (editor) applyEditor(root, enabled, png);
                     else apply(root, enabled, png);
                 }
