@@ -1,0 +1,5 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="dev.denver.nativeglyphprobe" android:versionCode="1" android:versionName="1">
+ <uses-sdk android:minSdkVersion="29" android:targetSdkVersion="36"/>
+ <application android:label="Native glyph probe" android:debuggable="true" android:theme="@android:style/Theme.Material.Light.NoActionBar"/>
+ <instrumentation android:name="dev.denver.nativeglyphprobe.GlyphInstrumentation" android:targetPackage="dev.denver.nativeglyphprobe"/>
+</manifest>

@@ -1,0 +1,12 @@
+{
+  "Jvm": [
+    "FontAxesTest", "BlurOpacityTest", "ChargingStateTest", "DeferredDiscoveryTest", "IdentityLocksTest",
+    "LatestDepthWorkTest", "LifecycleContractTest", "ReflectContractTest", "WidgetLayoutTest", "AdapterContractsTest", "DeferredRefreshTest", "DepthSourcePolicyTest"
+  ],
+  "Android": [
+    "MediaPerformanceProbe", "ClockBlurSyncProbe", "OptimizationProbe", "ClockContentClipProbe",
+    "CodebaseAuditProbe", "RenderHotPathProbe", "ReflectContractTest", "DepthRegionProbe",
+    "DepthV2PlatformProbe", "MediaReturnProbe", "NowBarPipelineProbe", "LatestDepthWorkTest",
+    "LifecycleContractTest", "OrientationProfileProbe", "EditorScrollProbe", "RootLayoutWatchProbe", "DepthSafetyProbe", "SongRevealProbe"
+  ]
+}
