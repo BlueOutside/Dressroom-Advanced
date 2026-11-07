@@ -925,7 +925,14 @@ public final class DressroomModule extends XposedModule {
                                                         chain.getThisObject(), data, value);
                                             }
                                             restoreManualData(data, saved);
-                                            if (restoredSelections.add(selectionKey(type, font))) {
+                                            String restoreKey = selectionKey(type, font);
+                                            boolean firstRestore = restoredSelections.add(restoreKey);
+                                            // Native refreshes (widget grid, clock position)
+                                            // rebuild ClockData with default shadow/blur. Keep
+                                            // re-applying the staged draft so Apply does not
+                                            // save those defaults over Advanced settings.
+                                            boolean staged = editorDrafts.containsKey(restoreKey);
+                                            if (firstRestore || staged) {
                                                 restoreShadowData(data, saved);
                                                 if (!editorBinding.legacy
                                                         && saved != null
@@ -935,7 +942,8 @@ public final class DressroomModule extends XposedModule {
                                                             Reflect.call(data, "getClockTypeData"),
                                                             "setSupportTextBlur",
                                                             true);
-                                                    Reflect.call(data, "setBlurEnabled", true);
+                                                    if (firstRestore)
+                                                        Reflect.call(data, "setBlurEnabled", true);
                                                 }
                                             }
                                         }
@@ -1161,15 +1169,20 @@ public final class DressroomModule extends XposedModule {
                                                                 .intValue();
                                                 query.putInt("type", selectedType);
                                                 query.putInt("font", selectedFont);
+                                                // Preset fonts report a null path; String.valueOf
+                                                // would turn it into "null" and miss the staged
+                                                // draft whenever native code rebinds the clock
+                                                // (for example after widget grid edits).
+                                                Object rawPath =
+                                                        Reflect.call(chain.getArg(0), "getFontPath");
                                                 android.os.Bundle saved =
                                                         editorSettings(
                                                                 view.getContext(),
                                                                 selectedType,
                                                                 selectedFont,
-                                                                String.valueOf(
-                                                                        Reflect.call(
-                                                                                chain.getArg(0),
-                                                                                "getFontPath")));
+                                                                rawPath instanceof String path
+                                                                        ? path
+                                                                        : "");
                                                 enabled =
                                                         saved != null
                                                                 && FontAxisSettings.nativeStretch(

@@ -204,6 +204,9 @@ final class OneUi9WidgetEditor {
                         loader,
                         cls ->
                                 !cls.isInterface()
+                                        // The sub-clock repository shares this signature but
+                                        // has no boolean state; require it to avoid binding it.
+                                        && NativeContract.hasField(cls, boolean.class)
                                         && NativeContract.hasMethod(
                                                 cls, void.class, widgetDataType),
                         ALIGN_FEEDBACK);
