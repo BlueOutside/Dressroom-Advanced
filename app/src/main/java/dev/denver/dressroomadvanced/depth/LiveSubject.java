@@ -78,11 +78,12 @@ final class LiveSubject {
     static record Detail(Bitmap bitmap, Matrix toSource) {}
 
     Detail detail(Bitmap full) {
-        float ratio = Math.min(1f, Math.min(1440f / capturedWidth, 4096f / capturedHeight));
-        int width = Math.max(1, Math.round(capturedWidth * ratio)),
-                height = Math.max(1, Math.round(capturedHeight * ratio));
+        int capW = Math.max(1, capturedWidth), capH = Math.max(1, capturedHeight);
+        float ratio = Math.min(1f, Math.min(1440f / capW, 4096f / capH));
+        int width = Math.max(1, Math.round(capW * ratio)),
+                height = Math.max(1, Math.round(capH * ratio));
         Matrix scale = new Matrix();
-        scale.setScale((float) width / capturedWidth, (float) height / capturedHeight);
+        scale.setScale((float) width / capW, (float) height / capH);
         Matrix toDetail = new Matrix();
         toDetail.setConcat(scale, capturedToView);
         Matrix inverse = new Matrix();

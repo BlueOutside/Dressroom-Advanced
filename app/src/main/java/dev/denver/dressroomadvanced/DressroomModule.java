@@ -77,6 +77,23 @@ public final class DressroomModule extends XposedModule {
     private final java.util.concurrent.atomic.AtomicBoolean sourceCheckQueued =
             new java.util.concurrent.atomic.AtomicBoolean();
 
+    private Boolean objectCaptureSupported;
+
+    boolean depthHardwareAvailable() {
+        if (objectCaptureSupported != null) return objectCaptureSupported;
+        android.content.Context context = editorContext;
+        if (context == null && editorActivity.get() instanceof android.content.Context act)
+            context = act;
+        if (context != null) {
+            Boolean supported = DepthBinding.isObjectCaptureSupported(context);
+            if (supported != null) {
+                objectCaptureSupported = supported;
+                return supported;
+            }
+        }
+        return true;
+    }
+
     boolean depthImageAvailable() {
         syncWallpaperSource();
         return sourceKnown && sourceImage;
@@ -1513,8 +1530,8 @@ public final class DressroomModule extends XposedModule {
                     || processName.startsWith("com.samsung.android.app.clockpack:"))) return;
             if (runtimeHooks == null) {
                 runtimeHooks = new RuntimeClockHooks(this);
-                runtimeHooks.install(param.getClassLoader());
             }
+            runtimeHooks.install(param.getClassLoader());
             if ("com.android.systemui".equals(param.getPackageName())
                     && processName.equals("com.android.systemui")
                     && android.os.Build.VERSION.SDK_INT >= 36) {

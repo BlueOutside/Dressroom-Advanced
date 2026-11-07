@@ -206,6 +206,66 @@ final class RuntimeWidgetHooks {
                                         }));
                 module.deoptimize(method);
             }
+            try {
+                Class<?> containerClass =
+                        Class.forName(
+                                "com.samsung.android.app.facewidget.complication.KeyguardComplicationWidgetContainer",
+                                false,
+                                loader);
+                for (Method m : containerClass.getDeclaredMethods()) {
+                    if (m.getName().equals("applyComplicationX")) {
+                        handles.add(
+                                module.hook(m)
+                                        .setId("dressroom-advanced.prevent-widget-snap")
+                                        .intercept(
+                                                chain -> {
+                                                    View target = (View) chain.getThisObject();
+                                                    if (WidgetPlacement.isCustomPlacement(target)) {
+                                                        return null;
+                                                    }
+                                                    return chain.proceed();
+                                                }));
+                        module.deoptimize(m);
+                    }
+                }
+            } catch (Exception | LinkageError e) {
+                module.report("KeyguardComplicationWidgetContainer hook unavailable", e);
+            }
+            try {
+                Class<?> compManagerClass =
+                        Class.forName(
+                                "com.samsung.android.app.facewidget.complication.ComplicationManager",
+                                false,
+                                loader);
+                for (Method m : compManagerClass.getDeclaredMethods()) {
+                    if (m.getName().equals("onClockTransitionEnded")) {
+                        handles.add(
+                                module.hook(m)
+                                        .setId("dressroom-advanced.prevent-widget-transition-reset")
+                                        .intercept(
+                                                chain -> {
+                                                    Object manager = chain.getThisObject();
+                                                    ViewGroup container =
+                                                            (ViewGroup)
+                                                                    Reflect.field(
+                                                                            manager, "container");
+                                                    if (container != null
+                                                            && WidgetPlacement.isCustomPlacement(
+                                                                    container)) {
+                                                        Reflect.call(
+                                                                manager,
+                                                                "updateContainerAlpha",
+                                                                false);
+                                                        return null;
+                                                    }
+                                                    return chain.proceed();
+                                                }));
+                        module.deoptimize(m);
+                    }
+                }
+            } catch (Exception | LinkageError e) {
+                module.report("ComplicationManager transition hook unavailable", e);
+            }
             installed.add(loader);
             android.util.Log.i(
                     DressroomModule.TAG, "Native complication controller owns runtime widgets");

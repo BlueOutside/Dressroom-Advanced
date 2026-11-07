@@ -296,16 +296,17 @@ final class WidgetEngine {
                                             Object manager =
                                                     Reflect.call(
                                                             controller, "getWidgetSizeManager");
-                                            if (!main(manager)
-                                                    || !config(manager).getBoolean("layout"))
+                                            if (!main(manager))
                                                 return chain.proceed();
                                             Object requested = nativeArrangement.get();
+                                            Object targetAlign =
+                                                    requested == null
+                                                            ? chain.getArg(0)
+                                                            : requested;
                                             Reflect.call(
                                                     controller,
                                                     "changeAlignType",
-                                                    requested == null
-                                                            ? chain.getArg(0)
-                                                            : requested);
+                                                    targetAlign);
                                             reflow(controller);
                                             return null;
                                         }));

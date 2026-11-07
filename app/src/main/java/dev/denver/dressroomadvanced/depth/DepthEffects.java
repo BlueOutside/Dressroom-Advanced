@@ -250,11 +250,8 @@ final class DepthEffects {
         }
         entry.enabled = true;
         entry.wholeDraw = isClockView(view);
-        if (entry.wholeDraw && ClockContentClip.needed(view)) {
-            entry.nodeClip = true;
-            entry.wholeDraw = false;
-            ClockContentClip.watch(view, true);
-        }
+        entry.nodeClip = false;
+        ClockContentClip.watch(view, false);
         if (changed) {
             view.invalidate();
             refreshNativeBlur(view);
@@ -447,11 +444,9 @@ final class DepthEffects {
         Entry entry = entries.get(view);
         if (entry != null) {
             entry.editor = true;
-            if (isClockView(view) && ClockContentClip.needed(view)) {
-                entry.nodeClip = true;
-                entry.wholeDraw = false;
-                ClockContentClip.watch(view, true);
-            }
+            entry.wholeDraw = isClockView(view);
+            entry.nodeClip = false;
+            ClockContentClip.watch(view, false);
             entry.previewScale = editorScale;
             entry.previewOriginX = editorOriginX;
             entry.previewOriginY = editorOriginY;
@@ -871,6 +866,13 @@ final class DepthEffects {
                                     "Samsung object capture is unavailable on this device");
                         Reflect.call(detector, "init");
                         prepared = MaskAlpha.detect(detector, wallpaper, "full image");
+                        if (prepared == null && request == scanRequest) {
+                            try {
+                                Thread.sleep(60);
+                            } catch (InterruptedException ignored) {
+                            }
+                            prepared = MaskAlpha.detect(detector, wallpaper, "full image retry");
+                        }
                         final Object activeDetector = detector;
                         prepared =
                                 MaskAlpha.refine(
@@ -935,6 +937,13 @@ final class DepthEffects {
         LiveSubject.Detail detail = capture.detail(wallpaper);
         try {
             Bitmap focused = MaskAlpha.detect(detector, detail.bitmap(), "visible detail");
+            if (focused == null) {
+                try {
+                    Thread.sleep(60);
+                } catch (InterruptedException ignored) {
+                }
+                focused = MaskAlpha.detect(detector, detail.bitmap(), "visible detail retry");
+            }
             if (focused == null) return null;
             try {
                 Bitmap mapped =

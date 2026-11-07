@@ -47,4 +47,20 @@ final class DepthBinding {
             return false;
         }
     }
+
+    static Boolean isObjectCaptureSupported(Context context) {
+        if (context == null) return null;
+        try {
+            ClassLoader loader = context.getClassLoader();
+            Class<?> provider =
+                    Class.forName(SDK + "ObjectCaptureProvider", false, loader);
+            Object detector =
+                    provider.getMethod("getInstance", Context.class).invoke(null, context);
+            if (detector == null) return false;
+            Object supported = Reflect.call(detector, "isObjectCaptureSupported");
+            return Boolean.TRUE.equals(supported);
+        } catch (Throwable error) {
+            return false;
+        }
+    }
 }
