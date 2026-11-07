@@ -6,7 +6,7 @@
     "Constructors, method signatures, enum values and behavioral contracts",
     "Resource names matched by traversal rather than getIdentifier literals"
   ],
-  "sourceFiles": 113,
+  "sourceFiles": 116,
   "entries": [
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/DressroomModule.java",
@@ -604,49 +604,49 @@
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/RuntimeClockHooks.java",
-      "line": 141,
+      "line": 143,
       "kind": "class",
       "target": "com.samsung.android.clockpack.plugins.clock.ClockFontData"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/RuntimeClockHooks.java",
-      "line": 154,
+      "line": 156,
       "kind": "declared-method",
       "target": "setFontType"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/RuntimeClockHooks.java",
-      "line": 208,
+      "line": 210,
       "kind": "declared-method",
       "target": "isStretchable"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/RuntimeClockHooks.java",
-      "line": 233,
+      "line": 235,
       "kind": "declared-method",
       "target": "onAttachedToWindow"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/RuntimeClockHooks.java",
-      "line": 256,
+      "line": 258,
       "kind": "class",
       "target": "com.samsung.android.clockpack.plugins.clock.ShadowStyle"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/RuntimeClockHooks.java",
-      "line": 260,
+      "line": 262,
       "kind": "declared-method",
       "target": "setShadowStyle"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/RuntimeClockHooks.java",
-      "line": 270,
+      "line": 272,
       "kind": "declared-method",
       "target": "setDozing"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/RuntimeClockHooks.java",
-      "line": 305,
+      "line": 307,
       "kind": "declared-method",
       "target": "setMediaExpanded"
     },
@@ -706,73 +706,97 @@
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/oneui85/OneUi85AodClockSource.java",
-      "line": 11,
+      "line": 10,
+      "kind": "class",
+      "target": "aod.PO"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/oneui85/OneUi85AodClockSource.java",
+      "line": 10,
+      "kind": "declared-method",
+      "target": "k"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/oneui85/OneUi85AodClockSource.java",
+      "line": 15,
       "kind": "class",
       "target": "com.samsung.android.app.facewidget.FaceWidgetViewModel"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/oneui85/OneUi85AodClockSource.java",
-      "line": 14,
+      "line": 18,
       "kind": "class",
       "target": "com.samsung.android.app.facewidget.pages.clock.FaceWidgetClockPage"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/oneui85/OneUi85AodClockSource.java",
-      "line": 19,
+      "line": 23,
       "kind": "class",
       "target": "com.samsung.android.clockpack.plugins.clock.ClockFontData"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/oneui85/OneUi85AodClockSource.java",
-      "line": 25,
+      "line": 29,
       "kind": "declared-method",
       "target": "getClockViewForFullScreen"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/oneui85/OneUi85AodClockSource.java",
-      "line": 26,
+      "line": 30,
       "kind": "class",
       "target": "aod.zS"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/oneui85/OneUi85AodClockSource.java",
-      "line": 26,
+      "line": 30,
       "kind": "declared-method",
       "target": "t"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/oneui85/OneUi85ClockSource.java",
-      "line": 11,
+      "line": 10,
+      "kind": "class",
+      "target": "aod.QT"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/oneui85/OneUi85ClockSource.java",
+      "line": 10,
+      "kind": "declared-method",
+      "target": "g"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/oneui85/OneUi85ClockSource.java",
+      "line": 15,
       "kind": "class",
       "target": "com.samsung.android.app.facewidget.FaceWidgetViewModel"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/oneui85/OneUi85ClockSource.java",
-      "line": 14,
+      "line": 18,
       "kind": "class",
       "target": "com.samsung.android.app.facewidget.pages.clock.FaceWidgetClockPage"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/oneui85/OneUi85ClockSource.java",
-      "line": 19,
+      "line": 23,
       "kind": "class",
       "target": "com.samsung.android.clockpack.plugins.clock.ClockFontData"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/oneui85/OneUi85ClockSource.java",
-      "line": 26,
+      "line": 30,
       "kind": "declared-method",
       "target": "getClockViewForFullScreen"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/oneui85/OneUi85ClockSource.java",
-      "line": 27,
+      "line": 31,
       "kind": "class",
       "target": "aod.vL"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/oneui85/OneUi85ClockSource.java",
-      "line": 27,
+      "line": 31,
       "kind": "declared-method",
       "target": "t"
     },
@@ -816,49 +840,73 @@
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/oneui9/OneUi9ClockSource.java",
       "line": 11,
       "kind": "class",
+      "target": "aod.qn1"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/oneui9/OneUi9ClockSource.java",
+      "line": 12,
+      "kind": "declared-method",
+      "target": "X"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/oneui9/OneUi9ClockSource.java",
+      "line": 17,
+      "kind": "class",
       "target": "com.samsung.android.app.facewidget.FaceWidgetViewModel"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/oneui9/OneUi9ClockSource.java",
-      "line": 14,
+      "line": 20,
       "kind": "class",
       "target": "com.samsung.android.app.facewidget.pages.clock.FaceWidgetClockPage"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/oneui9/OneUi9ClockSource.java",
-      "line": 19,
+      "line": 25,
       "kind": "declared-method",
       "target": "C"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/oneui9/OneUi9ClockSource.java",
-      "line": 20,
+      "line": 26,
       "kind": "declared-method",
       "target": "y"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/oneui9/OneUi9ClockSource.java",
-      "line": 21,
+      "line": 27,
       "kind": "declared-method",
       "target": "C"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/oneui9/OneUi9ClockSource.java",
-      "line": 22,
+      "line": 28,
       "kind": "declared-method",
       "target": "getFullscreenClockFontData"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/oneui9/OneUi9ClockSource.java",
-      "line": 23,
+      "line": 29,
       "kind": "declared-method",
       "target": "getClockViewForFullScreen"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/oneui9/OneUi9ClockSource.java",
-      "line": 28,
+      "line": 34,
       "kind": "class",
       "target": "aod.fb2"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/oneui9/OneUi9ClockStyleClockSource.java",
+      "line": 11,
+      "kind": "class",
+      "target": "aod.uq6"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/oneui9/OneUi9ClockStyleClockSource.java",
+      "line": 12,
+      "kind": "declared-method",
+      "target": "T"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/ClockBinding.java",
@@ -868,13 +916,13 @@
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/ClockBinding.java",
-      "line": 106,
+      "line": 109,
       "kind": "class",
       "target": "com.samsung.android.clockpack.plugins.clock.ShadowStyle"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/ClockBinding.java",
-      "line": 189,
+      "line": 169,
       "kind": "public-method",
       "target": "getFontType"
     },
@@ -976,25 +1024,25 @@
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/NowBarStackBinding.java",
-      "line": 67,
+      "line": 69,
       "kind": "class",
       "target": "com.samsung.android.app.facewidget.utils.NowBarCardStackView"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/NowBarStackBinding.java",
-      "line": 71,
+      "line": 73,
       "kind": "class",
       "target": "com.samsung.android.app.facewidget.presentation.a"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/NowBarStackBinding.java",
-      "line": 73,
+      "line": 75,
       "kind": "class",
       "target": "com.android.systemui.plugins.keyguardstatusview.NowBarItem"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/NowBarStackBinding.java",
-      "line": 117,
+      "line": 119,
       "kind": "class",
       "target": "com.samsung.android.app.facewidget.presentation.NowBarMediaCardView"
     },

@@ -31,7 +31,9 @@ final class ClockSourceBinding {
         methods.add(stretch);
         methods.addAll(
                 !clock.legacy
-                        ? OneUi9ClockSource.callers(loader)
+                        ? (clock.clockStyle
+                                ? OneUi9ClockStyleClockSource.callers(loader)
+                                : OneUi9ClockSource.callers(loader))
                         : clock.clockStyle
                                 ? OneUi85ClockSource.callers(loader)
                                 : OneUi85AodClockSource.callers(loader));

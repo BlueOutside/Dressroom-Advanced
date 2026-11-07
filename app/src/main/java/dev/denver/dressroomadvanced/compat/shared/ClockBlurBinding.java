@@ -15,10 +15,10 @@ final class ClockBlurBinding {
 
     static ClockBlurBinding resolve(Class<?> base) throws ReflectiveOperationException {
         ClockBinding binding = ClockBinding.of(base);
+        if (binding.clockStyle) throw new NoSuchMethodException("Clock Style blur is not mapped");
         ClassLoader loader = base.getClassLoader();
         if (!binding.legacy)
             return new ClockBlurBinding(loader, "aod.tx0", "aod.xb0", "aod.e70", "a", "o");
-        if (binding.clockStyle) throw new NoSuchMethodException("Clock Style blur is not mapped");
         return OneUi85AodBlur.resolve(loader);
     }
 

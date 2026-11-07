@@ -5,10 +5,11 @@ The document picker, private font storage, fvar controls, axis profiles and Appl
 | Provider | Fixed typeface | Variable typeface | Font render |
 | --- | --- | --- | --- |
 | One UI 9 AOD | C | B | g0 |
+| One UI 9 Clock Style | A | z | d0 |
 | One UI 8.5 Clock Style | x | w | X |
 | One UI 8.5 AOD | A | z | b0 |
 
-All three inspected providers use the same five-argument `ClockFontData.copy` contract. Bindings validate the return and parameter types before hooking. The concrete clock subclass supplies the actual render override.
+All four inspected providers use the same five-argument `ClockFontData.copy` contract. Bindings validate the return and parameter types before hooking. The concrete clock subclass supplies the actual render override.
 
 An imported font uses a non-stretching drawing request. Its saved Samsung font identity remains unchanged. Depth stays available, but imported profiles neither restore manual heights nor acquire a manual-stretch hold from depth. Returning to the Samsung font restores its stretch capability.
 

@@ -38,54 +38,13 @@ final class FontBinding {
     private static FontBinding resolve(Class<?> base, ClockBinding clock)
             throws ReflectiveOperationException {
         if (!clock.legacy) {
-            try {
-                return OneUi9Fonts.bind(base);
-            } catch (NoSuchMethodException ignored) {
-            }
-        } else if (clock.clockStyle) {
-            try {
-                return OneUi85ClockStyleFonts.bind(base);
-            } catch (NoSuchMethodException ignored) {
-            }
-        } else {
-            try {
-                return OneUi85AodFonts.bind(base);
-            } catch (NoSuchMethodException ignored) {
-            }
+            return clock.clockStyle
+                    ? OneUi9ClockStyleFonts.bind(base)
+                    : OneUi9Fonts.bind(base);
         }
-        try {
-            return OneUi85AodFonts.bind(base);
-        } catch (NoSuchMethodException ignored) {
-        }
-        try {
-            return OneUi9Fonts.bind(base);
-        } catch (NoSuchMethodException ignored) {
-        }
-        try {
-            return OneUi85ClockStyleFonts.bind(base);
-        } catch (NoSuchMethodException ignored) {
-        }
-        Method fixedMethod = null;
-        Method variableMethod = null;
-        for (Method m : base.getDeclaredMethods()) {
-            if (!java.lang.reflect.Modifier.isStatic(m.getModifiers())
-                    && m.getReturnType() == void.class) {
-                Class<?>[] p = m.getParameterTypes();
-                if (p.length == 2 && p[0] == Typeface.class && p[1] == TextView[].class) {
-                    fixedMethod = m;
-                } else if (p.length == 3
-                        && p[0] == int.class
-                        && p[1] == String.class
-                        && p[2] == TextView[].class) {
-                    variableMethod = m;
-                }
-            }
-        }
-        if (fixedMethod != null && variableMethod != null) {
-            return new FontBinding(base, fixedMethod.getName(), variableMethod.getName());
-        }
-        throw new NoSuchMethodException(
-                "Could not find font binding methods on " + base.getName());
+        return clock.clockStyle
+                ? OneUi85ClockStyleFonts.bind(base)
+                : OneUi85AodFonts.bind(base);
     }
 
     FontBinding(Class<?> base, String fixedName, String variableName)

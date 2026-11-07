@@ -6,6 +6,10 @@ import java.util.List;
 final class OneUi85AodClockSource {
     private OneUi85AodClockSource() {}
 
+    static Method normalizer(ClassLoader loader) throws ReflectiveOperationException {
+        return Class.forName("aod.PO", false, loader).getDeclaredMethod("k", List.class);
+    }
+
     static List<Method> callers(ClassLoader loader) throws ReflectiveOperationException {
         Class<?> model =
                 Class.forName(

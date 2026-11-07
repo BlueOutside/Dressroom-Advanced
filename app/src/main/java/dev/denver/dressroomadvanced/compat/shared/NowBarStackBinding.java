@@ -59,7 +59,9 @@ final class NowBarStackBinding {
                 clock.getClassLoader(),
                 provider.legacy
                         ? (provider.clockStyle ? OneUi85Stack.names() : OneUi85AodStack.names())
-                        : OneUi9Stack.names());
+                        : (provider.clockStyle
+                                ? OneUi9ClockStyleStack.names()
+                                : OneUi9Stack.names()));
     }
 
     NowBarStackBinding(ClassLoader loader, Names names) throws ReflectiveOperationException {

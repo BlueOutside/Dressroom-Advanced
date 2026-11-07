@@ -100,7 +100,10 @@ final class ClockBinding {
             throw new NoSuchMethodException(
                     "Clock render method not found in " + base.getName());
         render = renderMethod;
-        clockStyle = legacy && render.getName().equals("X");
+        clockStyle =
+                legacy
+                        ? render.getName().equals("X")
+                        : (render.getName().equals("d0") || font.getName().equals("S0"));
 
         Class<?> shadow =
                 Class.forName(
@@ -133,44 +136,21 @@ final class ClockBinding {
 
         Method balanceMethod = null;
         int heights = 2;
-        if (legacy) {
-            try {
+        try {
+            if (legacy) {
                 balanceMethod =
-                        Class.forName(clockStyle ? "aod.QT" : "aod.PO", false, loader)
-                                .getDeclaredMethod(clockStyle ? "g" : "k", List.class);
+                        clockStyle
+                                ? OneUi85ClockSource.normalizer(loader)
+                                : OneUi85AodClockSource.normalizer(loader);
                 heights = 0;
-            } catch (ClassNotFoundException | NoSuchMethodException ignored) {
+            } else {
+                balanceMethod =
+                        clockStyle
+                                ? OneUi9ClockStyleClockSource.normalizer(loader, type)
+                                : OneUi9ClockSource.normalizer(loader, type);
+                heights = 2;
             }
-        }
-        if (balanceMethod == null) {
-            for (String[] candidate : new String[][] {
-                    {"aod.qn1", "X"},
-                    {"aod.uq6", "T"}
-            }) {
-                try {
-                    balanceMethod =
-                            Class.forName(candidate[0], false, loader)
-                                    .getDeclaredMethod(candidate[1], int.class, type, List.class);
-                    heights = 2;
-                    break;
-                } catch (ClassNotFoundException | NoSuchMethodException ignored) {
-                }
-            }
-        }
-        if (balanceMethod == null && !legacy) {
-            for (String[] candidate : new String[][] {
-                    {"aod.PO", "k"},
-                    {"aod.QT", "g"}
-            }) {
-                try {
-                    balanceMethod =
-                            Class.forName(candidate[0], false, loader)
-                                    .getDeclaredMethod(candidate[1], List.class);
-                    heights = 0;
-                    break;
-                } catch (ClassNotFoundException | NoSuchMethodException ignored) {
-                }
-            }
+        } catch (ClassNotFoundException | NoSuchMethodException ignored) {
         }
         if (balanceMethod == null
                 || !java.lang.reflect.Modifier.isStatic(balanceMethod.getModifiers())

@@ -111,11 +111,13 @@ final class RuntimeClockHooks {
             DepthEffects.install(module);
             ShadowEffects.install(module);
             if (!binding.legacy) {
-                ClockBlurSync.install(module);
-                BlurEffects.install(module, base);
-                BlurEffects.installGlyphSync(module, base);
-                GlyphFontCache.install(module, base);
-                GlyphDrawReuse.install(module, loader);
+                if (!binding.clockStyle) {
+                    ClockBlurSync.install(module);
+                    BlurEffects.install(module, base);
+                    BlurEffects.installGlyphSync(module, base);
+                    GlyphFontCache.install(module, base);
+                    GlyphDrawReuse.install(module, loader);
+                }
                 module.widgetEngine.install(loader);
                 widgets.install(loader);
             } else {
