@@ -94,9 +94,9 @@ final class WidgetPlacement {
             clear(root);
             return;
         }
-        boolean fold8 = provider != null && OneUi9Fold8Runtime.matches(provider.getClass().getClassLoader());
+        boolean foldable = ScreenIdentity.supported();
         int anchor = WidgetLayout.effectiveAnchor(settings.getInt("anchor"), settings.getBoolean("layout"),
-                settings.getBoolean("vertical"), fold8);
+                settings.getBoolean("vertical"), foldable);
         if (anchor == 0) {
             clear(root);
             return;
@@ -116,7 +116,7 @@ final class WidgetPlacement {
             state.observer = new WeakReference<>(observer);
             observer.addOnPreDrawListener(state);
         }
-        if (settings.getBoolean("vertical") && (anchor == 5 || fold8 && settings.getInt("anchor") == 0))
+        if (settings.getBoolean("vertical") && (anchor == 5 || foldable && settings.getInt("anchor") == 0))
             WidgetDepthBlur.afterPlacement(root);
         root.invalidate();
     }

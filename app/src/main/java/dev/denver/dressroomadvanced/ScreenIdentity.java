@@ -16,22 +16,19 @@ final class ScreenIdentity {
 
     private ScreenIdentity() {}
 
-    static boolean inspectedFold8() {
-        return android.os.Build.VERSION.SDK_INT == 37
-                && "SM-F971B".equals(android.os.Build.MODEL);
+    static boolean supported(int sdk, int oneUi, String policy) {
+        return sdk >= 36 && sdk <= 37 && oneUi >= 90000 && oneUi < 100000
+                && policy != null && (policy.contains("LOCKSCREEN") || policy.contains("COVER"));
     }
 
     static synchronized boolean supported() {
         if (foldable != null) return foldable;
-        if (inspectedFold8()) return foldable = true;
-        if (android.os.Build.VERSION.SDK_INT < 36 || android.os.Build.VERSION.SDK_INT > 37)
-            return foldable = false;
         try {
             Class<?> features = Class.forName("com.samsung.android.feature.SemFloatingFeature");
             Object owner = features.getMethod("getInstance").invoke(null);
             String policy = (String) features.getMethod("getString", String.class)
                     .invoke(owner, "SEC_FLOATING_FEATURE_LOCKSCREEN_CONFIG_SUBDISPLAY_POLICY");
-            return foldable = policy != null && policy.contains("LOCKSCREEN");
+            return foldable = supported(android.os.Build.VERSION.SDK_INT, PlatformGate.oneUiVersion(), policy);
         } catch (ReflectiveOperationException | RuntimeException ignored) { return foldable = false; }
     }
 

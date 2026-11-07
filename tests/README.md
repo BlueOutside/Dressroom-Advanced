@@ -1,5 +1,10 @@
 # Test suites
 
+`FoldSupportTest` checks model-independent One UI 9 capability gating: book and
+clamshell policies, both supported Android API levels, and rejection of
+non-fold/unknown hardware and other platform versions. Current fold eligibility
+is documented in [One UI 9 foldable support](../docs/compatibility/ONE_UI_9_FOLDABLES.md).
+
 Tests are outside the production source tree and are not packaged in the module.
 
 | Directory | Purpose | Command |

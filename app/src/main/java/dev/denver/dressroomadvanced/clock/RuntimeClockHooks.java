@@ -125,7 +125,7 @@ final class RuntimeClockHooks {
         try (HookTransaction transaction = new HookTransaction()) {
             installation = transaction;
             ClockBinding binding = ClockBinding.of(base);
-            if (binding.fold8) OneUi9Fold8Profiles.install(module, loader);
+            if (ScreenIdentity.supported()) OneUi9FoldProfiles.install(module, loader);
             DepthEffects.install(module);
             ShadowEffects.install(module);
             if (!binding.legacy) {
@@ -334,7 +334,7 @@ final class RuntimeClockHooks {
                                             try {
                                                 wasExpanded =
                                                         Boolean.TRUE.equals(
-                                                                OneUi9Fold8Runtime.field(clock, "d1"));
+                                                                OneUi9Aod8957Runtime.field(clock, "d1"));
                                             } catch (Exception ignored) {
                                             }
                                             if (wasExpanded
@@ -385,7 +385,7 @@ final class RuntimeClockHooks {
             android.util.Log.i(
                     DressroomModule.TAG,
                     "Runtime clock provider hooks installed: "
-                            + (binding.fold8 ? "Fold8 8.9.57.1" : binding.legacy ? "8.5 core" : "reference"));
+                            + (binding.aod8957 ? "AOD 8.9.57.1" : binding.legacy ? "8.5 core" : "reference"));
             transaction.commit();
             installed.add(loader);
         } finally {
@@ -444,7 +444,7 @@ final class RuntimeClockHooks {
         try {
             if (!mediaRestorePending.contains(clock)) return;
             if (!clock.isAttachedToWindow()) return;
-            Object controller = OneUi9Fold8Runtime.field(clock, "W0");
+            Object controller = OneUi9Aod8957Runtime.field(clock, "W0");
             if (Boolean.TRUE.equals(Reflect.field(controller, "h"))) {
                 finishMediaReturn(clock);
                 return;
@@ -471,7 +471,7 @@ final class RuntimeClockHooks {
                         (android.animation.Animator) Reflect.field(controller, "i");
                 if (animation != null && animation.isStarted()) mediaReturnStarted.add(clock);
                 if (mediaReturnStarted.add(clock)) {
-                    Reflect.call(clock, ClockBinding.of(clock).fold8 ? "G0" : "K0", 0f, false);
+                    Reflect.call(clock, ClockBinding.of(clock).aod8957 ? "G0" : "K0", 0f, false);
                     animation = (android.animation.Animator) Reflect.field(controller, "i");
                 }
                 WeakReference<View> reference = new WeakReference<>(clock);

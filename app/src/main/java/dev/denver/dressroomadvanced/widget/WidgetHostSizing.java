@@ -71,7 +71,7 @@ final class WidgetHostSizing {
 
     private static Class<?> sizingClass(ClassLoader loader) throws ReflectiveOperationException {
         Class<?> base = Class.forName("com.samsung.android.uniform.widget.clock.AbsClockView", false, loader);
-        return Class.forName(ClockBinding.of(base).fold8 ? "aod.x89" : "aod.v99", false, loader);
+        return Class.forName(ClockBinding.of(base).aod8957 ? "aod.x89" : "aod.v99", false, loader);
     }
 
     static void validate(ClassLoader loader) throws ReflectiveOperationException {

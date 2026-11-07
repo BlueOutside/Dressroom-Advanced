@@ -15,13 +15,13 @@ final class EditorWidgets {
     private static final String TAG = "dressroom.advanced.widgets.menu";
     private final DressroomModule module;
 
-    private boolean fold8() {
-        return module.editorBinding() != null && module.editorBinding().fold8;
+    private boolean editor3001() {
+        return module.editorBinding() != null && module.editorBinding().editor3001;
     }
 
     private Class<?> nativeClass(String name, boolean initialize, ClassLoader loader)
             throws ClassNotFoundException {
-        if (fold8()) name = switch (name) {
+        if (editor3001()) name = switch (name) {
             case "op.m" -> "lp.l";
             case "sd.q" -> "sd.p";
             case "sd.h" -> "sd.g";
@@ -36,7 +36,7 @@ final class EditorWidgets {
     }
 
     private Object field(Object owner, String name) throws ReflectiveOperationException {
-        if (fold8() && owner != null && owner.getClass().getName().equals("lp.l"))
+        if (editor3001() && owner != null && owner.getClass().getName().equals("lp.l"))
             name = switch (name) {
                 case "G" -> "F";
                 case "H" -> "G";
@@ -509,8 +509,8 @@ final class EditorWidgets {
     }
 
     void install(ClassLoader loader) throws ReflectiveOperationException {
-        if (fold8()) OneUi9Fold8Widgets.validate(loader);
-        if (!fold8()) DepthEffects.watchEditorWallpaper(module, loader);
+        if (editor3001()) OneUi9Editor3001Widgets.validate(loader);
+        if (!editor3001()) DepthEffects.watchEditorWallpaper(module, loader);
         Class<?> toolbar = nativeClass("v8.y", false, loader);
         Method rebuild = toolbar.getDeclaredMethod("l");
         module.hook(rebuild)
@@ -553,7 +553,7 @@ final class EditorWidgets {
                             }
                             Object result;
                             boolean previousPreview = nativePreview.get();
-                            nativePreview.set(fold8() && item == owner.get());
+                            nativePreview.set(editor3001() && item == owner.get());
                             try {
                                 result = chain.proceed();
                             } finally {
@@ -595,10 +595,10 @@ final class EditorWidgets {
             }
         installMetrics(loader);
         installPicker(loader);
-        if (fold8()) {
+        if (editor3001()) {
             Method portrait = Class.forName("df.b", false, loader).getDeclaredMethod("a");
             module.hook(portrait)
-                    .setId("dressroom-advanced.fold8-widget-arrangement")
+                    .setId("dressroom-advanced.editor3001-widget-arrangement")
                     .intercept(chain -> nativePreview.get() && draft != null && draft.getBoolean("layout")
                             ? false : chain.proceed());
             module.deoptimize(portrait);
@@ -945,7 +945,7 @@ final class EditorWidgets {
     }
 
     private void installMetrics(ClassLoader loader) throws ReflectiveOperationException {
-        if (!fold8()) {
+        if (!editor3001()) {
         Method guide = nativeClass("sp.y1", false, loader).getDeclaredMethod("executeBindings");
         module.hook(guide)
                 .setId("dressroom-advanced.hide-widget-rotation-guide")
@@ -1080,7 +1080,7 @@ final class EditorWidgets {
                                         return result;
                                     boolean custom = draft.getBoolean("layout");
                                     int anchor = WidgetLayout.effectiveAnchor(draft.getInt("anchor"), custom,
-                                            draft.getBoolean("vertical"), fold8());
+                                            draft.getBoolean("vertical"), ScreenIdentity.supported());
                                     if (!custom && anchor == 0) return result;
                                     Object model = chain.getArg(0),
                                             assist = chain.getArg(1),
@@ -1316,7 +1316,7 @@ final class EditorWidgets {
         Class<?> adapter = nativeClass(legacy() ? "lb.c" : "rp.e", false, loader);
         Method position =
                 adapter.getDeclaredMethod(
-                        legacy() ? "r" : fold8() ? "V" : "b",
+                        legacy() ? "r" : editor3001() ? "V" : "b",
                         View.class,
                         int.class,
                         int.class,

@@ -375,7 +375,7 @@ public final class DressroomModule extends XposedModule {
     }
 
     private void installCommitHook(ClassLoader loader) throws ReflectiveOperationException {
-        wallpaperSourceBinding = new WallpaperSourceBinding(loader, editorBinding.legacy, editorBinding.fold8);
+        wallpaperSourceBinding = new WallpaperSourceBinding(loader, editorBinding.legacy, editorBinding.editor3001);
         java.util.ArrayList<Method> sourceChanges = new java.util.ArrayList<>();
         sourceChanges.add(wallpaperSourceBinding.changed);
         for (Method method : wallpaperSourceBinding.dataType.getDeclaredMethods())
@@ -1515,7 +1515,7 @@ public final class DressroomModule extends XposedModule {
                     || processName.equals("com.samsung.android.app.clockpack")
                     || processName.startsWith("com.samsung.android.app.clockpack:"))) return;
             if ("com.samsung.android.app.aodservice".equals(param.getPackageName()))
-                OneUi9Fold8Profiles.install(this, param.getClassLoader());
+                OneUi9FoldProfiles.install(this, param.getClassLoader());
             if (runtimeHooks == null) {
                 runtimeHooks = new RuntimeClockHooks(this);
                 runtimeHooks.install(param.getClassLoader());
@@ -1590,10 +1590,10 @@ public final class DressroomModule extends XposedModule {
                 deoptimize(open);
                 transaction.commit();
                 installed.add(loader);
-                if (editorBinding.legacy || editorBinding.fold8) {
+                if (editorBinding.legacy || editorBinding.editor3001) {
                     try {
                         DepthBinding.validateEditor(loader);
-                        // Reference installs tracking through EditorWidgets. Fold8 installs it
+                        // Reference installs tracking through EditorWidgets. Dressroom 3.0.01.20 installs it
                         // here so depth remains independent of widget toolbar support.
                         DepthEffects.watchEditorWallpaper(this, loader, editorBinding.legacy);
                         legacyDepthReady = true;
@@ -1616,7 +1616,7 @@ public final class DressroomModule extends XposedModule {
                         "Editor adapter installed: "
                                 + (editorBinding.legacy
                                         ? "Dressroom 2.9.60.50/51 (core controls)"
-                                        : editorBinding.fold8 ? "Dressroom 3.0.01.20 (Fold8)" : "Dressroom 3.0.10.38"));
+                                        : editorBinding.editor3001 ? "Dressroom 3.0.01.20" : "Dressroom 3.0.10.38"));
             } catch (ReflectiveOperationException | LinkageError | RuntimeException e) {
                 report("Unsupported Dressroom; clock panel injection rolled back", e);
             } finally {

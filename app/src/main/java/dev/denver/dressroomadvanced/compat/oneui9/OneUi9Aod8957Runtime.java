@@ -1,8 +1,8 @@
 package dev.denver.dressroomadvanced;
 
 /** Inspected AOD 8.9.57.1 names; existing providers retain their original lookups. */
-final class OneUi9Fold8Runtime {
-    private OneUi9Fold8Runtime() {}
+final class OneUi9Aod8957Runtime {
+    private OneUi9Aod8957Runtime() {}
 
     private static final java.util.Map<ClassLoader, Boolean> providers =
             java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
@@ -25,7 +25,7 @@ final class OneUi9Fold8Runtime {
     private static boolean discover(ClassLoader loader) {
         try {
             Class<?> base = Class.forName("com.samsung.android.uniform.widget.clock.AbsClockView", false, loader);
-            return ClockBinding.of(base).fold8;
+            return ClockBinding.of(base).aod8957;
         } catch (ReflectiveOperationException | RuntimeException ignored) {
             return false;
         }

@@ -14,10 +14,10 @@ final class EditorBinding {
         SLIDER
     }
 
-    static final long FOLD8 = 300120000L;
+    static final long DRESSROOM_3001 = 300120000L;
     static final long REFERENCE = 301038000L, ONE_UI_85 = 296051000L, ONE_UI_85_TABLET = 296050000L;
     final boolean legacy;
-    final boolean fold8;
+    final boolean editor3001;
     final Class<?> controller;
     final Method open, create, weather, bind;
     private final Method weatherCapability, managerGetter;
@@ -53,18 +53,25 @@ final class EditorBinding {
 
     static EditorBinding resolve(ClassLoader loader, long version)
             throws ReflectiveOperationException {
-        if (version != REFERENCE && version != ONE_UI_85 && version != ONE_UI_85_TABLET && version != FOLD8)
+        if (version != REFERENCE && version != ONE_UI_85 && version != ONE_UI_85_TABLET && version != DRESSROOM_3001) {
+            if (ScreenIdentity.supported()) {
+                for (String candidate : new String[] {"so.x", "vo.x"}) {
+                    try { return bindings.get(Class.forName(candidate, false, loader)); }
+                    catch (ClassNotFoundException | IllegalStateException ignored) { }
+                }
+            }
             throw new ClassNotFoundException(
                     "Dressroom version " + version + " has no inspected editor binding");
-        return bindings.get(Class.forName(version == FOLD8 ? "so.x" : version == REFERENCE ? "vo.x" : "Pa.w0", false, loader));
+        }
+        return bindings.get(Class.forName(version == DRESSROOM_3001 ? "so.x" : version == REFERENCE ? "vo.x" : "Pa.w0", false, loader));
     }
 
-    private EditorBinding(ClassLoader loader, boolean legacy, boolean fold8) throws ReflectiveOperationException {
+    private EditorBinding(ClassLoader loader, boolean legacy, boolean editor3001) throws ReflectiveOperationException {
         this.legacy = legacy;
-        this.fold8 = fold8;
+        this.editor3001 = editor3001;
         NativeTabs.forType(
                 Class.forName("com.google.android.material.tabs.TabLayout", false, loader));
-        controller = Class.forName(legacy ? "Pa.w0" : fold8 ? "so.x" : "vo.x", false, loader);
+        controller = Class.forName(legacy ? "Pa.w0" : editor3001 ? "so.x" : "vo.x", false, loader);
         Class<?> data =
                 Class.forName(
                         "com.samsung.android.lockscreen.editor.item.domain.entity.item.clock.ClockData",
@@ -73,7 +80,7 @@ final class EditorBinding {
         Class<?> clockView =
                 Class.forName(
                         "com.samsung.android.clockpack.plugins.clock.ClockView", false, loader);
-        Class<?> useCase = Class.forName(legacy ? "b7.Z" : fold8 ? "mf.l0" : "mf.o0", false, loader);
+        Class<?> useCase = Class.forName(legacy ? "b7.Z" : editor3001 ? "mf.l0" : "mf.o0", false, loader);
         Class<?> helperType =
                 Class.forName(
                         legacy ? "com.samsung.android.lockscreen.editor.item.core.util.b" : "oc.a",
@@ -96,7 +103,7 @@ final class EditorBinding {
                         legacy ? "w" : "e",
                         void.class,
                         legacy ? View.class : clockView);
-        Class<?> weatherType = Class.forName(legacy ? "b7.J" : fold8 ? "mf.f0" : "mf.i0", false, loader);
+        Class<?> weatherType = Class.forName(legacy ? "b7.J" : editor3001 ? "mf.f0" : "mf.i0", false, loader);
         weather =
                 legacy
                         ? NativeContract.method(weatherType, "a", void.class, boolean.class)
@@ -107,15 +114,15 @@ final class EditorBinding {
                         "com.samsung.android.lockscreen.editor.item.domain.entity.item.clock.ClockTypeData",
                         false,
                         loader);
-        if (legacy || fold8) {
+        if (legacy || editor3001) {
             Class<?> manager =
                     Class.forName(
                             "com.samsung.android.clockpack.plugins.clock.ClockManager",
                             false,
                             loader);
-            Class<?> wrapper = Class.forName(fold8 ? "pc.b" : "O5.a", false, loader);
-            managerWrapper = NativeContract.field(controller, fold8 ? "g" : "j", wrapper);
-            managerGetter = NativeContract.method(wrapper, fold8 ? "d" : "i", manager);
+            Class<?> wrapper = Class.forName(editor3001 ? "pc.b" : "O5.a", false, loader);
+            managerWrapper = NativeContract.field(controller, editor3001 ? "g" : "j", wrapper);
+            managerGetter = NativeContract.method(wrapper, editor3001 ? "d" : "i", manager);
             weatherCapability =
                     NativeContract.method(
                             manager,
@@ -136,7 +143,7 @@ final class EditorBinding {
 
     boolean supportsWeather(Object owner, Object data) throws ReflectiveOperationException {
         Object type = Reflect.call(data, "getClockTypeData");
-        if (!legacy && !fold8) return Boolean.TRUE.equals(weatherCapability.invoke(type));
+        if (!legacy && !editor3001) return Boolean.TRUE.equals(weatherCapability.invoke(type));
         if (!Boolean.TRUE.equals(Reflect.call(data, "getEnable"))) return false;
         Object manager = managerGetter.invoke(managerWrapper.get(owner));
         return Boolean.TRUE.equals(
@@ -236,7 +243,7 @@ final class EditorBinding {
         else Reflect.call(position, legacy ? "h" : "f", draft, screen, dx, dy, assist, device);
         Reflect.call(position, legacy ? "a" : "l", draft, preview, screen);
         if (legacy) Reflect.call(position, "f", draft, screen, device, false);
-        else if (fold8) Reflect.call(position, "d", draft, screen, device, false);
+        else if (editor3001) Reflect.call(position, "d", draft, screen, device, false);
         else Reflect.call(position, "d", draft, device, screen, false);
         Reflect.call(position, legacy ? "m" : "o", draft, screen, assist, device);
     }

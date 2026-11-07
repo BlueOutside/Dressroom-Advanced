@@ -16,7 +16,7 @@ final class WallpaperSourceBinding {
         this(loader, legacy, false);
     }
 
-    WallpaperSourceBinding(ClassLoader loader, boolean legacy, boolean fold8) throws ReflectiveOperationException {
+    WallpaperSourceBinding(ClassLoader loader, boolean legacy, boolean editor3001) throws ReflectiveOperationException {
         dataType =
                 Class.forName(
                         "com.samsung.android.app.dressroom.data.profile.wallpaper.EditorData",
@@ -41,7 +41,7 @@ final class WallpaperSourceBinding {
         }
         changed =
                 NativeContract.method(
-                        path[2].getType(), legacy ? "b3" : fold8 ? "b1" : "c1", void.class, dataType);
+                        path[2].getType(), legacy ? "b3" : editor3001 ? "b1" : "c1", void.class, dataType);
         NativeContract.method(dataType, "getOriginalUri", Uri.class);
         NativeContract.method(dataType, "getUri", Uri.class);
         NativeContract.method(dataType, "getStorageFilePath", String.class);

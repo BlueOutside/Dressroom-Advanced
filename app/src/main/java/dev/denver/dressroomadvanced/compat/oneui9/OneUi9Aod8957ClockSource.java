@@ -3,9 +3,9 @@ package dev.denver.dressroomadvanced;
 import java.lang.reflect.Method;
 import java.util.List;
 
-/** AOD 8.9.57.1 shipped on the Fold8; keep the reference AOD adapter separate. */
-final class OneUi9Fold8ClockSource {
-    private OneUi9Fold8ClockSource() {}
+/** AOD 8.9.57.1 interface; keep the reference AOD adapter separate. */
+final class OneUi9Aod8957ClockSource {
+    private OneUi9Aod8957ClockSource() {}
 
     static List<Method> callers(ClassLoader loader) throws ReflectiveOperationException {
         Class<?> model = Class.forName("com.samsung.android.app.facewidget.FaceWidgetViewModel", false, loader);

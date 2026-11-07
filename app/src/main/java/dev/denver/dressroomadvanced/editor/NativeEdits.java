@@ -18,7 +18,7 @@ final class NativeEdits {
             }
             return launch(controller, model, "Pa.L$b", value, false);
         }
-        return launch(controller, model, EditorBinding.of(controller).fold8 ? "so.h" : "vo.g", value, weather);
+        return launch(controller, model, EditorBinding.of(controller).editor3001 ? "so.h" : "vo.g", value, weather);
     }
 
     private static Object launch(

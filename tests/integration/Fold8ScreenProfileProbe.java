@@ -170,7 +170,7 @@ public final class Fold8ScreenProfileProbe {
                 "Native save must retain the sibling record");
 
         separateWidgets(policy);
-        OneUi9Fold8Profiles adapter = new OneUi9Fold8Profiles(loader);
+        OneUi9FoldProfiles adapter = new OneUi9FoldProfiles(loader);
         Object productionSeed = adapter.seed(unseeded, policy);
         equal(BASE, get(profile(productionSeed, policy, "Bar", "Portrait"), "getEnabledWidgetsIdList"),
                 "Production migration must seed the dormant cover record");
@@ -190,10 +190,10 @@ public final class Fold8ScreenProfileProbe {
                     "Cover selection must be isolated even with matching orientation");
             equal(INNER, get(profile(bundle, policy, "Fold", orientation), "getEnabledWidgetsIdList"),
                     "Inner selection must follow screen across orientation");
-            equal(BASE, OneUi9Fold8Profiles.screenValue(profile(bundle, policy, "Bar", orientation),
+            equal(BASE, OneUi9FoldProfiles.screenValue(profile(bundle, policy, "Bar", orientation),
                             type("aod.ij5").getField("o").get(null)),
                     "Production read adapter must select cover widgets");
-            equal(INNER, OneUi9Fold8Profiles.screenValue(profile(bundle, policy, "Fold", orientation),
+            equal(INNER, OneUi9FoldProfiles.screenValue(profile(bundle, policy, "Fold", orientation),
                             type("aod.ij5").getField("o").get(null)),
                     "Production read adapter must select inner widgets");
             equal(0, get(profile(bundle, policy, "Bar", orientation), "getWidgetAlignType"),
@@ -225,7 +225,7 @@ public final class Fold8ScreenProfileProbe {
 
         Object restored = roundTrip(changed);
         equal(changed, restored, "Samsung serializer must retain independent records");
-        equal(OneUi9Fold8Profiles.fingerprint(changed), OneUi9Fold8Profiles.fingerprint(restored),
+        equal(OneUi9FoldProfiles.fingerprint(changed), OneUi9FoldProfiles.fingerprint(restored),
                 "Migration fingerprint must survive Samsung serialization");
         equal(COVER, get(profile(restored, policy, "Bar", "Portrait"), "getEnabledWidgetsIdList"),
                 "Cover selection must survive serialization");

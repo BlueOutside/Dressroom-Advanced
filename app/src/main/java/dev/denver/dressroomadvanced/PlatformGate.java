@@ -29,7 +29,7 @@ final class PlatformGate {
         return (major == 8 && oneUi >= 80500) || (major == 9 && oneUi >= 90000);
     }
 
-    private static int oneUiVersion() {
+    static int oneUiVersion() {
         try {
             Object value =
                     Class.forName("android.os.SystemProperties")

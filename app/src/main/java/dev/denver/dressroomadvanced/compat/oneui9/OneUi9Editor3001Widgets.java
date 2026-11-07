@@ -3,10 +3,10 @@ package dev.denver.dressroomadvanced;
 import android.view.View;
 import android.view.ViewGroup;
 
-/** Preflight the editor contracts before adding any Fold8 widget hooks. */
-final class OneUi9Fold8Widgets {
+/** Preflight the editor contracts before adding any Dressroom 3.0.01.20 widget hooks. */
+final class OneUi9Editor3001Widgets {
     private static final String ENTITIES = "com.samsung.android.lockscreen.editor.item.domain.entity.";
-    private OneUi9Fold8Widgets() {}
+    private OneUi9Editor3001Widgets() {}
 
     private static Class<?> entity(ClassLoader loader, String name) throws ClassNotFoundException {
         return Class.forName(ENTITIES + name, false, loader);

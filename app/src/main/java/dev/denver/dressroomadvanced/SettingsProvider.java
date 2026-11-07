@@ -50,7 +50,7 @@ public final class SettingsProvider extends ContentProvider {
     public Bundle call(String method, String argument, Bundle extras) {
         if ("readFoldProfile".equals(method) || "markFoldProfile".equals(method)) {
             checkCaller(false);
-            String key = OneUi9Fold8Profiles.profileId(argument);
+            String key = OneUi9FoldProfiles.profileId(argument);
             android.content.SharedPreferences state = getContext().getSharedPreferences("fold_profile_ready", 0);
             if ("markFoldProfile".equals(method)) {
                 String[] packages = getContext().getPackageManager().getPackagesForUid(Binder.getCallingUid());

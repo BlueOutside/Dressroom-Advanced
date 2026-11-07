@@ -39,7 +39,7 @@ final class WidgetDepthBlur {
 
     static synchronized void install(DressroomModule module, ClassLoader loader) {
         try {
-            if (OneUi9Fold8Runtime.matches(loader)) separateSurfaces = true;
+            if (ScreenIdentity.supported()) separateSurfaces = true;
             if (!installed) {
                 Class<?> info = Class.forName("android.view.SemBlurInfo");
                 WidgetBlurInfo copies = new WidgetBlurInfo(info);
@@ -104,7 +104,7 @@ final class WidgetDepthBlur {
             }
             if (!deoptimized.contains(loader)) {
                 if (ClockBinding.of(
-                                OneUi9Fold8Runtime.type(
+                                OneUi9Aod8957Runtime.type(
                                         "com.samsung.android.uniform.widget.clock.AbsClockView",
                                         false,
                                         loader))
@@ -112,7 +112,7 @@ final class WidgetDepthBlur {
                     for (Method method : OneUi85AodBlur.submissions(loader))
                         module.deoptimize(method);
                 } else {
-                    Class<?> utils = OneUi9Fold8Runtime.type("aod.e70", false, loader);
+                    Class<?> utils = OneUi9Aod8957Runtime.type("aod.e70", false, loader);
                     module.deoptimize(
                             utils.getDeclaredMethod(
                                     "c", View.class, float.class, float[].class, Integer.class));

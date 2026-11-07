@@ -1,7 +1,7 @@
 package dev.denver.dressroomadvanced;
 
-final class OneUi9Fold8Stack {
-    private OneUi9Fold8Stack() {}
+final class OneUi9Aod8957Stack {
+    private OneUi9Aod8957Stack() {}
 
     static NowBarStackBinding.Names names() {
         return new NowBarStackBinding.Names(

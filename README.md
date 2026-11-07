@@ -27,11 +27,10 @@ Imported fonts use their own variable axes. Samsung's dynamic per-digit stretchi
 | 9.0 | Clock Style + Dressroom | Unsupported |
 | 8.0 | Any combination | Unsupported |
 
-ZFLip is only supported on the inner screen, not the cover screen.
-ZFold support is experimental and depends on the inspected Samsung app versions.
+Foldable support is enabled through Samsung hardware capabilities on One UI 9, without a model whitelist. Individual features still require compatible Dressroom/provider interfaces. Flip cover UI and other firmware combinations need live validation.
 Features depend on the device and app versions.
 
-The Fold8 adapter targets Dressroom 3.0.01.20 and AOD 8.9.57.1. Clock saving, lockscreen depth, independent cover/inner widget selections and independent Extras have been confirmed on SM-F971B. See the [adapter notes](docs/compatibility/FOLD8_3.0.01.20.md), [screen profiles](docs/compatibility/FOLD8_SCREEN_PROFILES.md) and [foldable follow-up](docs/compatibility/FOLDABLE_PARITY.md) for implementation details, checks and remaining live-animation/device limits. Existing non-fold adapters remain present; other Fold models and firmware need their own validation.
+The shared One UI 9 foldable path includes mappings for Dressroom 3.0.01.20 and AOD 8.9.57.1 alongside the existing adapters. Clock saving, lockscreen depth, independent cover/inner widget selections and independent Extras have been confirmed on SM-F971B. See [One UI 9 foldable support](docs/compatibility/ONE_UI_9_FOLDABLES.md) for eligibility and interface checks, and the [device validation](docs/compatibility/FOLDABLE_PARITY.md) for the live results and limits. Existing non-fold adapters remain present.
 
 ## Setup
 

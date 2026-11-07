@@ -6,7 +6,7 @@ import java.util.List;
 
 final class ClockBinding {
     final boolean legacy;
-    final boolean fold8;
+    final boolean aod8957;
     final boolean clockStyle;
     final Method balance, render;
     final int balanceHeights;
@@ -64,10 +64,10 @@ final class ClockBinding {
             throw new NoSuchFieldException("ClockFontData field not found in " + base.getName());
         font = fontField;
         legacy = font.getName().equals("L0");
-        fold8 = font.getName().equals("R0");
+        aod8957 = font.getName().equals("R0");
 
         Field idField = null;
-        for (String candidate : (fold8 ? new String[] {"C0"} : new String[] {"w0", "D0", "C0"})) {
+        for (String candidate : (aod8957 ? new String[] {"C0"} : new String[] {"w0", "D0", "C0"})) {
             try {
                 idField = NativeContract.field(base, candidate, int.class);
                 break;
@@ -77,7 +77,7 @@ final class ClockBinding {
         fontId = idField;
 
         Method renderMethod = null;
-        for (String candidate : (fold8 ? new String[] {"e0"} : new String[] {"X", "b0", "g0", "d0"})) {
+        for (String candidate : (aod8957 ? new String[] {"e0"} : new String[] {"X", "b0", "g0", "d0"})) {
             try {
                 renderMethod = NativeContract.method(base, candidate, void.class, type);
                 break;
@@ -111,7 +111,7 @@ final class ClockBinding {
                 Class.forName(
                         "com.samsung.android.clockpack.plugins.clock.ShadowStyle", false, loader);
         Method refreshMethod = null;
-        for (String candidate : (fold8 ? new String[] {"b0"} : new String[] {"U", "Y", "d0", "a0"})) {
+        for (String candidate : (aod8957 ? new String[] {"b0"} : new String[] {"U", "Y", "d0", "a0"})) {
             try {
                 refreshMethod = NativeContract.method(base, candidate, void.class, shadow);
                 break;
@@ -139,8 +139,8 @@ final class ClockBinding {
         Method balanceMethod = null;
         int heights = 2;
         try {
-            if (fold8) {
-                balanceMethod = OneUi9Fold8ClockSource.normalizer(loader, type);
+            if (aod8957) {
+                balanceMethod = OneUi9Aod8957ClockSource.normalizer(loader, type);
             } else if (legacy) {
                 balanceMethod =
                         clockStyle

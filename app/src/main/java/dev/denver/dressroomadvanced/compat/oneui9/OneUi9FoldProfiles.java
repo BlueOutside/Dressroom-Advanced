@@ -20,12 +20,14 @@ import java.util.TreeMap;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-/** Native profile adapter for the inspected Fold8 AOD revision only. */
-final class OneUi9Fold8Profiles {
+/** One UI 9 foldable profiles, enabled only after checking the native storage contracts. */
+final class OneUi9FoldProfiles {
     private static final String ENTITY = "com.samsung.android.app.clockpack.profile.entity.";
     private static final String DB = "com.samsung.android.app.clockpack.db.entity.";
     private static final String AOD = "com.samsung.android.app.aodservice";
     private static final Set<ClassLoader> installed =
+            Collections.newSetFromMap(new java.util.WeakHashMap<>());
+    private static final Set<ClassLoader> attempted =
             Collections.newSetFromMap(new java.util.WeakHashMap<>());
     private final Map<String, String> ready = new java.util.concurrent.ConcurrentHashMap<>();
     private final Set<String> reportedReads = java.util.concurrent.ConcurrentHashMap.newKeySet();
@@ -33,7 +35,7 @@ final class OneUi9Fold8Profiles {
     private final ClassLoader loader;
     private final Set<String> confirmed = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
-    OneUi9Fold8Profiles(ClassLoader loader) { this.loader = loader; }
+    OneUi9FoldProfiles(ClassLoader loader) { this.loader = loader; }
 
     private boolean confirmed(String id) {
         String key = profileId(id);
@@ -56,6 +58,37 @@ final class OneUi9Fold8Profiles {
 
     private Class<?> type(String name) throws ClassNotFoundException {
         return Class.forName(name, false, loader);
+    }
+
+    static void validate(ClassLoader loader) throws ReflectiveOperationException {
+        OneUi9FoldProfiles adapter = new OneUi9FoldProfiles(loader);
+        Class<?> mediator = adapter.type("com.samsung.android.app.aodservice.datamanager.data.item.a");
+        Class<?> bundle = adapter.type(ENTITY + "LockProfileBundle");
+        Class<?> policy = adapter.type("aod.dl5");
+        Class<?> profile = adapter.type(ENTITY + "LockProfileV3");
+        Class<?> function = adapter.type("kotlin.jvm.functions.Function1");
+        NativeContract.method(mediator, "f", bundle, String.class);
+        NativeContract.method(mediator, "l", void.class, String.class, bundle);
+        NativeContract.method(mediator, "e", policy);
+        NativeContract.method(mediator, "j", boolean.class);
+        Class<?> dao = adapter.type("aod.qi5");
+        NativeContract.method(mediator, "h", dao);
+        NativeContract.field(mediator, "o", adapter.type("aod.oe3"));
+        NativeContract.field(adapter.type("aod.oe3"), "a", Object.class);
+        NativeContract.field(dao, "o", Object.class);
+        adapter.type("aod.ce0").getConstructor(int.class, long.class);
+        adapter.type("aod.pe4").getMethod("v", adapter.type("aod.u86"), boolean.class, boolean.class, function);
+        NativeContract.method(adapter.type(DB + "LockProfileMappingIdEntity"), "getId", Long.class);
+        profile.getConstructor(String.class, adapter.type(DB + "ProfileState"), bundle, policy);
+        NativeContract.method(profile, "copyBundle", bundle, function);
+        NativeContract.method(profile, "getEnabledWidgetsIdList", String.class);
+        NativeContract.method(profile, "getWidgetAlignType", Integer.class);
+        NativeContract.method(bundle, "getPrimary", adapter.type(ENTITY + "LockProfileData"));
+        NativeContract.method(bundle, "getScreenRelevant", Map.class);
+        Class<?> builder = adapter.type(ENTITY + "LockProfileBuilder");
+        NativeContract.method(builder, "setEnabledWidgetsIdList", void.class, String.class);
+        NativeContract.method(builder, "setWidgetAlignType", void.class, Integer.class);
+        adapter.type(DB + "ProfileScreen").getEnumConstants();
     }
 
     static String profileId(String id) {
@@ -86,10 +119,10 @@ final class OneUi9Fold8Profiles {
                     .invoke(args[0], align);
             return type("kotlin.Unit").getField("a").get(null);
         });
-        for (String screen : new String[] {"Bar", "Fold"}) {
+        for (Object screen : type(DB + "ProfileScreen").getEnumConstants()) {
             Object state = type(DB + "ProfileState")
                     .getConstructor(type(DB + "ProfileScreen"), type(DB + "ProfileOrientation"))
-                    .newInstance(choice("ProfileScreen", screen), choice("ProfileOrientation", "Portrait"));
+                    .newInstance(screen, choice("ProfileOrientation", "Portrait"));
             Object profile = type(ENTITY + "LockProfileV3")
                     .getConstructor(String.class, type(DB + "ProfileState"),
                             type(ENTITY + "LockProfileBundle"), type("aod.dl5"))
@@ -149,8 +182,7 @@ final class OneUi9Fold8Profiles {
 
     synchronized Object migrate(Object mediator, String id, Object original) throws Exception {
         Context context = (Context) Reflect.field(Reflect.field(mediator, "o"), "a");
-        if (!AOD.equals(context.getPackageName())
-                || context.getPackageManager().getPackageInfo(AOD, 0).getLongVersionCode() != 895701000L)
+        if (!AOD.equals(context.getPackageName()))
             return original;
         if (!Boolean.TRUE.equals(get(mediator, "j"))) return original;
         String canonical = profileId(id);
@@ -226,9 +258,10 @@ final class OneUi9Fold8Profiles {
     }
 
     static synchronized void install(DressroomModule module, ClassLoader loader) {
-        if (!ScreenIdentity.inspectedFold8() || installed.contains(loader)) return;
+        if (!ScreenIdentity.supported() || installed.contains(loader) || !attempted.add(loader)) return;
         try {
-            OneUi9Fold8Profiles adapter = new OneUi9Fold8Profiles(loader);
+            validate(loader);
+            OneUi9FoldProfiles adapter = new OneUi9FoldProfiles(loader);
             Class<?> mediator = adapter.type("com.samsung.android.app.aodservice.datamanager.data.item.a");
             Method load = NativeContract.method(mediator, "f", adapter.type(ENTITY + "LockProfileBundle"), String.class);
             Method read = NativeContract.method(adapter.type("aod.dl5"), "c", Object.class,
@@ -273,8 +306,6 @@ final class OneUi9Fold8Profiles {
                 module.deoptimize(global);
                 hooks.add(module.hook(delete).setId("dressroom-advanced.preserve-sibling-widget-ids").intercept(chain -> {
                     Context context = (Context) Reflect.field(chain.getThisObject(), "c");
-                    if (context.getPackageManager().getPackageInfo(AOD, 0).getLongVersionCode() != 895701000L)
-                        return chain.proceed();
                     return chain.proceed(new Object[] {deletions(context, (ArrayList<?>) chain.getArg(0))});
                 })::unhook);
                 module.deoptimize(load);
@@ -287,7 +318,7 @@ final class OneUi9Fold8Profiles {
                 hooks.commit();
             }
             installed.add(loader);
-            android.util.Log.i(DressroomModule.TAG, "Fold8 native screen profiles installed");
-        } catch (Exception | LinkageError error) { module.report("Fold8 screen profile adapter unavailable", error); }
+            android.util.Log.i(DressroomModule.TAG, "One UI 9 foldable screen profiles installed");
+        } catch (Exception | LinkageError error) { module.report("One UI 9 foldable screen profile adapter unavailable", error); }
     }
 }

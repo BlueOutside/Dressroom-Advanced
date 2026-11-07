@@ -1,6 +1,6 @@
 {
   "Jvm": [
-    "FontAxesTest", "BlurOpacityTest", "ChargingStateTest", "DeferredDiscoveryTest", "IdentityLocksTest",
+    "FoldSupportTest", "FontAxesTest", "BlurOpacityTest", "ChargingStateTest", "DeferredDiscoveryTest", "IdentityLocksTest",
     "LatestDepthWorkTest", "LifecycleContractTest", "ReflectContractTest", "WidgetLayoutTest", "AdapterContractsTest", "DeferredRefreshTest", "DepthSourcePolicyTest"
   ],
   "Android": [

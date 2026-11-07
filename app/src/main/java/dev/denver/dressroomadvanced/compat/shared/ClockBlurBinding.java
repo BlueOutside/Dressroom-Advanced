@@ -17,7 +17,7 @@ final class ClockBlurBinding {
         ClockBinding binding = ClockBinding.of(base);
         if (binding.clockStyle) throw new NoSuchMethodException("Clock Style blur is not mapped");
         ClassLoader loader = base.getClassLoader();
-        if (binding.fold8) return OneUi9Fold8Blur.resolve(loader);
+        if (binding.aod8957) return OneUi9Aod8957Blur.resolve(loader);
         if (!binding.legacy)
             return new ClockBlurBinding(loader, "aod.tx0", "aod.xb0", "aod.e70", "a", "o");
         return OneUi85AodBlur.resolve(loader);

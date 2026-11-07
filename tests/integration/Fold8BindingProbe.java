@@ -8,11 +8,11 @@ public final class Fold8BindingProbe {
     public static void main(String[] args) throws Exception {
         if (args.length != 2) throw new IllegalArgumentException("editor.apk aod.apk");
         ClassLoader editor = new PathClassLoader(args[0], ClassLoader.getSystemClassLoader());
-        EditorBinding binding = EditorBinding.resolve(editor, EditorBinding.FOLD8);
-        if (!binding.fold8 || binding.legacy) throw new AssertionError("Wrong editor adapter");
+        EditorBinding binding = EditorBinding.resolve(editor, EditorBinding.DRESSROOM_3001);
+        if (!binding.editor3001 || binding.legacy) throw new AssertionError("Wrong editor adapter");
         new WallpaperSourceBinding(editor, false, true);
         DepthBinding.validateEditor(editor);
-        OneUi9Fold8Widgets.validate(editor);
+        OneUi9Editor3001Widgets.validate(editor);
         Class<?> model = Class.forName("so.j", false, editor);
         Class<?> continuation = Class.forName("kotlin.coroutines.Continuation", false, editor);
         Class.forName("so.h", false, editor).getDeclaredConstructor(model, boolean.class, continuation, int.class);
@@ -27,9 +27,10 @@ public final class Fold8BindingProbe {
         callback.getDeclaredMethod("invoke");
         System.out.println("PASS Fold8 editor, wallpaper, native transactions and save declarations");
         ClassLoader aod = new PathClassLoader(args[1], ClassLoader.getSystemClassLoader());
+        OneUi9FoldProfiles.validate(aod);
         Class<?> base = Class.forName("com.samsung.android.uniform.widget.clock.AbsClockView", false, aod);
         ClockBinding clock = ClockBinding.of(base);
-        if (!clock.fold8 || clock.legacy || clock.clockStyle) throw new AssertionError("Wrong clock adapter");
+        if (!clock.aod8957 || clock.legacy || clock.clockStyle) throw new AssertionError("Wrong clock adapter");
         ClockBlurBinding blur = ClockBlurBinding.resolve(base);
         if (!blur.render.getDeclaringClass().getName().equals("aod.jx0"))
             throw new AssertionError("Wrong native blur adapter");
@@ -52,14 +53,14 @@ public final class Fold8BindingProbe {
         Class.forName("aod.i16", false, aod).getDeclaredMethod("C", Object.class);
         Class.forName("aod.ev2", false, aod).getDeclaredMethod("O", int.class);
         Class.forName("aod.q39", false, aod).getConstructor(double.class, float.class);
-        Class<?> holder = OneUi9Fold8Runtime.type("aod.fa2", false, aod);
+        Class<?> holder = OneUi9Aod8957Runtime.type("aod.fa2", false, aod);
         for (String field : new String[] {"G0", "U", "O", "t0", "o0", "Q", "S", "P", "c0"}) holder.getDeclaredField(field);
-        Class<?> motion = OneUi9Fold8Runtime.type("aod.ag4", false, aod);
+        Class<?> motion = OneUi9Aod8957Runtime.type("aod.ag4", false, aod);
         motion.getDeclaredMethod("d", android.graphics.drawable.Drawable.class);
         motion.getDeclaredMethod("e", android.graphics.drawable.Drawable.class);
-        OneUi9Fold8Runtime.type("aod.n82", false, aod).getDeclaredMethod("invoke");
-        OneUi9Fold8Runtime.type("aod.o8", false, aod).getDeclaredMethod("onAnimationUpdate", android.animation.ValueAnimator.class);
-        OneUi9Fold8Runtime.type("aod.di1", false, aod).getDeclaredMethod("z", android.view.View.class, int.class, int.class);
+        OneUi9Aod8957Runtime.type("aod.n82", false, aod).getDeclaredMethod("invoke");
+        OneUi9Aod8957Runtime.type("aod.o8", false, aod).getDeclaredMethod("onAnimationUpdate", android.animation.ValueAnimator.class);
+        OneUi9Aod8957Runtime.type("aod.di1", false, aod).getDeclaredMethod("z", android.view.View.class, int.class, int.class);
         System.out.println("PASS Fold8 widget editor/runtime, Now Bar stack, blur, AOD stretch and media bindings");
         FontBinding.of(base);
         new ClockSourceBinding(aod, clock);

@@ -72,23 +72,23 @@ public final class ScreenProfileProbe {
                 "Screen and orientation dimensions must remain independent");
         Bundle frozen = WidgetPreferences.clean(main);
         equal(1, ScreenIdentity.value(frozen), "Cleaning widgets must retain original screen");
-        equal("0", OneUi9Fold8Profiles.profileId(""), "Empty native profile is database profile zero");
-        equal("0", OneUi9Fold8Profiles.profileId("000"), "Numeric profile aliases must canonicalize");
-        equal("42", OneUi9Fold8Profiles.profileId("0042"), "Nonzero aliases must canonicalize");
+        equal("0", OneUi9FoldProfiles.profileId(""), "Empty native profile is database profile zero");
+        equal("0", OneUi9FoldProfiles.profileId("000"), "Numeric profile aliases must canonicalize");
+        equal("42", OneUi9FoldProfiles.profileId("0042"), "Nonzero aliases must canonicalize");
         JSONObject pending = new JSONObject().put("before", "shared").put("after", "seeded");
-        equal(0, OneUi9Fold8Profiles.recovery(new JSONObject(), "shared"), "Fresh migration must seed");
-        equal(0, OneUi9Fold8Profiles.recovery(pending, "shared"), "Pre-write interruption must retry seeding");
-        equal(1, OneUi9Fold8Profiles.recovery(pending, "seeded"), "Post-write interruption must finalize, not reseed");
-        equal(-1, OneUi9Fold8Profiles.recovery(pending, "external-edit"), "Conflicting pending state must preserve external edits");
+        equal(0, OneUi9FoldProfiles.recovery(new JSONObject(), "shared"), "Fresh migration must seed");
+        equal(0, OneUi9FoldProfiles.recovery(pending, "shared"), "Pre-write interruption must retry seeding");
+        equal(1, OneUi9FoldProfiles.recovery(pending, "seeded"), "Post-write interruption must finalize, not reseed");
+        equal(-1, OneUi9FoldProfiles.recovery(pending, "external-edit"), "Conflicting pending state must preserve external edits");
         pending.put("ready", true);
-        equal(2, OneUi9Fold8Profiles.recovery(pending, "independent-layout"), "Completed migration must never reseed edits");
+        equal(2, OneUi9FoldProfiles.recovery(pending, "independent-layout"), "Completed migration must never reseed edits");
         ArrayList<Integer> requested = new ArrayList<>(List.of(701, 702, 703));
-        equal(List.of(703), OneUi9Fold8Profiles.unreferenced(requested, Set.of(701, 702)),
+        equal(List.of(703), OneUi9FoldProfiles.unreferenced(requested, Set.of(701, 702)),
                 "Deletion must protect IDs still used by sibling profiles");
         equal(List.of(701, 702, 703), requested, "Deletion filter must not mutate native input");
-        equal(List.of(), OneUi9Fold8Profiles.unreferenced(requested, Set.of(701, 702, 703)),
+        equal(List.of(), OneUi9FoldProfiles.unreferenced(requested, Set.of(701, 702, 703)),
                 "No referenced ID may be deleted");
-        equal(requested, OneUi9Fold8Profiles.unreferenced(requested, Set.of()),
+        equal(requested, OneUi9FoldProfiles.unreferenced(requested, Set.of()),
                 "Unreferenced draft IDs must remain eligible for cleanup");
         Bundle coverScope = new Bundle(main);
         coverScope.putInt(ScreenIdentity.FIELD, ScreenIdentity.SUB);
