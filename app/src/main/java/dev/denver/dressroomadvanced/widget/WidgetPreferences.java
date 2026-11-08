@@ -8,6 +8,18 @@ import org.json.JSONObject;
 final class WidgetPreferences {
     private WidgetPreferences() {}
 
+    static String layoutKey(Bundle value) {
+        return value.getBoolean("layout")
+                + ":"
+                + value.getInt("columns")
+                + ":"
+                + value.getInt("rows")
+                + ":"
+                + value.getBoolean("vertical")
+                + ":"
+                + value.getFloat("scale", 1);
+    }
+
     static Bundle defaults() {
         Bundle b = new Bundle();
         b.putInt("schema", 1);

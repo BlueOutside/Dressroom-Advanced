@@ -238,7 +238,9 @@ final class RuntimeWidgetHooks {
                             || m.getName().equals("updateClockGravity")) {
                         handles.add(
                                 module.hook(m)
-                                        .setId("dressroom-advanced.prevent-widget-snap-" + m.getName())
+                                        .setId(
+                                                "dressroom-advanced.prevent-widget-snap-"
+                                                        + m.getName())
                                         .intercept(
                                                 chain -> {
                                                     View target = (View) chain.getThisObject();
@@ -265,7 +267,9 @@ final class RuntimeWidgetHooks {
                         final boolean starting = m.getName().equals("onClockTransitionStarted");
                         handles.add(
                                 module.hook(m)
-                                        .setId("dressroom-advanced.prevent-widget-transition-" + m.getName())
+                                        .setId(
+                                                "dressroom-advanced.prevent-widget-transition-"
+                                                        + m.getName())
                                         .intercept(
                                                 chain -> {
                                                     Object manager = chain.getThisObject();
@@ -525,10 +529,22 @@ final class RuntimeWidgetHooks {
         }
         if (force) module.widgetEngine.invalidate();
         Bundle settings = module.widgetEngine.settings(root.getContext());
-        String scale = Float.toString(settings.getFloat("scale", 1));
-        if (!state.loaded || !scale.equals(state.layout)) {
+        boolean alignChanged = false;
+        if (settings.getBoolean("layout")) {
+            Object align = Reflect.field(grid, "widgetAlignType");
+            // On 8.5 phones Samsung leaves the grid alignment unset until it receives
+            // an explicit layout. Resolve the enum from its declaration, not that value.
+            Object target = WidgetEngine.savedAlignment(grid, settings.getBoolean("vertical"));
+            if (align != target) {
+                Reflect.call(grid, "changeAlignType", target);
+                alignChanged = true;
+            }
+        }
+        String layout = WidgetPreferences.layoutKey(settings);
+        if (!state.loaded || alignChanged || !layout.equals(state.layout)) {
             module.widgetEngine.refreshChecked(grid);
-            state.layout = scale;
+            module.widgetEngine.repairPositions(grid);
+            state.layout = layout;
             state.loaded = true;
         }
         Object provider = Reflect.field(controller, "keyguardClockProvider");

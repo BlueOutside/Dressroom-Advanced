@@ -92,14 +92,29 @@ final class ClockSourceBinding {
         } catch (ClassNotFoundException missingModernAbi) {
             // The legacy List -> List contract is weaker. Only try it after ruling out
             // the modern font-data operation, not as part of the same broad scan.
-            owner =
-                    NativeContract.findClass(
-                            loader,
-                            type -> NativeContract.hasStaticMethod(type, List.class, List.class),
-                            clockStyle ? "aod.QT" : "aod.PO",
-                            clockStyle ? "aod.PO" : "aod.QT");
-            return NativeContract.findStaticMethod(
-                    owner, clockStyle ? "g" : "k", List.class, List.class);
+            // List -> List alone also matches Kotlin collection helpers. Follow the
+            // named clock API's actual call instead of scanning unrelated utilities.
+            Class<?> base =
+                    Class.forName(
+                            "com.samsung.android.uniform.widget.clock.AbsClockView", false, loader);
+            Method stretch =
+                    NativeContract.method(base, "isStretchable", boolean.class, List.class);
+            java.util.Set<Method> candidates = new java.util.LinkedHashSet<>();
+            try {
+                for (DexSignatures.Call call : DexSignatures.body(stretch).calls())
+                    if (call.isStatic()
+                            && (call.result().equals("Ljava/util/List;")
+                                    || call.result().equals("Ljava/util/ArrayList;"))
+                            && call.parameters().equals(List.of("Ljava/util/List;")))
+                        candidates.add(call.method(loader));
+            } catch (java.io.IOException invalidDex) {
+                throw new ReflectiveOperationException(
+                        "Could not read clock height call site", invalidDex);
+            }
+            if (candidates.size() != 1)
+                throw new NoSuchMethodException(
+                        "Ambiguous clock height call site: " + candidates.size());
+            return candidates.iterator().next();
         }
     }
 

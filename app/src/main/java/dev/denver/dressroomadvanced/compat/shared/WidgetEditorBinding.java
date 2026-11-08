@@ -27,10 +27,8 @@ final class WidgetEditorBinding {
         NativeContract.findField(preview, "I", widgetData);
         NativeContract.findField(preview, "J", ViewGroup.class);
         NativeContract.findField(preview, "N", View.class);
-        NativeContract.field(
-                Class.forName(OneUi85WidgetEditor.ROTATION_HOST, false, loader),
-                "a",
-                Class.forName(OneUi85WidgetEditor.ROTATION_TARGET, false, loader));
+        // The old rotation-host pair was never used here. Rotation is validated
+        // against the actual preview's use case by OneUi85WidgetLayout.
         NativeContract.method(
                 Class.forName(
                         "com.samsung.android.app.dressroom.presentation.preview.activity.EditMainActivity",
@@ -53,14 +51,6 @@ final class WidgetEditorBinding {
                 boolean.class);
         Class.forName("androidx.databinding.ViewDataBinding", false, loader)
                 .getDeclaredMethod("getBinding", View.class);
-        Class<?> toolbarClass =
-                NativeContract.findClass(
-                        loader,
-                        cls -> NativeContract.hasMethod(cls, void.class),
-                        OneUi85WidgetEditor.TOOLBAR);
-        toolbar =
-                NativeContract.findMethod(
-                        toolbarClass, OneUi85WidgetEditor.TOOLBAR_METHOD, void.class);
         menuItem =
                 NativeContract.findClass(
                         loader,
@@ -69,6 +59,17 @@ final class WidgetEditorBinding {
                                         cls, String.class, int.class, Runnable.class, String.class),
                         OneUi85WidgetEditor.MENU_ITEM);
         menuItem.getDeclaredConstructor(String.class, int.class, Runnable.class, String.class);
+        Class<?> menuArray = Array.newInstance(menuItem, 0).getClass();
+        Class<?> toolbarClass =
+                NativeContract.findClass(
+                        loader,
+                        cls ->
+                                NativeContract.hasField(cls, Context.class)
+                                        && NativeContract.hasField(cls, menuArray)
+                                        && NativeContract.hasConstructor(
+                                                cls, android.app.Activity.class, View.class),
+                        OneUi85WidgetEditor.TOOLBAR);
+        toolbar = toolbarRenderer(loader, toolbarClass, menuArray);
         Class<?> uiController =
                 Class.forName(
                         "com.samsung.android.clockpack.plugins.appwidget.IWidgetUIController",
@@ -97,8 +98,22 @@ final class WidgetEditorBinding {
                         loader,
                         cls ->
                                 !cls.isInterface()
-                                        && NativeContract.hasMethodPrefix(
-                                                cls, void.class, gridType, sizeType),
+                                        && !cls.getName().startsWith(REPOSITORIES + "sublauncher.")
+                                        && NativeContract.hasMethod(
+                                                cls,
+                                                void.class,
+                                                gridType,
+                                                sizeType,
+                                                boolean.class,
+                                                previewScale,
+                                                boolean.class,
+                                                widgetAssist,
+                                                boolean.class,
+                                                screenSize,
+                                                deviceType,
+                                                boolean.class,
+                                                uiMode,
+                                                moduleRect),
                         REPOSITORIES + "K");
         metrics =
                 NativeContract.findMethod(
@@ -125,12 +140,18 @@ final class WidgetEditorBinding {
                         loader,
                         cls ->
                                 !cls.isInterface()
-                                        && NativeContract.hasMethodPrefix(
+                                        && !cls.getName().startsWith(REPOSITORIES + "sublauncher.")
+                                        && NativeContract.hasMethod(
                                                 cls,
                                                 void.class,
                                                 widgetData,
                                                 widgetAssist,
-                                                clockAssist),
+                                                clockAssist,
+                                                uiMode,
+                                                boolean.class,
+                                                screenSize,
+                                                boolean.class,
+                                                moduleRect),
                         REPOSITORIES + "z");
         position =
                 NativeContract.findMethod(
@@ -153,6 +174,32 @@ final class WidgetEditorBinding {
                 "com.samsung.android.lockscreen.editor.item.domain.entity." + suffix,
                 false,
                 loader);
+    }
+
+    private static Method toolbarRenderer(ClassLoader loader, Class<?> toolbar, Class<?> menuArray)
+            throws ReflectiveOperationException {
+        var methods = new java.util.LinkedHashSet<Method>();
+        String owner = "L" + toolbar.getName().replace('.', '/') + ";";
+        String array = "[L" + menuArray.getComponentType().getName().replace('.', '/') + ";";
+        try {
+            for (Class<?> container :
+                    new Class<?>[] {android.widget.LinearLayout.class, ViewGroup.class})
+                for (DexSignatures.Body body :
+                        DexSignatures.callers(loader, container, "removeAllViews", void.class)) {
+                    if (!body.owner().equals(owner) || !body.matches()) continue;
+                    for (DexSignatures.Read read : body.reads())
+                        if (read.field().type().equals(array)) {
+                            methods.add(body.method(loader));
+                            break;
+                        }
+                }
+        } catch (java.io.IOException invalidDex) {
+            throw new ReflectiveOperationException(
+                    "Could not read widget toolbar renderer", invalidDex);
+        }
+        if (methods.size() != 1)
+            throw new NoSuchMethodException("Ambiguous widget toolbar renderer: " + methods.size());
+        return methods.iterator().next();
     }
 
     Object data(Object owner) throws ReflectiveOperationException {

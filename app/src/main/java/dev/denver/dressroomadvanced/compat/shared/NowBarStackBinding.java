@@ -116,8 +116,7 @@ final class NowBarStackBinding {
                 NativeContract.findField(manager, names.animationsEnabled, boolean.class);
         state = NativeContract.findField(model, "a", Enum.class);
         animator = NativeContract.findField(model, "f", Animator.class);
-        refresh =
-                NativeContract.findMethod(stack, "q", void.class, CopyOnWriteArrayList.class);
+        refresh = NativeContract.findMethod(stack, "q", void.class, CopyOnWriteArrayList.class);
         animate =
                 names.countedAnimate
                         ? NativeContract.findMethod(
@@ -130,20 +129,18 @@ final class NowBarStackBinding {
         item = NativeContract.findMethod(card, "getNowbarItem", itemType);
         blur = NativeContract.findMethod(card, "getBlurContainer", View.class);
         bindItem =
-                NativeContract.findMethod(card, names.bindItem, void.class, itemType, Integer.class);
+                NativeContract.findMethod(
+                        card, names.bindItem, void.class, itemType, Integer.class);
         hideContents =
                 NativeContract.findMethod(
                         card, names.hideContents, void.class, int.class, boolean.class);
-        Class<?> keysClass =
-                NativeContract.findClass(
-                        loader,
-                        cls -> NativeContract.hasStaticMethod(cls, String.class, itemType),
-                        names.keys);
-        key = NativeContract.findStaticMethod(keysClass, names.key, String.class, itemType);
+        key = resolveKey(loader, itemType, names);
         Class<?> stackSizeClass =
                 NativeContract.findClass(
                         loader,
-                        cls -> NativeContract.hasConstructor(cls, stack, int.class),
+                        cls ->
+                                NativeContract.hasConstructor(cls, stack, int.class)
+                                        && NativeContract.hasMethod(cls, Object.class),
                         names.stackSize);
         stackSize = stackSizeClass.getDeclaredConstructor(stack, int.class);
         stackSize.setAccessible(true);
@@ -158,5 +155,43 @@ final class NowBarStackBinding {
                                 names.wave,
                                 void.class);
         resources = names.resources;
+    }
+
+    private static Method resolveKey(ClassLoader loader, Class<?> itemType, Names names)
+            throws ReflectiveOperationException {
+        Class<?> known =
+                NativeContract.knownClass(
+                        loader,
+                        type -> NativeContract.hasStaticMethod(type, String.class, itemType),
+                        names.keys);
+        if (known != null)
+            return NativeContract.findStaticMethod(known, names.key, String.class, itemType);
+        var matches = new java.util.LinkedHashSet<Method>();
+        Method getter = NativeContract.method(itemType, "getNowBarKey", String.class);
+        String item = "L" + itemType.getName().replace('.', '/') + ";";
+        try {
+            for (DexSignatures.Body body : DexSignatures.callers(getter)) {
+                if ((body.access() & 8) == 0
+                        || !body.result().equals("Ljava/lang/String;")
+                        || !body.parameters().equals(java.util.List.of(item))) continue;
+                var getters = new java.util.HashSet<String>();
+                for (DexSignatures.Call call : body.calls())
+                    if (!call.isStatic()
+                            && call.owner().equals(item)
+                            && call.parameters().isEmpty()
+                            && call.result().equals("Ljava/lang/String;")) getters.add(call.name());
+                // Card identity combines these three values. Package names and debug
+                // labels have the same outer signature but read a different set.
+                if (getters.containsAll(
+                        java.util.Set.of("getNotiID", "getNowBarKey", "getNowBarPackage")))
+                    matches.add(body.method(loader));
+            }
+        } catch (java.io.IOException invalidDex) {
+            throw new ReflectiveOperationException(
+                    "Could not read Now Bar identity signature", invalidDex);
+        }
+        if (matches.size() != 1)
+            throw new NoSuchMethodException("Ambiguous Now Bar identity: " + matches.size());
+        return matches.iterator().next();
     }
 }

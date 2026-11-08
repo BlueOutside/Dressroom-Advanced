@@ -43,13 +43,6 @@ public final class DressroomModule extends XposedModule {
     private final SaveSnapshot<android.os.Bundle> savingWidgets = new SaveSnapshot<>();
     private final SaveSnapshot<android.os.Bundle> savingExtras = new SaveSnapshot<>();
 
-    private record LegacySave(
-            android.content.Context context,
-            android.os.Bundle clock,
-            android.os.Bundle widgets,
-            android.os.Bundle extras) {}
-
-    private final NativeSaveRequests<LegacySave> legacySaves = new NativeSaveRequests<>();
     final EditorExtras editorExtras = new EditorExtras();
     final WidgetEngine widgetEngine = new WidgetEngine(this);
     EditorWidgets editorWidgets;
@@ -70,8 +63,7 @@ public final class DressroomModule extends XposedModule {
             new java.lang.ref.WeakReference<>(null);
     private boolean sourceKnown, sourceImage, sourceSyncing, resetDepthProfiles;
     private int depthSaveHolds;
-    private final java.util.concurrent.atomic.AtomicBoolean nativeSaveStarted =
-            new java.util.concurrent.atomic.AtomicBoolean();
+    private boolean nativeSaveActive;
     private long depthSourceRevision;
     private final android.os.Handler sourceMain =
             new android.os.Handler(android.os.Looper.getMainLooper());
@@ -151,10 +143,10 @@ public final class DressroomModule extends XposedModule {
                                     : "Depth requires a still-image wallpaper.");
             }
         } catch (Exception error) {
-            sourceKnown = true;
-            sourceImage = false;
-            if (!resetDepthProfiles)
-                invalidateDepth("Wallpaper source is unavailable. Depth was cleared.");
+            // A rebuilding editor can temporarily have no readable source. Suspend drawing,
+            // but only a confirmed replacement/type change may reset the user's depth choice.
+            sourceKnown = sourceImage = false;
+            DepthEffects.pendingSource(true);
             report("Wallpaper source check failed", error);
         } finally {
             sourceSyncing = false;
@@ -380,6 +372,7 @@ public final class DressroomModule extends XposedModule {
     private void beginEditor() {
         sourceKnown = sourceImage = sourceSyncing = resetDepthProfiles = false;
         depthSaveHolds = 0;
+        nativeSaveActive = false;
         wallpaperSource.reset();
         editorActivity.clear();
         if (depthAuto != null) depthAuto.reset();
@@ -402,7 +395,6 @@ public final class DressroomModule extends XposedModule {
         savingWidgets.cancel();
         savingExtras.cancel();
         editorExtras.reset();
-        legacySaves.clear();
         activeClockController.clear();
         if (editorWidgets != null) editorWidgets.reset();
         EditorClockRefresh.cancelAll();
@@ -412,6 +404,7 @@ public final class DressroomModule extends XposedModule {
     }
 
     private void installCommitHook(ClassLoader loader) throws ReflectiveOperationException {
+        ObjectCaptureLifecycle.install(this, loader);
         wallpaperSourceBinding = new WallpaperSourceBinding(loader, editorBinding.legacy);
         java.util.ArrayList<Method> sourceChanges = new java.util.ArrayList<>();
         sourceChanges.add(wallpaperSourceBinding.changed);
@@ -502,236 +495,140 @@ public final class DressroomModule extends XposedModule {
                                     return result;
                                 }));
         deoptimize(destroyed);
-        if (editorBinding.legacy) {
-            installLegacySave(loader);
-            return;
-        }
-        Class<?> saveController = OneUi9Editor.saveController(loader);
-        for (Method request : saveController.getDeclaredMethods()) {
-            if (!request.getName().equals("Y") || request.getParameterCount() != 2) continue;
-            record(
-                    hook(request)
-                            .setId("dressroom-advanced.freeze-native-save")
-                            .intercept(
-                                    chain -> {
-                                        nativeSaveStarted.set(false);
-                                        syncSaveLayout();
-                                        NativeClockPanel current = panel.get();
-                                        boolean captured = current != null && current.prepareSave();
-                                        saving.begin(
-                                                freezeClockLayouts(
-                                                        captured
-                                                                ? DepthEffects.freezeMask(
-                                                                        draftSettings)
-                                                                : clockSnapshotWithoutPanel()));
-                                        depthSaveHolds++;
-                                        try {
-                                            savingWidgets.begin(
-                                                    editorWidgets == null
-                                                            ? null
-                                                            : editorWidgets.freeze());
-                                            savingExtras.begin(editorExtras.freeze());
-                                            Object result = chain.proceed();
-                                            if (!nativeSaveStarted.get()) {
-                                                releaseSaveHold();
-                                                log(
-                                                        Log.INFO,
-                                                        TAG,
-                                                        "Native save skipped, pending snapshots"
-                                                                + " released");
-                                            }
-                                            return result;
-                                        } catch (Throwable error) {
-                                            releaseSaveHold();
-                                            throw error;
-                                        }
-                                    }));
-            deoptimize(request);
-        }
-        Class<?> saveCallback = Class.forName("androidx.work.impl.utils.c", false, loader);
-        java.lang.reflect.Constructor<?> saveStarted =
-                saveCallback.getDeclaredConstructor(int.class, Object.class, Object.class);
+        installFinalSaveCompletion(loader);
+    }
+
+    private void prepareSave() throws Exception {
+        syncSaveLayout();
+        NativeClockPanel current = panel.get();
+        boolean captured = current != null && current.prepareSave();
+        saving.begin(
+                freezeClockLayouts(
+                        captured
+                                ? DepthEffects.freezeMask(draftSettings)
+                                : clockSnapshotWithoutPanel()));
+        savingWidgets.begin(editorWidgets == null ? null : editorWidgets.freeze());
+        savingExtras.begin(editorExtras.freeze());
+    }
+
+    private void installFinalSaveCompletion(ClassLoader loader)
+            throws ReflectiveOperationException {
+        // Both entry points and every field come from the same checked DEX contract.
+        // A missing or ambiguous role aborts installation instead of guessing an alias.
+        EditorSaveCompletion binding = new EditorSaveCompletion(loader);
         record(
-                hook(saveStarted)
-                        .setId("dressroom-advanced.native-save-start")
+                hook(binding.started)
+                        .setId("dressroom-advanced.preflight-apply")
                         .intercept(
                                 chain -> {
-                                    boolean tagged = false, owner = false;
-                                    for (Object arg : chain.getArgs()) {
-                                        if (arg instanceof Number && ((Number) arg).intValue() == 5)
-                                            tagged = true;
-                                        else if (arg != null && arg.getClass() == saveController)
-                                            owner = true;
+                                    Object mediator = chain.getThisObject();
+                                    if (!binding.belongsTo(mediator, editorActivity.get()))
+                                        return chain.proceed();
+                                    if (nativeSaveActive) return null;
+                                    try {
+                                        prepareSave();
+                                    } catch (Exception error) {
+                                        saving.cancel();
+                                        savingWidgets.cancel();
+                                        savingExtras.cancel();
+                                        savePreparationFailed(error);
+                                        return null;
                                     }
-                                    if (tagged && owner) nativeSaveStarted.set(true);
+                                    nativeSaveActive = true;
+                                    depthSaveHolds++;
+                                    try {
+                                        Object result = chain.proceed();
+                                        // Native validation can return before it starts the
+                                        // component batch.
+                                        if (nativeSaveActive && !binding.running(mediator))
+                                            releaseSaveHold();
+                                        return result;
+                                    } catch (Throwable error) {
+                                        if (nativeSaveActive) releaseSaveHold();
+                                        throw error;
+                                    }
+                                }));
+        deoptimize(binding.started);
+        record(
+                hook(binding.completed)
+                        .setId("dressroom-advanced.complete-wallpaper-save")
+                        .intercept(
+                                chain -> {
+                                    try {
+                                        if (nativeSaveActive
+                                                && binding.finished(
+                                                        chain.getThisObject(),
+                                                        editorActivity.get()))
+                                            commitSavedSettings();
+                                    } catch (Exception error) {
+                                        report("Final wallpaper save check failed", error);
+                                    }
                                     return chain.proceed();
                                 }));
-        deoptimize(saveStarted);
-        Method completed = saveCallback.getDeclaredMethod("invoke");
-        record(
-                hook(completed)
-                        .setId("dressroom-advanced.commit-settings")
-                        .intercept(
-                                chain -> {
-                                    Object callback = chain.getThisObject();
-                                    Object result = chain.proceed();
-                                    boolean nativeSave = false;
-                                    try {
-                                        nativeSave =
-                                                ((Number) Reflect.field(callback, "a")).intValue()
-                                                                == 5
-                                                        && Reflect.field(callback, "c").getClass()
-                                                                == saveController;
-                                        if (nativeSave) {
-                                            android.os.Bundle snapshot = saving.complete();
-                                            android.os.Bundle widgets = savingWidgets.complete();
-                                            android.os.Bundle extras = savingExtras.complete();
-                                            if (extras != null) editorExtras.commit(extras);
-                                            if (snapshot != null && editorContext != null) {
-                                                stampSavedSource(snapshot);
-                                                android.os.Bundle saved =
-                                                        SettingsBridge.commit(
-                                                                editorContext, snapshot);
-                                                if (saved == null || !saved.getBoolean("saved"))
-                                                    throw new IllegalStateException(
-                                                            "Settings were not saved");
-                                                log(
-                                                        Log.INFO,
-                                                        TAG,
-                                                        "Advanced clock settings committed after"
-                                                                + " native save");
-                                            }
-                                            if (widgets != null
-                                                    && editorWidgets != null
-                                                    && editorWidgets.context() != null) {
-                                                WidgetPreferences.commit(
-                                                        editorWidgets.context(), widgets);
-                                                editorWidgets.committed();
-                                                log(
-                                                        Log.INFO,
-                                                        TAG,
-                                                        "Widget settings committed after native"
-                                                                + " save");
-                                            }
-                                        }
-                                    } catch (Exception e) {
-                                        report("Advanced settings commit failed", e);
-                                    } finally {
-                                        if (nativeSave)
-                                            depthSaveHolds = Math.max(0, depthSaveHolds - 1);
-                                    }
-                                    return result;
-                                }));
+        deoptimize(binding.completed);
+    }
+
+    private void commitSavedSettings() {
+        if (!nativeSaveActive) return;
+        nativeSaveActive = false;
+        try {
+            android.os.Bundle snapshot = saving.complete();
+            android.os.Bundle widgets = savingWidgets.complete();
+            android.os.Bundle extras = savingExtras.complete();
+            if (extras != null) {
+                try {
+                    editorExtras.commit(extras);
+                } catch (Exception error) {
+                    report("Extras commit failed", error);
+                }
+            }
+            if (snapshot != null && editorContext != null) {
+                try {
+                    stampSavedSource(snapshot);
+                    android.os.Bundle saved = SettingsBridge.commit(editorContext, snapshot);
+                    if (saved == null || !saved.getBoolean("saved"))
+                        throw new IllegalStateException("Settings were not saved");
+                    log(Log.INFO, TAG, "Advanced clock settings committed" + " after native save");
+                } catch (Exception error) {
+                    report("Clock settings commit failed", error);
+                }
+            }
+            if (widgets != null && editorWidgets != null && editorWidgets.context() != null) {
+                try {
+                    stampSavedSource(widgets);
+                    WidgetPreferences.commit(editorWidgets.context(), widgets);
+                    editorWidgets.committed();
+                    log(Log.INFO, TAG, "Widget settings committed after native" + " save");
+                } catch (Exception error) {
+                    report("Widget settings commit failed", error);
+                }
+            }
+
+        } finally {
+            depthSaveHolds = Math.max(0, depthSaveHolds - 1);
+        }
+    }
+
+    private void savePreparationFailed(Exception error) {
+        report("Apply postponed; editor settings were kept", error);
+        android.content.Context context = editorContext;
+        if (context == null && editorWidgets != null) context = editorWidgets.context();
+        if (context != null)
+            android.widget.Toast.makeText(
+                            context,
+                            error.getMessage() == null
+                                    ? "Could not prepare settings. Try Apply again."
+                                    : error.getMessage(),
+                            android.widget.Toast.LENGTH_LONG)
+                    .show();
     }
 
     private void releaseSaveHold() {
+        nativeSaveActive = false;
         depthSaveHolds = Math.max(0, depthSaveHolds - 1);
         saving.cancel();
         savingWidgets.cancel();
         savingExtras.cancel();
-    }
-
-    private void preflightLegacySave(ClassLoader loader) throws ReflectiveOperationException {
-        Class<?> save = Class.forName(OneUi85Editor.SAVE_COMPONENT, false, loader);
-        NativeContract.field(save, "b", int.class);
-        NativeContract.method(save, "invokeSuspend", Object.class, Object.class);
-        Class.forName("kotlin.Unit", false, loader).getField("INSTANCE");
-    }
-
-    private void installLegacySave(ClassLoader loader) throws ReflectiveOperationException {
-        Class<?> save = Class.forName(OneUi85Editor.SAVE_COMPONENT, false, loader);
-        java.lang.reflect.Field label = NativeContract.field(save, "b", int.class);
-        Method resume = NativeContract.method(save, "invokeSuspend", Object.class, Object.class);
-        Object unit = Class.forName("kotlin.Unit", false, loader).getField("INSTANCE").get(null);
-        record(
-                hook(resume)
-                        .setId("dressroom-advanced.85-native-apply")
-                        .intercept(
-                                chain -> {
-                                    Object request = chain.getThisObject();
-                                    if (label.getInt(request) == 0) {
-                                        syncSaveLayout();
-                                        NativeClockPanel current = panel.get();
-                                        boolean captured = current != null && current.prepareSave();
-                                        android.os.Bundle snapshot =
-                                                freezeClockLayouts(
-                                                        captured
-                                                                ? DepthEffects.freezeMask(
-                                                                        draftSettings)
-                                                                : clockSnapshotWithoutPanel());
-                                        android.os.Bundle widgets =
-                                                editorWidgets == null
-                                                        ? null
-                                                        : editorWidgets.freeze();
-                                        android.content.Context context =
-                                                editorContext != null
-                                                        ? editorContext
-                                                        : editorWidgets == null
-                                                                ? null
-                                                                : editorWidgets.context();
-                                        legacySaves.begin(
-                                                request,
-                                                new LegacySave(
-                                                        context,
-                                                        snapshot,
-                                                        widgets,
-                                                        editorExtras.freeze()));
-                                        depthSaveHolds++;
-                                    }
-                                    try {
-                                        Object result = chain.proceed();
-                                        if (result == unit) {
-                                            LegacySave frozen = legacySaves.complete(request);
-                                            if (frozen != null
-                                                    && frozen.context() != null
-                                                    && frozen.extras() != null) {
-                                                try {
-                                                    ExtrasPreferences.commit(
-                                                            frozen.context(), frozen.extras());
-                                                    editorExtras.committed(frozen.extras());
-                                                } catch (Exception error) {
-                                                    report("8.5 extras commit failed", error);
-                                                }
-                                            }
-                                            if (frozen != null
-                                                    && frozen.context() != null
-                                                    && frozen.widgets() != null) {
-                                                try {
-                                                    WidgetPreferences.commit(
-                                                            frozen.context(), frozen.widgets());
-                                                    if (editorWidgets != null)
-                                                        editorWidgets.committed();
-                                                } catch (Exception error) {
-                                                    report("8.5 widget commit failed", error);
-                                                }
-                                            }
-                                            if (frozen != null
-                                                    && frozen.context() != null
-                                                    && frozen.clock() != null) {
-                                                try {
-                                                    stampSavedSource(frozen.clock());
-                                                    android.os.Bundle saved =
-                                                            SettingsBridge.commit(
-                                                                    frozen.context(),
-                                                                    frozen.clock());
-                                                    if (saved == null || !saved.getBoolean("saved"))
-                                                        throw new IllegalStateException(
-                                                                "Settings were not saved");
-                                                } catch (Exception error) {
-                                                    report("8.5 settings commit failed", error);
-                                                }
-                                            }
-                                            if (frozen != null)
-                                                depthSaveHolds = Math.max(0, depthSaveHolds - 1);
-                                        }
-                                        return result;
-                                    } catch (Throwable error) {
-                                        depthSaveHolds = Math.max(0, depthSaveHolds - 1);
-                                        legacySaves.fail(request);
-                                        throw error;
-                                    }
-                                }));
-        deoptimize(resume);
     }
 
     private void record(io.github.libxposed.api.XposedInterface.HookHandle handle) {
@@ -767,6 +664,7 @@ public final class DressroomModule extends XposedModule {
     }
 
     private android.os.Bundle freezeClockLayouts(android.os.Bundle current) {
+        DepthEffects.requireSaveReady(current);
         if (current != null) layoutClocks.put(current.getInt(LayoutOrientation.FIELD), current);
         java.util.ArrayList<android.os.Bundle> layouts = new java.util.ArrayList<>();
         for (android.os.Bundle value : layoutClocks.values()) {
@@ -1594,7 +1492,6 @@ public final class DressroomModule extends XposedModule {
                                                         "longVersionCode"))
                                         .longValue());
                 Method open = editorBinding.open;
-                if (editorBinding.legacy) preflightLegacySave(loader);
                 installStretchHooks(loader);
                 if (!editorBinding.legacy) {
                     installBlurHooks(loader);

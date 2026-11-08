@@ -51,6 +51,7 @@ final class WidgetEngine {
                     }
                 }
             };
+    private final Set<ClassLoader> legacyProviders = Collections.newSetFromMap(new WeakHashMap<>());
     private final Set<ClassLoader> scaleInstalled = Collections.newSetFromMap(new WeakHashMap<>());
 
     WidgetEngine(DressroomModule module) {
@@ -94,6 +95,7 @@ final class WidgetEngine {
 
     synchronized boolean installLegacyCapacity(ClassLoader loader)
             throws ReflectiveOperationException {
+        legacyProviders.add(loader);
         if (installed.contains(loader)) return true;
         if (!scaleInstalled.contains(loader)) install(loader);
         if (installed.contains(loader)) return true;
@@ -265,6 +267,19 @@ final class WidgetEngine {
                             false,
                             loader);
             if (module.editorWidgets == null) {
+                boolean legacy;
+                try {
+                    legacy =
+                            ClockBinding.of(
+                                            Class.forName(
+                                                    "com.samsung.android.uniform.widget.clock.AbsClockView",
+                                                    false,
+                                                    loader))
+                                    .legacy;
+                } catch (ReflectiveOperationException | RuntimeException unavailable) {
+                    legacy = false;
+                }
+                final boolean legacyOrientation = legacy;
                 Class<?> viewModel =
                         Class.forName(
                                 "com.samsung.android.app.facewidget.complication.KeyguardComplicationViewModel",
@@ -305,10 +320,21 @@ final class WidgetEngine {
                                             Object manager =
                                                     Reflect.call(
                                                             controller, "getWidgetSizeManager");
-                                            if (!main(manager)) return chain.proceed();
+                                            if (!main(manager)
+                                                    || !config(manager).getBoolean("layout"))
+                                                return chain.proceed();
                                             Object requested = nativeArrangement.get();
                                             Object targetAlign =
                                                     requested == null ? chain.getArg(0) : requested;
+                                            if (legacyOrientation)
+                                                targetAlign =
+                                                        enumValue(
+                                                                alignType,
+                                                                config(manager)
+                                                                                .getBoolean(
+                                                                                        "vertical")
+                                                                        ? "Vertical"
+                                                                        : "Default");
                                             Reflect.call(
                                                     controller, "changeAlignType", targetAlign);
                                             reflow(controller);
@@ -423,7 +449,12 @@ final class WidgetEngine {
                                                                                     "getHeight"))
                                                                     .intValue(),
                                                             manager,
-                                                            config(manager).getFloat("scale", 1));
+                                                            config(manager).getFloat("scale", 1),
+                                                            legacyProviders.contains(
+                                                                            manager.getClass()
+                                                                                    .getClassLoader())
+                                                                    && config(manager)
+                                                                            .getBoolean("layout"));
                                             }
                                         }
                                     } catch (Exception error) {
@@ -532,9 +563,41 @@ final class WidgetEngine {
             int rows = ((Number) Reflect.call(item, "getHeight")).intValue();
             Object manager = Reflect.call(grid, "getWidgetSizeManager");
             WidgetHostSizing.refresh(
-                    host, columns, rows, manager, config(manager).getFloat("scale", 1));
+                    host,
+                    columns,
+                    rows,
+                    manager,
+                    config(manager).getFloat("scale", 1),
+                    legacyProviders.contains(manager.getClass().getClassLoader())
+                            && config(manager).getBoolean("layout"));
             Reflect.call(grid, "sendAppWidgetOptions", id, columns, rows);
         }
+    }
+
+    boolean repairPositions(Object grid) throws ReflectiveOperationException {
+        Object manager = Reflect.call(grid, "getWidgetSizeManager");
+        if (!main(manager) || !config(manager).getBoolean("layout")) return false;
+        Object current = Reflect.call(grid, "getModuleInfo");
+        if (!(current instanceof java.util.List<?> items)) return false;
+        boolean vertical =
+                Boolean.TRUE.equals(
+                        Reflect.call(Reflect.field(grid, "widgetAlignType"), "isVertical"));
+        int[][] cells = new int[items.size()][4];
+        for (int i = 0; i < items.size(); i++) {
+            Object item = items.get(i);
+            cells[i][0] =
+                    ((Number) Reflect.call(item, vertical ? "getSecondaryX" : "getX")).intValue();
+            cells[i][1] =
+                    ((Number) Reflect.call(item, vertical ? "getSecondaryY" : "getY")).intValue();
+            cells[i][2] = ((Number) Reflect.call(item, "getWidth")).intValue();
+            cells[i][3] = ((Number) Reflect.call(item, "getHeight")).intValue();
+        }
+        if (WidgetLayout.positionsValid(
+                ((Number) Reflect.call(manager, "getColumn")).intValue(),
+                ((Number) Reflect.call(manager, "getRow")).intValue(),
+                cells)) return false;
+        reflow(grid);
+        return true;
     }
 
     void reflow(Object grid) throws ReflectiveOperationException {
@@ -556,6 +619,17 @@ final class WidgetEngine {
         if (!Boolean.TRUE.equals(rearrange.invoke(container, items, Collections.emptySet(), true)))
             throw new IllegalStateException(
                     "Samsung could not fit these widgets. Increase the grid size.");
+    }
+
+    static Object savedAlignment(Object grid, boolean vertical)
+            throws ReflectiveOperationException {
+        Class<?> type =
+                Class.forName(
+                        "com.samsung.android.clockpack.plugins.briefwidget.WidgetAlignType",
+                        false,
+                        grid.getClass().getClassLoader());
+        NativeContract.field(grid.getClass(), "widgetAlignType", type);
+        return enumValue(type, vertical ? "Vertical" : "Default");
     }
 
     static Object enumValue(Class<?> type, String name) {

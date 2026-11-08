@@ -48,6 +48,7 @@ final class DepthAuto {
         if (!DepthEffects.isEditorClock(clock)) return;
         if (!module.depthImageAvailable()) {
             reset();
+            DepthEffects.pendingSource(true);
             return;
         }
         boolean changed =

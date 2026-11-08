@@ -196,6 +196,27 @@ final class NativeContract {
         return false;
     }
 
+    static Class<?> findClassInPackage(
+            ClassLoader loader, String prefix, Predicate<Class<?>> signature)
+            throws ClassNotFoundException {
+        Class<?> found = null;
+        for (String name : dexClasses(loader)) {
+            if (!name.startsWith(prefix)) continue;
+            Class<?> candidate;
+            try {
+                candidate = Class.forName(name, false, loader);
+                if (!signature.test(candidate)) continue;
+            } catch (LinkageError | RuntimeException | ClassNotFoundException ignored) {
+                continue;
+            }
+            if (found != null && found != candidate)
+                throw new AmbiguousClassException("Ambiguous contract in " + prefix);
+            found = candidate;
+        }
+        if (found == null) throw new ClassNotFoundException("No matching contract in " + prefix);
+        return found;
+    }
+
     static Class<?> findClass(
             ClassLoader loader, Predicate<Class<?>> signature, String... candidates)
             throws ClassNotFoundException {

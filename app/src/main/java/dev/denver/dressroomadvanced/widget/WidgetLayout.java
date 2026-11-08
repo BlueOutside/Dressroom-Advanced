@@ -82,6 +82,29 @@ final class WidgetLayout {
         };
     }
 
+    static boolean positionsValid(int columns, int rows, int[][] cells) {
+        if (columns < 1 || columns > 8 || rows < 1 || rows > 8 || columns * rows > 32) return false;
+        boolean[][] used = new boolean[rows][columns];
+        for (int[] cell : cells) {
+            if (cell == null || cell.length != 4) return false;
+            int x = cell[0], y = cell[1], width = cell[2], height = cell[3];
+            if (x < 0
+                    || y < 0
+                    || width < 1
+                    || height < 1
+                    || width > columns
+                    || height > rows
+                    || x > columns - width
+                    || y > rows - height) return false;
+            for (int yy = y; yy < y + height; yy++)
+                for (int xx = x; xx < x + width; xx++) {
+                    if (used[yy][xx]) return false;
+                    used[yy][xx] = true;
+                }
+        }
+        return true;
+    }
+
     static boolean fits(int columns, int rows, int[][] spans) {
         if (columns < 1 || columns > 8 || rows < 1 || rows > 8 || columns * rows > 32) return false;
         boolean[][] used = new boolean[rows][columns];

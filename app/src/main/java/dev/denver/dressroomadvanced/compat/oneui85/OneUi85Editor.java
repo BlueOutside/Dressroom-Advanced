@@ -1,7 +1,6 @@
 package dev.denver.dressroomadvanced;
 
 final class OneUi85Editor {
-    static final String SAVE_COMPONENT = "com.samsung.android.lockscreen.editor.component.H$e";
 
     private OneUi85Editor() {}
 

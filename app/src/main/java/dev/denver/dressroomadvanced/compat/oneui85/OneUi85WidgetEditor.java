@@ -4,8 +4,6 @@ import android.view.View;
 
 final class OneUi85WidgetEditor {
     static final String PREVIEW = "ib.l0";
-    static final String ROTATION_HOST = "X6.i";
-    static final String ROTATION_TARGET = "S6.e";
     static final String ADAPTER = "lb.c";
     static final String ADAPTER_METHOD = "r";
     static final String TOOLBAR = "V3.v";

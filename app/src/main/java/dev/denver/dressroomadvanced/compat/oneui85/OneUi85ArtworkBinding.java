@@ -27,17 +27,22 @@ final class OneUi85ArtworkBinding {
                         loader,
                         type ->
                                 NativeContract.hasField(type, page)
-                                        && NativeContract.hasField(type, model),
+                                        && NativeContract.hasField(type, model)
+                                        && holderConstructor(type) != null,
                         clock.clockStyle ? "aod.TK" : "aod.YR");
+        constructor = holderConstructor(holder);
+        if (constructor == null) throw new NoSuchMethodException("Native music holder changed");
+    }
+
+    private static Constructor<?> holderConstructor(Class<?> type) {
         Constructor<?> found = null;
-        for (Constructor<?> candidate : holder.getDeclaredConstructors()) {
+        for (Constructor<?> candidate : type.getDeclaredConstructors()) {
             Class<?>[] args = candidate.getParameterTypes();
             if (args.length == 7 && args[0] == Context.class && args[1] == View.class) {
-                if (found != null) throw new NoSuchMethodException("Ambiguous native music holder");
+                if (found != null) return null;
                 found = candidate;
             }
         }
-        if (found == null) throw new NoSuchMethodException("Native music holder changed");
-        constructor = found;
+        return found;
     }
 }
