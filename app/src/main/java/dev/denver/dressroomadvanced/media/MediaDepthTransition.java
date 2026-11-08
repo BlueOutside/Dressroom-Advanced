@@ -2,47 +2,102 @@ package dev.denver.dressroomadvanced;
 
 import android.animation.Animator;
 import android.view.View;
+import android.view.ViewTreeObserver;
 
 import java.lang.ref.WeakReference;
 import java.util.Map;
 import java.util.WeakHashMap;
 import java.util.function.Function;
 
-/** Wallpaper masks do not belong on the media clock; restore them after its native return. */
+/** Keep the travelling clock behind the subject, but leave the settled media clock unmasked. */
 final class MediaDepthTransition {
-    private static final Map<View, Return> pending = new WeakHashMap<>();
+    private static final Map<View, Pending> pending = new WeakHashMap<>();
 
     private MediaDepthTransition() {}
 
     static void screenChanged() {
-        for (View clock : new java.util.ArrayList<>(pending.keySet())) {
-            cancel(clock);
-            DepthEffects.media(clock, false);
-        }
+        for (View clock : new java.util.ArrayList<>(pending.keySet())) restore(clock);
+    }
+
+    static void restore(View clock) {
+        Pending old = pending.remove(clock);
+        if (old != null) old.cancel();
+        DepthEffects.media(clock, false);
+    }
+
+    static void update(View clock, boolean expanded) {
+        update(
+                clock,
+                expanded,
+                view -> {
+                    ClockTransitionBinding binding = ClockTransitionBinding.of(view);
+                    try {
+                        return (Animator) binding.animation.get(binding.controller.get(view));
+                    } catch (IllegalAccessException error) {
+                        throw new IllegalStateException(error);
+                    }
+                });
     }
 
     static void update(View clock, boolean expanded, Function<View, Animator> animation) {
-        cancel(clock);
+        Pending current = pending.get(clock);
+        if (expanded
+                && (current instanceof Opening
+                        || current == null && DepthEffects.mediaActive(clock))) return;
+        if (!expanded && current instanceof Return) return;
+        Pending old = pending.remove(clock);
+        if (old != null) old.cancel();
         if (expanded) {
-            DepthEffects.media(clock, true);
-        } else if (DepthEffects.mediaActive(clock)) {
-            Return request = new Return(clock, animation);
+            if (!DepthEffects.hasSubject(clock)) {
+                DepthEffects.media(clock, true);
+                return;
+            }
+            DepthEffects.media(clock, false);
+            Opening request = new Opening(clock, animation);
             pending.put(clock, request);
-            // Samsung creates the return animator after setMediaExpanded(false) returns.
+            clock.postOnAnimation(request);
+        } else if (DepthEffects.mediaActive(clock)) {
+            Return request = new Return(clock);
+            pending.put(clock, request);
+            // Let Samsung set up the return before rebuilding the native blur path.
             clock.postOnAnimation(request);
         }
     }
 
-    private static void cancel(View clock) {
-        if (pending.remove(clock) != null) MediaReturnCompletion.cancel(clock);
+    private abstract static class Pending implements Runnable {
+        final WeakReference<View> clock;
+
+        Pending(View clock) {
+            this.clock = new WeakReference<>(clock);
+        }
+
+        void cancel() {}
     }
 
-    private static final class Return implements Runnable {
-        final WeakReference<View> clock;
-        final Function<View, Animator> animation;
+    private static final class Return extends Pending {
+        Return(View clock) {
+            super(clock);
+        }
 
-        Return(View clock, Function<View, Animator> animation) {
-            this.clock = new WeakReference<>(clock);
+        @Override
+        public void run() {
+            View view = clock.get();
+            if (view != null && pending.get(view) == this) {
+                pending.remove(view);
+                DepthEffects.media(view, false);
+            }
+        }
+    }
+
+    private static final class Opening extends Pending
+            implements ViewTreeObserver.OnPreDrawListener {
+        final ViewGeometry geometry = new ViewGeometry();
+        Function<View, Animator> animation;
+        WeakReference<ViewTreeObserver> observer = new WeakReference<>(null);
+        int stable;
+
+        Opening(View clock, Function<View, Animator> animation) {
+            super(clock);
             this.animation = animation;
         }
 
@@ -50,27 +105,55 @@ final class MediaDepthTransition {
         public void run() {
             View view = clock.get();
             if (view == null || pending.get(view) != this) return;
-            try {
-                if (MediaReturnCompletion.await(
-                        view,
-                        animation.apply(view),
-                        () -> {
-                            View current = clock.get();
-                            if (current != null) current.postOnAnimation(this::finish);
-                        })) return;
-            } catch (RuntimeException error) {
-                android.util.Log.w(DressroomModule.TAG, "Media depth return unavailable", error);
-            }
-            finish();
+            ViewTreeObserver tree = view.getViewTreeObserver();
+            observer = new WeakReference<>(tree);
+            tree.addOnPreDrawListener(this);
+            view.postInvalidateOnAnimation();
         }
 
-        void finish() {
+        @Override
+        public boolean onPreDraw() {
             View view = clock.get();
-            if (view != null && pending.get(view) == this) {
-                pending.remove(view);
-                MediaReturnCompletion.cancel(view);
-                DepthEffects.media(view, false);
+            if (view == null || pending.get(view) != this) {
+                cancel();
+                return true;
             }
+            if (view.isAttachedToWindow() && !view.isShown()) {
+                finish(view);
+                return true;
+            }
+            boolean running = false;
+            if (animation != null) {
+                try {
+                    Animator current = animation.apply(view);
+                    running = current != null && current.isStarted();
+                } catch (RuntimeException ignored) {
+                    animation = null; // Non-stretchable layouts can still move with their page.
+                }
+            }
+            boolean moved = geometry.update(view, null, null);
+            if (running || moved || view.isLayoutRequested()) stable = 0;
+            else if (++stable >= 2) {
+                finish(view);
+                return true;
+            }
+            view.postInvalidateOnAnimation();
+            return true;
+        }
+
+        private void finish(View view) {
+            pending.remove(view);
+            cancel();
+            DepthEffects.media(view, true);
+        }
+
+        @Override
+        void cancel() {
+            ViewTreeObserver tree = observer.get();
+            if (tree != null && tree.isAlive()) tree.removeOnPreDrawListener(this);
+            View view = clock.get();
+            if (view != null && view.getViewTreeObserver() != tree)
+                view.getViewTreeObserver().removeOnPreDrawListener(this);
         }
     }
 }

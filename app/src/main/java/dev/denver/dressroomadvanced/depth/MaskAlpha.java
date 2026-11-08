@@ -45,7 +45,22 @@ final class MaskAlpha {
 
     static Bitmap detect(Object detector, Bitmap input, String pass) throws Exception {
         Object result = Reflect.call(detector, "capture", input);
-        if (!Boolean.TRUE.equals(Reflect.call(result, "isCaptured"))) return null;
+        if (!Boolean.TRUE.equals(Reflect.call(result, "isCaptured"))) {
+            Object code = "unknown";
+            try {
+                code = Reflect.call(result, "getErrorCode");
+            } catch (NoSuchMethodException ignored) {
+            }
+            android.util.Log.i(
+                    DressroomModule.TAG,
+                    "Subject "
+                            + pass
+                            + ": no capture, backend="
+                            + detector.getClass().getSimpleName()
+                            + ", code="
+                            + code);
+            return null;
+        }
         java.util.List<Object> objects = new java.util.ArrayList<>();
         Object output = Reflect.call(result, "getOutput");
         if (output != null) objects.add(output);

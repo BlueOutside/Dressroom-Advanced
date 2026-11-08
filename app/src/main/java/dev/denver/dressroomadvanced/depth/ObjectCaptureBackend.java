@@ -44,7 +44,12 @@ final class ObjectCaptureBackend {
                                     .getConstructor(Context.class)
                                     .newInstance(context));
         }
-        return firstUsable(factories, new ArrayList<>(), ObjectCaptureBackend::tryInitArcSoft);
+        Object detector =
+                firstUsable(factories, new ArrayList<>(), ObjectCaptureBackend::tryInitArcSoft);
+        android.util.Log.i(
+                DressroomModule.TAG,
+                "Subject detector selected: " + detector.getClass().getSimpleName());
+        return detector;
     }
 
     static Object firstUsable(Iterable<? extends Callable<?>> factories, List<Object> failed)

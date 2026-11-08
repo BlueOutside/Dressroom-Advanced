@@ -181,7 +181,7 @@ final class WidgetDepthBlur {
                     View root = reference.get();
                     if (root != null) {
                         if (separateSurfaces) {
-                            clipWidgets(root, DepthEffects.hasSubject(root));
+                            clipWidgets(root, DepthEffects.hasVisibleSubject(root));
                         } else {
                             boolean outlineChanged = WidgetContentClip.apply(root, true);
                             if (geometryChanged(root) || outlineChanged) WidgetContentClip.refresh(root);
@@ -219,7 +219,7 @@ final class WidgetDepthBlur {
     private static void refreshTree(View view, boolean clear) {
         if (isBackground(view)) {
             boolean active =
-                    !clear && (DepthEffects.hasSubject(view) || WidgetMediaOcclusion.active(view));
+                    !clear && (DepthEffects.hasVisibleSubject(view) || WidgetMediaOcclusion.active(view));
             boolean outlineChanged = WidgetContentClip.apply(view, active);
             Object original = originals.get(view);
             if (view.getWidth() > 0 && view.getHeight() > 0)

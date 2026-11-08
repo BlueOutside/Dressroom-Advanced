@@ -9,6 +9,9 @@ public final class DepthSourcePolicyTest {
     }
 
     public static void main(String[] args) {
+        check(DepthSourcePolicy.visible(true, false), "Awake wallpaper requires the AOD switch");
+        check(DepthSourcePolicy.visible(false, true), "Full-screen AOD loses its subject");
+        check(!DepthSourcePolicy.visible(false, false), "Black AOD keeps a subject cut");
         DepthSourcePolicy state = new DepthSourcePolicy();
         check(!state.observe("photo-a"), "Initial source treated as replacement");
         check(!state.observe("photo-a"), "Same image reset depth");

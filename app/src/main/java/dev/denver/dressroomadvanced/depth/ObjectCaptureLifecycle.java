@@ -22,6 +22,12 @@ final class ObjectCaptureLifecycle {
                     throw new NoSuchFieldException("Object Capture static lock changed");
                 lockField.setAccessible(true);
                 Object lock = lockField.get(null);
+                ArcSoftEngineBinding arc =
+                        backend.equals("ArcSoftObjectCaptureImpl")
+                                ? new ArcSoftEngineBinding(type)
+                                : null;
+                CaptureInstanceState<Object> instance =
+                        arc == null ? null : new CaptureInstanceState<>(arc.ready, arc::handle);
                 Method init = NativeContract.method(type, "init", void.class);
                 Method release = NativeContract.method(type, "release", void.class);
                 Method capture =
@@ -38,9 +44,17 @@ final class ObjectCaptureLifecycle {
                                     .intercept(
                                             chain -> {
                                                 synchronized (lock) {
-                                                    Object result = chain.proceed();
-                                                    owners.add(chain.getThisObject());
-                                                    return result;
+                                                    Object owner = chain.getThisObject();
+                                                    if (instance != null) instance.prepare(owner);
+                                                    try {
+                                                        Object result = chain.proceed();
+                                                        if (instance != null)
+                                                            instance.opened(owner);
+                                                        else owners.add(owner);
+                                                        return result;
+                                                    } finally {
+                                                        if (instance != null) instance.restore();
+                                                    }
                                                 }
                                             });
                     hooks.add(opened::unhook);
@@ -50,6 +64,16 @@ final class ObjectCaptureLifecycle {
                                     .intercept(
                                             chain -> {
                                                 synchronized (lock) {
+                                                    if (instance != null) {
+                                                        Object owner = chain.getThisObject();
+                                                        instance.prepare(owner);
+                                                        try {
+                                                            return chain.proceed();
+                                                        } finally {
+                                                            instance.closed(owner);
+                                                            instance.restore();
+                                                        }
+                                                    }
                                                     owners.remove(chain.getThisObject());
                                                     // Samsung's initialized flag and native engine
                                                     // are shared by
@@ -82,7 +106,10 @@ final class ObjectCaptureLifecycle {
                     installed.add(type);
                 }
                 android.util.Log.i(
-                        DressroomModule.TAG, "Shared Object Capture lifecycle: " + backend);
+                        DressroomModule.TAG,
+                        (arc == null ? "Shared" : "Per-instance")
+                                + " Object Capture lifecycle: "
+                                + backend);
             } catch (ReflectiveOperationException | LinkageError error) {
                 module.report("Object Capture lifecycle binding unavailable: " + backend, error);
             }

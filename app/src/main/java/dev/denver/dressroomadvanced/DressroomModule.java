@@ -190,6 +190,7 @@ public final class DressroomModule extends XposedModule {
         // A failed scan is not a wallpaper replacement. Keep user choices, suspend the matte.
         DepthEffects.clearEditorSubject();
         DepthEffects.pendingSource(true);
+        DepthEffects.detectionFailure(message);
         EditorDepthSources.forScreen(editorDrafts.values(), editorScreen, DepthSafety::clearMask);
         EditorDepthSources.forScreen(layoutClocks.values(), editorScreen, DepthSafety::clearMask);
         DepthSafety.clearMask(draftSettings);
@@ -286,8 +287,8 @@ public final class DressroomModule extends XposedModule {
         if (current != null) current.depthStatus(message);
     }
 
-    void depthDetected(View clock, byte[] mask, String message) {
-        if (clock == null || !clock.isAttachedToWindow()) return;
+    boolean depthDetected(View clock, byte[] mask, String message) {
+        if (clock == null || !clock.isAttachedToWindow()) return false;
         try {
             int type = editorType(clock), font = editorFont(clock, type);
             android.os.Bundle settings = editorSettings(clock.getContext(), type, font);
@@ -302,9 +303,11 @@ public final class DressroomModule extends XposedModule {
             NativeClockPanel current = panel.get();
             if (current != null) current.adoptDepth(settings, message);
             depthStatus(message);
+            return true;
         } catch (Exception error) {
             report("Detected depth could not update the editor", error);
             depthStatus("Could not apply subject: " + error.getMessage());
+            return false;
         }
     }
 
@@ -1451,6 +1454,10 @@ public final class DressroomModule extends XposedModule {
     @Override
     public void onPackageReady(PackageReadyParam param) {
         if (!PlatformGate.supported()) return;
+        if ("com.samsung.android.wallpaper.live".equals(param.getPackageName())) {
+            WallpaperMotionPublisher.install(this, param.getClassLoader());
+            return;
+        }
         if ("com.android.systemui".equals(param.getPackageName())
                 || "com.samsung.android.app.aodservice".equals(param.getPackageName())
                 || "com.samsung.android.app.clockpack".equals(param.getPackageName())) {

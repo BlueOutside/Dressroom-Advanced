@@ -1,12 +1,12 @@
 {
   "Jvm": [
     "FoldSupportTest", "FoldStateMonitorTest", "FontAxesTest", "BlurOpacityTest", "ChargingStateTest", "DeferredDiscoveryTest", "IdentityLocksTest",
-    "LatestDepthWorkTest", "LifecycleContractTest", "ReflectContractTest", "WidgetLayoutTest", "AdapterContractsTest", "DeferredRefreshTest", "DepthSourcePolicyTest"
+    "LatestDepthWorkTest", "LifecycleContractTest", "ReflectContractTest", "WidgetLayoutTest", "AdapterContractsTest", "DeferredRefreshTest", "DepthSourcePolicyTest", "WallpaperMotionTest", "CaptureInstanceStateTest"
   ],
   "Android": [
     "MediaPerformanceProbe", "ClockBlurSyncProbe", "OptimizationProbe", "ClockContentClipProbe", "WidgetDepthClipProbe", "WidgetPlacementOrderProbe",
     "CodebaseAuditProbe", "RenderHotPathProbe", "ReflectContractTest", "DepthRegionProbe",
-    "DepthV2PlatformProbe", "MediaReturnProbe", "NowBarPipelineProbe", "LatestDepthWorkTest",
+    "DepthV2PlatformProbe", "MediaReturnProbe", "DepthViewMotionProbe", "WallpaperMotionProbe", "NowBarPipelineProbe", "LatestDepthWorkTest",
     "LifecycleContractTest", "OrientationProfileProbe", "ScreenProfileProbe", "ScreenDepthIsolationProbe", "FoldParityProbe", "PostApplyWallpaperProbe", "EditorScrollProbe", "RootLayoutWatchProbe", "DepthSafetyProbe", "SongRevealProbe"
   ]
 }

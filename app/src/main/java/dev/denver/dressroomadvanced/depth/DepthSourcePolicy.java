@@ -1,6 +1,10 @@
 package dev.denver.dressroomadvanced;
 
 final class DepthSourcePolicy {
+    static boolean visible(boolean interactive, boolean aodWallpaper) {
+        return interactive || aodWallpaper;
+    }
+
     private String key;
 
     boolean observe(String next) {

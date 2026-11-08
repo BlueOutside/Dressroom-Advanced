@@ -111,7 +111,7 @@ final class MediaClockContrast {
             Set<View> previous = suspended.remove(root);
             if (previous != null)
                 for (View clock : new ArrayList<>(previous))
-                    if (clock != null) DepthEffects.media(clock, false);
+                    if (clock != null) MediaDepthTransition.restore(clock);
             return;
         }
         Set<View> held =
@@ -119,7 +119,7 @@ final class MediaClockContrast {
                         root, ignored -> Collections.newSetFromMap(new WeakHashMap<>()));
         for (View clock : new ArrayList<>(clocks))
             if (clock != null && clock.getWindowToken() == root.getWindowToken()) {
-                if (held.add(clock)) DepthEffects.media(clock, true);
+                if (held.add(clock)) MediaDepthTransition.update(clock, true);
             }
     }
 
@@ -305,7 +305,8 @@ final class MediaClockContrast {
             if (clock.getDisplay() == null
                     || (!ScreenIdentity.supported() && clock.getDisplay().getDisplayId() != 0)
                     || root.getDisplay() == null
-                    || clock.getDisplay().getDisplayId() != root.getDisplay().getDisplayId()) continue;
+                    || clock.getDisplay().getDisplayId() != root.getDisplay().getDisplayId())
+                continue;
             try {
                 String category = String.valueOf(Reflect.call(clock, "getCategory"));
                 if (!category.equals("LOCK_SCREEN") && !category.equals("AOD")) continue;

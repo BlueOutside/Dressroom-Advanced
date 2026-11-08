@@ -539,7 +539,9 @@ final class MediaFullscreenExtras {
                     next.top * (1 - p),
                     next.right + (parent.getWidth() - next.right) * p,
                     next.bottom + (parent.getHeight() - next.bottom) * p);
-            MediaClockContrast.depth(parent, true);
+            // Once the clock starts returning, clip its moving glyphs against the wallpaper.
+            // Waiting for the artwork layer to disappear leaves the whole return in front.
+            MediaClockContrast.depth(parent, !best.closing && best.small.get() == null);
             try {
                 if (best.small.get() != null) MediaClockContrast.clear(parent);
                 else MediaClockContrast.apply(parent, image, next);

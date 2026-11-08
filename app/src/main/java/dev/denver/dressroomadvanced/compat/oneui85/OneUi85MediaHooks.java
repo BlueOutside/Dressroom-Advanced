@@ -28,8 +28,7 @@ final class OneUi85MediaHooks {
                                                         (View) chain.getThisObject());
                                                 MediaDepthTransition.update(
                                                         (View) chain.getThisObject(),
-                                                        Boolean.TRUE.equals(chain.getArg(0)),
-                                                        binding::animation);
+                                                        Boolean.TRUE.equals(chain.getArg(0)));
                                                 return result;
                                             })
                             ::unhook);

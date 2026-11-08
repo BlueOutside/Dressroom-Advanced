@@ -17,8 +17,9 @@ final class DepthAuto {
     private Object stamp, resolved;
     private boolean enabled;
     private long revision;
-    private int settlingRetries;
-    private Runnable check;
+    private int settlingRetries, detectionRetries;
+    private Runnable check, deadline;
+    private Request timedRequest;
 
     private record Request(long revision, long session, WeakReference<View> image, Object stamp) {}
 
@@ -30,9 +31,11 @@ final class DepthAuto {
     }
 
     void reset() {
+        cancelDeadline();
         enabled = false;
         revision++;
         settlingRetries = 0;
+        detectionRetries = 0;
         stamp = resolved = null;
         profile = null;
         clock.clear();
@@ -58,6 +61,8 @@ final class DepthAuto {
                         || this.profile.getInt("type", -1) != profile.getInt("type", -1)
                         || this.profile.getInt("font", -1) != profile.getInt("font", -1);
         if (changed) {
+            cancelDeadline();
+            detectionRetries = 0;
             revision++;
             resolved = null;
             jobs.clear();
@@ -71,6 +76,7 @@ final class DepthAuto {
         boolean active = profile != null && (profile.getBoolean("depthEnabled") || widgets);
         if (!active) {
             if (enabled) {
+                cancelDeadline();
                 enabled = false;
                 revision++;
                 resolved = null;
@@ -89,6 +95,8 @@ final class DepthAuto {
     }
 
     void retry() {
+        cancelDeadline();
+        detectionRetries = 0;
         resolved = null;
         revision++;
         settlingRetries = 0;
@@ -117,8 +125,10 @@ final class DepthAuto {
             if (image.get() != view || !Objects.equals(stamp, current)) {
                 boolean sameWallpaper =
                         image.get() == view && LiveSubject.isSameWallpaper(stamp, current);
+                cancelDeadline();
                 image = new WeakReference<>(view);
                 stamp = current;
+                detectionRetries = 0;
                 settlingRetries = 0;
                 resolved = null;
                 revision++;
@@ -143,7 +153,8 @@ final class DepthAuto {
                     if (!enabled || revision != expected) return;
                     View wallpaper = image.get(), renderer = clock.get();
                     if (renderer == null) return;
-                    if (!EditorWallpaperSource.available(wallpaper)
+                    if (!renderer.isAttachedToWindow()
+                            || !EditorWallpaperSource.available(wallpaper)
                             || wallpaper.getWidth() <= 0
                             || wallpaper.getHeight() <= 0) {
                         if (settlingRetries < 5) {
@@ -159,8 +170,10 @@ final class DepthAuto {
                             resolved = stamp;
                             settlingRetries = 0;
                             DepthEffects.pendingSource(false);
-                            module.depthDetected(
-                                    renderer, live, "Subject reused for this clock style");
+                            if (!module.depthDetected(
+                                    renderer, live, "Subject reused for this clock style"))
+                                retryDetection(
+                                        "Clock preview was not ready to receive the subject");
                             return;
                         }
                         if (!force
@@ -170,22 +183,26 @@ final class DepthAuto {
                             resolved = stamp;
                             settlingRetries = 0;
                             DepthEffects.pendingSource(false);
-                            module.depthDetected(
+                            if (!module.depthDetected(
                                     renderer,
                                     profile.getByteArray(DepthMetadata.SOURCE),
-                                    "Subject restored · follows wallpaper movement");
+                                    "Subject restored · follows wallpaper movement"))
+                                retryDetection(
+                                        "Clock preview was not ready to receive the subject");
                             return;
                         }
                         resolved = stamp;
                         settlingRetries = 0;
                         DepthEffects.pendingSource(true);
                         module.depthStatus("Detecting the full wallpaper subject…");
-                        jobs.offer(
+                        Request request =
                                 new Request(
                                         revision,
                                         module.generation(),
                                         new WeakReference<>(wallpaper),
-                                        stamp));
+                                        stamp);
+                        armDeadline(request);
+                        jobs.offer(request);
                     } catch (Exception error) {
                         String msg = error.getMessage();
                         if (settlingRetries < 5
@@ -221,16 +238,77 @@ final class DepthAuto {
             complete.run();
             return;
         }
+        boolean[] answered = {false};
         DepthEffects.scan(
                 wallpaper.getContext(),
                 renderer,
-                (mask, message) -> {
-                    if (!current(request)) return;
-                    if (mask != null) {
-                        DepthEffects.pendingSource(false);
-                        module.depthDetected(clock.get(), mask, message);
-                    } else module.depthDetectionFailed(message);
+                wallpaper,
+                new DepthEffects.Result() {
+                    @Override
+                    public void done(byte[] mask, String message) {
+                        answered[0] = true;
+                        if (!current(request)) return;
+                        if (mask != null) {
+                            DepthEffects.pendingSource(false);
+                            if (module.depthDetected(clock.get(), mask, message)) {
+                                detectionRetries = 0;
+                            } else
+                                retryDetection(
+                                        "Clock preview was not ready to receive the subject");
+                        } else module.depthDetectionFailed(message);
+                    }
+
+                    @Override
+                    public void retry(String message) {
+                        answered[0] = true;
+                        if (current(request)) retryDetection(message);
+                    }
                 },
-                complete);
+                () -> {
+                    if (timedRequest == request) cancelDeadline();
+                    if (!answered[0] && current(request))
+                        retryDetection("Subject scan was superseded before its result was applied");
+                    complete.run();
+                });
+    }
+
+    private void cancelDeadline() {
+        if (deadline != null) main.removeCallbacks(deadline);
+        deadline = null;
+        timedRequest = null;
+    }
+
+    private void armDeadline(Request request) {
+        cancelDeadline();
+        timedRequest = request;
+        deadline =
+                () -> {
+                    deadline = null;
+                    if (!current(request)) return;
+                    String message =
+                            "Samsung's subject detector has not finished. If it stays here, restart"
+                                + " Dressroom.";
+                    DepthEffects.detectionFailure(message);
+                    module.depthStatus(message);
+                    // Do not interrupt JNI or start another native thread. A late valid result
+                    // may still finish; LatestDepthWork keeps only one waiting request.
+                };
+        main.postDelayed(deadline, 60_000);
+    }
+
+    private void retryDetection(String message) {
+        DepthEffects.pendingSource(true);
+        if (++detectionRetries <= 2) {
+            resolved = null;
+            module.depthStatus("Waiting for the wallpaper preview…");
+            schedule(350, false);
+        } else {
+            resolved = stamp;
+            String failure = message + ". Tap Detect wallpaper subject to retry.";
+            if (DepthEffects.liveMask(image.get()) != null) {
+                DepthEffects.detectionFailure(failure);
+                module.depthStatus(failure);
+            } else module.depthDetectionFailed(failure);
+        }
     }
 }

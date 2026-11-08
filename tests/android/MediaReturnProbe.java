@@ -98,50 +98,71 @@ public final class MediaReturnProbe {
 
     private static void mediaDepth(Context context) {
         QueuedView view = new QueuedView(context);
-        ValueAnimator[] animation = {null};
-        MediaDepthTransition.update(view, true, ignored -> animation[0]);
-        check(DepthEffects.mediaActive(view), "8.5 player retains wallpaper depth");
-        MediaDepthTransition.update(view, false, ignored -> animation[0]);
-        check(DepthEffects.mediaActive(view), "Depth resumes before native return is created");
-        animation[0] = running();
+        MediaDepthTransition.update(view, true);
+        check(DepthEffects.mediaActive(view), "Expanded player retains wallpaper depth");
+        MediaDepthTransition.update(view, false);
+        check(DepthEffects.mediaActive(view), "Depth rebuild runs inside the native close call");
+        ValueAnimator animation = running();
+        int[] ends = {0};
+        MediaReturnCompletion.await(view, animation, () -> ends[0]++);
         view.frame();
-        check(DepthEffects.mediaActive(view), "Depth resumes during native return");
-        animation[0].end();
-        check(DepthEffects.mediaActive(view), "Depth resumes before final native layout frame");
-        view.frame();
-        check(!DepthEffects.mediaActive(view), "Depth does not resume after native return");
+        check(!DepthEffects.mediaActive(view), "Depth waits until the return animation finishes");
+        animation.end();
+        check(ends[0] == 1, "Depth restore cancels the clock stretch completion callback");
 
+        MediaDepthTransition.update(view, true);
+        MediaDepthTransition.update(view, false);
+        MediaDepthTransition.update(view, true);
+        view.frame();
+        check(DepthEffects.mediaActive(view), "Old return masks a rapidly reopened media clock");
+
+        MediaDepthTransition.update(view, false);
+        MediaDepthTransition.screenChanged();
+        check(!DepthEffects.mediaActive(view), "Folding retains the old screen's depth return");
+        MediaDepthTransition.update(view, true);
+        view.frame();
+        check(DepthEffects.mediaActive(view), "Old screen callback masks the new media clock");
+        MediaDepthTransition.update(view, false);
+        view.frame();
+    }
+
+    private static void openingDepth(Context context) throws Exception {
+        QueuedView view = new QueuedView(context);
+        view.layout(0, 0, 100, 200);
+        android.graphics.Bitmap mask = android.graphics.Bitmap.createBitmap(16, 16,
+                android.graphics.Bitmap.Config.ARGB_8888);
+        mask.eraseColor(android.graphics.Color.WHITE);
+        java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+        mask.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, bytes);
+        DepthEffects.apply(view, true, bytes.toByteArray());
+        ValueAnimator animation = running();
+        MediaDepthTransition.update(view, true, ignored -> animation);
+        check(!DepthEffects.mediaActive(view), "Opening immediately removed subject depth");
+        view.frame();
+        view.getViewTreeObserver().dispatchOnPreDraw();
+        check(!DepthEffects.mediaActive(view), "Running opening animator lost depth");
+        MediaDepthTransition.update(view, true, ignored -> animation);
+        animation.end();
+        view.setTranslationY(30);
+        view.getViewTreeObserver().dispatchOnPreDraw();
+        check(!DepthEffects.mediaActive(view), "Page movement after stretch lost depth");
+        view.getViewTreeObserver().dispatchOnPreDraw();
+        check(!DepthEffects.mediaActive(view), "Opening settled before its final layout frame");
+        view.getViewTreeObserver().dispatchOnPreDraw();
+        check(DepthEffects.mediaActive(view), "Settled media clock retains wallpaper cuts");
+        MediaDepthTransition.restore(view);
         MediaDepthTransition.update(view, true, ignored -> null);
         MediaDepthTransition.update(view, false, ignored -> null);
-        MediaDepthTransition.update(view, true, ignored -> null);
         view.frame();
-        check(DepthEffects.mediaActive(view), "Old queued close overrides a reopened player");
-        animation[0] = running();
-        MediaDepthTransition.update(view, false, ignored -> animation[0]);
-        view.frame();
+        view.getViewTreeObserver().dispatchOnPreDraw();
+        check(!DepthEffects.mediaActive(view), "Cancelled opening remasked the closing clock");
         MediaDepthTransition.update(view, true, ignored -> null);
-        check(animation[0].getListeners() == null || animation[0].getListeners().isEmpty(),
-                "Reopening retains the old return listener");
-        animation[0].end();view.frame();
-        check(DepthEffects.mediaActive(view), "Interrupted return restores the wallpaper mask");
-        MediaDepthTransition.update(view, false, ignored -> null);view.frame();
-        check(!DepthEffects.mediaActive(view), "No-animation return leaves depth suspended");
-        MediaDepthTransition.update(view, true, ignored -> null);
-        MediaDepthTransition.update(view, false, ignored -> {throw new IllegalStateException("test");});
-        view.frame();
-        check(!DepthEffects.mediaActive(view), "Failed native animator lookup leaves depth suspended");
-        MediaDepthTransition.update(view, true, ignored -> null);
-        animation[0] = running();
-        MediaDepthTransition.update(view, false, ignored -> animation[0]);
         view.frame();
         MediaDepthTransition.screenChanged();
-        check(!DepthEffects.mediaActive(view), "Folding retained the old screen's depth return");
-        check(animation[0].getListeners() == null || animation[0].getListeners().isEmpty(),
-                "Folding retained a callback from the old screen");
-        MediaDepthTransition.update(view, true, ignored -> null);
-        animation[0].end(); view.frame();
-        check(DepthEffects.mediaActive(view), "Old screen completion overrode the new expanded player");
-        MediaDepthTransition.update(view, false, ignored -> null); view.frame();
+        view.getViewTreeObserver().dispatchOnPreDraw();
+        check(!DepthEffects.mediaActive(view), "Old orientation's opening completion survived");
+        DepthEffects.apply(view, false, null);
+        mask.recycle();
     }
 
     private static int checks;
@@ -271,6 +292,7 @@ public final class MediaReturnProbe {
                 RuntimeClockData.manualHeights(saved) == null,
                 "Invalid native source heights accepted");
         mediaDepth(context);
+        openingDepth(context);
         fullscreen85(context);
         int[] ends = {0};
         ValueAnimator first = running();

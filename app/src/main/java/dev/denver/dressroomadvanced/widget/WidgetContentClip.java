@@ -29,7 +29,10 @@ final class WidgetContentClip extends ViewOutlineProvider {
     }
 
     static boolean apply(View view, boolean enabled) {
-        enabled = (enabled || WidgetMediaOcclusion.active(view)) && supported();
+        enabled =
+                ((enabled && !DepthEffects.wallpaperHidden(view))
+                                || WidgetMediaOcclusion.active(view))
+                        && supported();
         WidgetContentClip clip = clips.get(view);
         if (!enabled) {
             clips.remove(view);

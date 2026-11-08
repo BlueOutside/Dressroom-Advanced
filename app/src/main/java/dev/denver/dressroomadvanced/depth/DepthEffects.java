@@ -28,6 +28,10 @@ import java.util.WeakHashMap;
 final class DepthEffects {
     interface Result {
         void done(byte[] mask, String message);
+
+        default void retry(String message) {
+            done(null, message);
+        }
     }
 
     private static final Map<View, Entry> entries =
@@ -48,6 +52,8 @@ final class DepthEffects {
     private record LocalPath(Path screen, Matrix matrix, Path path) {}
 
     private static final Map<View, LocalPath> localPaths = new WeakHashMap<>();
+    private static final java.util.Set<View> blurRefreshPending =
+            Collections.newSetFromMap(new WeakHashMap<>());
     private static final java.util.Set<View> mediaClocks =
             Collections.newSetFromMap(new WeakHashMap<>());
     private static java.lang.ref.WeakReference<View> editorWallpaper =
@@ -57,6 +63,7 @@ final class DepthEffects {
     private static volatile long scanRequest;
     private static java.util.function.Consumer<View> wallpaperListener;
     private static boolean sourcePending;
+    private static String detectionFailure;
     private static final android.os.Handler scanMain =
             new android.os.Handler(android.os.Looper.getMainLooper());
     private static final java.util.concurrent.ExecutorService scanner =
@@ -90,7 +97,7 @@ final class DepthEffects {
                                     || (entry.editor && sourcePending)
                                     || entry.nodeClip
                                     || drawingClock.get()
-                                    || mediaSuspended(view)) return chain.proceed();
+                                    || subjectSuppressed(view, entry)) return chain.proceed();
                             Canvas canvas = (Canvas) chain.getArg(0);
                             // Grid children can extend beyond the native one-row host during
                             // unlock. Keep the incoming canvas clip, not the host's old bounds.
@@ -118,7 +125,7 @@ final class DepthEffects {
                                     || (entry.editor && sourcePending)
                                     || !entry.wholeDraw
                                     || drawingClock.get()
-                                    || mediaSuspended(view)) return chain.proceed();
+                                    || subjectSuppressed(view, entry)) return chain.proceed();
                             Canvas canvas = (Canvas) chain.getArg(0);
                             int save = canvas.saveLayer(null, null);
                             boolean previous = drawingClock.get();
@@ -147,7 +154,7 @@ final class DepthEffects {
                                     || !entry.enabled
                                     || (entry.editor && sourcePending)
                                     || drawingClock.get()
-                                    || mediaSuspended(view)) return chain.proceed();
+                                    || subjectSuppressed(view, entry)) return chain.proceed();
                             Canvas canvas = (Canvas) chain.getArg(0);
                             int save = canvas.saveLayer(null, null);
                             try {
@@ -162,59 +169,20 @@ final class DepthEffects {
     }
 
     private static void drawMask(Canvas canvas, View view, Entry entry) {
-        if (entry.live != null) {
-            Matrix source = entry.live.global();
-            if (source == null) return;
-            Matrix global = new Matrix(), inverse = new Matrix();
-            view.transformMatrixToGlobal(global);
-            if (!global.invert(inverse)) return;
-            Matrix local = new Matrix();
-            local.setConcat(inverse, source);
-            canvas.drawBitmap(entry.mask, local, erase);
-            return;
-        }
-        float scale = entry.previewScale;
-        float width = view.getResources().getDisplayMetrics().widthPixels * scale;
-        float height = view.getResources().getDisplayMetrics().heightPixels * scale;
-        RectF destination =
-                new RectF(
-                        entry.previewOriginX,
-                        entry.previewOriginY,
-                        entry.previewOriginX + width,
-                        entry.previewOriginY + height);
-        Matrix toScreen = new Matrix();
-        view.transformMatrixToGlobal(toScreen);
-        Matrix toLocal = new Matrix();
-        if (!toScreen.invert(toLocal)) return;
-        toLocal.mapRect(destination);
-        Bitmap mask = entry.mask;
-        int sourceWidth = mask.getWidth(), sourceHeight = mask.getHeight();
-        float sourceRatio = (float) sourceWidth / sourceHeight;
-        float targetRatio = width / height;
-        Rect crop;
-        if (sourceRatio > targetRatio) {
-            int cropped = Math.max(1, Math.round(sourceHeight * targetRatio));
-            crop =
-                    new Rect(
-                            (sourceWidth - cropped) / 2,
-                            0,
-                            (sourceWidth + cropped) / 2,
-                            sourceHeight);
-        } else {
-            int cropped = Math.max(1, Math.round(sourceWidth / targetRatio));
-            crop =
-                    new Rect(
-                            0,
-                            (sourceHeight - cropped) / 2,
-                            sourceWidth,
-                            (sourceHeight + cropped) / 2);
-        }
-        canvas.drawBitmap(mask, crop, destination, erase);
+        Matrix source = subjectTransform(view, entry, 0, 0);
+        if (source == null) return;
+        Matrix global = new Matrix(), inverse = new Matrix();
+        view.transformMatrixToGlobal(global);
+        if (!global.invert(inverse)) return;
+        Matrix local = new Matrix();
+        local.setConcat(inverse, source);
+        canvas.drawBitmap(entry.mask, local, erase);
     }
 
     static void apply(View view, boolean enabled, byte[] png) {
         if (!enabled || png == null || png.length == 0) {
             ClockContentClip.watch(view, false);
+            DepthViewMotion.watch(view, false);
             if (entries.remove(view) != null) {
                 view.invalidate();
                 refreshNativeBlur(view);
@@ -239,6 +207,7 @@ final class DepthEffects {
             }
             if (mask == null) {
                 ClockContentClip.watch(view, false);
+                DepthViewMotion.watch(view, false);
                 if (entries.remove(view) != null) {
                     view.invalidate();
                     refreshNativeBlur(view);
@@ -248,10 +217,23 @@ final class DepthEffects {
             entry = new Entry(png, mask);
             entries.put(view, entry);
         }
+        String packageName = view.getContext().getPackageName();
+        if (packageName.equals("com.android.systemui")
+                || packageName.equals("com.samsung.android.app.aodservice")
+                || packageName.equals("com.samsung.android.app.clockpack")) {
+            int screen = ScreenIdentity.current();
+            if (changed || !entry.runtimeMotion || entry.screen != screen) {
+                entry.runtimeMotion = true;
+                entry.screen = screen;
+                entry.wallpaperId = SettingsBridge.wallpaperId(view.getContext(), screen);
+            }
+            WallpaperMotion.start(view, entry.wallpaperId);
+        }
         entry.enabled = true;
         entry.wholeDraw = isClockView(view);
         entry.nodeClip = false;
         ClockContentClip.watch(view, false);
+        if (entry.runtimeMotion && entry.wholeDraw) DepthViewMotion.watch(view, true);
         if (changed) {
             view.invalidate();
             refreshNativeBlur(view);
@@ -267,12 +249,16 @@ final class DepthEffects {
     }
 
     private static void refreshNativeBlur(View view) {
-        if (!isClockView(view)) return;
+        if (!isClockView(view) || !blurRefreshPending.add(view)) return;
+        java.lang.ref.WeakReference<View> reference = new java.lang.ref.WeakReference<>(view);
         view.post(
                 () -> {
-                    if (!view.isAttachedToWindow()) return;
+                    View current = reference.get();
+                    if (current == null) return;
+                    blurRefreshPending.remove(current);
+                    if (!current.isAttachedToWindow()) return;
                     try {
-                        Reflect.call(view, "setClockTextBlur");
+                        Reflect.call(current, "setClockTextBlur");
                     } catch (Exception error) {
                         android.util.Log.w(
                                 DressroomModule.TAG, "Depth blur rebuild unavailable", error);
@@ -280,10 +266,19 @@ final class DepthEffects {
                 });
     }
 
+    static void viewMotionChanged(View view) {
+        if (!hasVisibleSubject(view)) return;
+        invalidateTree(view);
+        if (isClockView(view)) refreshNativeBlur(view);
+        else WidgetDepthBlur.mediaChanged(view);
+    }
+
     static Path nativeSubjectPath(View clock, float hostX, float hostY) {
-        if (mediaSuspended(clock)) return null;
         Entry entry = inheritedSubject(clock);
-        if (entry == null || !entry.enabled || (entry.editor && sourcePending)) return null;
+        if (entry == null
+                || !entry.enabled
+                || (entry.editor && sourcePending)
+                || subjectSuppressed(clock, entry)) return null;
         return screenSubjectPath(clock, entry, hostX, hostY);
     }
 
@@ -300,15 +295,33 @@ final class DepthEffects {
         return inheritedSubject(view) != null;
     }
 
+    static boolean wallpaperHidden(View view) {
+        Entry entry = inheritedSubject(view);
+        return entry != null
+                && entry.runtimeMotion
+                && !entry.editor
+                && !WallpaperMotion.visible(entry.screen);
+    }
+
+    static boolean hasVisibleSubject(View view) {
+        Entry entry = inheritedSubject(view);
+        return entry != null && !subjectSuppressed(view, entry);
+    }
+
+    private static boolean subjectSuppressed(View view, Entry entry) {
+        return mediaSuspended(view)
+                || entry.runtimeMotion && !entry.editor && !WallpaperMotion.visible(entry.screen);
+    }
+
     static Object subjectIdentity(View view) {
         Entry e = inheritedSubject(view);
-        return e == null ? null : e.identity;
+        return e == null || subjectSuppressed(view, e) ? null : e.identity;
     }
 
     static Path localSubjectPath(View view) {
-        if (mediaSuspended(view)) return null;
         Entry entry = inheritedSubject(view);
-        if (entry == null || (entry.editor && sourcePending)) return null;
+        if (entry == null || (entry.editor && sourcePending) || subjectSuppressed(view, entry))
+            return null;
         Matrix global = new Matrix(), local = new Matrix();
         view.transformMatrixToGlobal(global);
         if (!global.invert(local)) return null;
@@ -350,7 +363,7 @@ final class DepthEffects {
             for (int i = 0; i < group.getChildCount(); i++) invalidateTree(group.getChildAt(i));
     }
 
-    private static Path screenSubjectPath(View clock, Entry entry, float hostX, float hostY) {
+    private static Matrix subjectTransform(View clock, Entry entry, float hostX, float hostY) {
         float width = clock.getResources().getDisplayMetrics().widthPixels * entry.previewScale;
         float height = clock.getResources().getDisplayMetrics().heightPixels * entry.previewScale;
         RectF source = new RectF(0, 0, entry.mask.getWidth(), entry.mask.getHeight());
@@ -375,7 +388,18 @@ final class DepthEffects {
             transform = entry.live.global();
             if (transform == null) return null;
             transform.postTranslate(-hostX, -hostY);
+        } else if (entry.runtimeMotion && !entry.editor) {
+            // Work in wallpaper screen coordinates before moving into the blur host.
+            transform.postTranslate(hostX, hostY);
+            WallpaperMotion.transform(transform, entry.wallpaperId, entry.screen, width, height);
+            transform.postTranslate(-hostX, -hostY);
         }
+        return transform;
+    }
+
+    private static Path screenSubjectPath(View clock, Entry entry, float hostX, float hostY) {
+        Matrix transform = subjectTransform(clock, entry, hostX, hostY);
+        if (transform == null) return null;
         Path cached = entry.paths.get(transform);
         if (cached != null) return cached;
         Path subject = new Path(entry.subject);
@@ -385,7 +409,39 @@ final class DepthEffects {
         return subject;
     }
 
+    static void wallpaperMotionChanged() {
+        localPaths.clear();
+        java.util.ArrayList<View> roots = new java.util.ArrayList<>();
+        synchronized (entries) {
+            for (var item : entries.entrySet()) {
+                Entry entry = item.getValue();
+                if (entry.editor || !entry.runtimeMotion || !entry.enabled) continue;
+                entry.paths.clear();
+                entry.identity = new Object();
+                View view = item.getKey();
+                boolean nested = false;
+                for (android.view.ViewParent parent = view.getParent();
+                        parent instanceof View up;
+                        parent = up.getParent()) {
+                    Entry ancestor = entries.get(up);
+                    if (ancestor != null && ancestor.enabled && ancestor.runtimeMotion) {
+                        nested = true;
+                        break;
+                    }
+                }
+                if (!nested) roots.add(view);
+            }
+        }
+        for (View root : roots) {
+            if (!root.isAttachedToWindow()) continue;
+            invalidateTree(root);
+            WidgetDepthBlur.mediaChanged(root);
+            if (isClockView(root) && !mediaSuspended(root)) refreshNativeBlur(root);
+        }
+    }
+
     static void resetEditor() {
+        detectionFailure = null;
         EditorWallpaperSource.reset();
         editorGeneration++;
         scanRequest++;
@@ -564,7 +620,7 @@ final class DepthEffects {
             WidgetContentClip.apply(widgets, false);
             WidgetDepthBlur.watch(widgets, false);
         }
-        WidgetDepthDraw.watch(widgets, entry != null && enabled);
+        DepthViewMotion.watch(widgets, entry != null && enabled);
     }
 
     static void applyDigits(View clock, boolean enabled, byte[] png) {
@@ -783,6 +839,7 @@ final class DepthEffects {
     }
 
     static void cancelScan() {
+        detectionFailure = null;
         scanRequest++;
     }
 
@@ -805,7 +862,12 @@ final class DepthEffects {
         localPaths.clear();
     }
 
+    static void detectionFailure(String message) {
+        detectionFailure = message;
+    }
+
     static void pendingSource(boolean pending) {
+        if (!pending) detectionFailure = null;
         if (sourcePending == pending) return;
         sourcePending = pending;
         synchronized (entries) {
@@ -867,13 +929,26 @@ final class DepthEffects {
 
     static void scan(
             android.content.Context editorContext, View clock, Result callback, Runnable finished) {
+        scan(editorContext, clock, null, callback, finished);
+    }
+
+    static void scan(
+            android.content.Context editorContext,
+            View clock,
+            View preferred,
+            Result callback,
+            Runnable finished) {
         final Bitmap wallpaper;
         final LiveSubject capture;
         final long generation = editorGeneration;
         final long request = ++scanRequest;
+        detectionFailure = null;
         try {
-            View image = findCropView(clock.getRootView());
-            if (image == null) image = editorWallpaper.get();
+            View image = preferred;
+            if (image == null) {
+                image = findCropView(clock.getRootView());
+                if (image == null) image = editorWallpaper.get();
+            }
             if (!EditorWallpaperSource.available(image))
                 throw new IllegalStateException(
                         "Wallpaper preview is not ready. Reopen the editor and try again.");
@@ -884,7 +959,7 @@ final class DepthEffects {
                 throw new IllegalStateException("The current wallpaper cannot be scanned.");
         } catch (Exception e) {
             try {
-                callback.done(null, "Depth detection: " + e.getMessage());
+                callback.retry("Depth detection: " + e.getMessage());
             } finally {
                 finished.run();
             }
@@ -924,10 +999,8 @@ final class DepthEffects {
                                     }
                                     if (capture.global() == null) {
                                         readyMask.recycle();
-                                        callback.done(
-                                                null,
-                                                "Wallpaper changed. Detecting the new"
-                                                        + " source…");
+                                        callback.retry(
+                                                "Wallpaper preview changed during detection");
                                         return;
                                     }
                                     if (activeSubject != null) activeSubject.stop();
@@ -1050,7 +1123,10 @@ final class DepthEffects {
                         && activeSubject.global() == null;
         if (sourcePending || missing || stale)
             throw new IllegalStateException(
-                    "Depth is not ready. Wait for subject detection, then tap Apply again.");
+                    detectionFailure != null
+                            ? detectionFailure
+                            : "Depth is not ready. Wait for subject detection, then tap Apply"
+                                  + " again.");
     }
 
     static android.os.Bundle freezeMask(android.os.Bundle draft) {
@@ -1156,6 +1232,8 @@ final class DepthEffects {
         boolean editor;
         boolean wholeDraw;
         boolean nodeClip;
+        boolean runtimeMotion;
+        int wallpaperId = -1, screen;
         float previewScale = 1f, previewOriginX, previewOriginY;
 
         Entry(byte[] png, Bitmap mask) {

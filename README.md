@@ -48,6 +48,8 @@ See [foldable support](docs/compatibility/ONE_UI_9_FOLDABLES.md) and [device val
 
 Reboot after module updates too, so all scoped processes load the new version.
 
+For depth tracking during full-screen AOD wallpaper animations, also enable the Samsung live wallpaper scope (`com.samsung.android.wallpaper.live`). If its renderer is not supported or scoped, depth keeps its saved mapping.
+
 For a font file, open **Clock → Advanced → Layout → Typography → Choose font file**. The module keeps a private copy, so the lockscreen does not need access to your Downloads folder.
 
 ## Known issues

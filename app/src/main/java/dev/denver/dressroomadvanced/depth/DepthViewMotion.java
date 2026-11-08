@@ -8,7 +8,7 @@ import java.lang.ref.WeakReference;
 import java.util.Map;
 import java.util.WeakHashMap;
 
-final class WidgetDepthDraw {
+final class DepthViewMotion {
     private static final Map<View, State> states = new WeakHashMap<>();
 
     private static final class State implements ViewTreeObserver.OnPreDrawListener {
@@ -24,7 +24,7 @@ final class WidgetDepthDraw {
         public boolean onPreDraw() {
             View view = root.get();
             if (view != null && geometry.update(view, DepthEffects.subjectIdentity(view), null))
-                invalidate(view);
+                DepthEffects.viewMotionChanged(view);
             return true;
         }
     }
@@ -44,13 +44,14 @@ final class WidgetDepthDraw {
         if (previous == observer) return;
         if (previous != null && previous.isAlive()) previous.removeOnPreDrawListener(state);
         state.observer = new WeakReference<>(observer);
+        // An observer from an unattached view may already have merged into this tree.
+        observer.removeOnPreDrawListener(state);
         observer.addOnPreDrawListener(state);
         invalidate(root);
     }
 
     private static void invalidate(View view) {
-        // A RenderNode translation does not rerun dispatchDraw. The subject is stationary
-        // on the wallpaper, so its local cut must be recorded again as widgets move.
+        // Parent RenderNode movement does not rerecord the children's display lists.
         view.invalidate();
         if (view instanceof ViewGroup group)
             for (int i = 0; i < group.getChildCount(); i++) invalidate(group.getChildAt(i));

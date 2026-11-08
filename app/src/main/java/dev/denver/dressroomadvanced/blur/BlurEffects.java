@@ -54,6 +54,7 @@ final class BlurEffects {
                                             stable =
                                                     clock != null
                                                             && !DepthEffects.mediaActive(clock)
+                                                            && !DepthEffects.wallpaperHidden(clock)
                                                             && (DepthEffects.hasSubject(clock)
                                                                     || (settings != null
                                                                             && settings.getBoolean(
