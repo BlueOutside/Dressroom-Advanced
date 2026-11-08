@@ -36,7 +36,7 @@ The One UI 9 foldable port has been tested with Dressroom 3.0.01.20 and AOD 8.9.
 
 See [foldable support](docs/compatibility/ONE_UI_9_FOLDABLES.md) and [device validation](docs/compatibility/FOLDABLE_PARITY.md) for details.
 
-*Depth is NOT supported on A1X A2X A3X series and equivalent M & F series phones (lacking libraries or libraries not good enough for depth capture, a custom rom from a higher end phone may work)
+*Depth is NOT supported on A0X A1X A2X and Pre-Awesome Intelligence A3X series? (and equivalent M & F?) series phones (lacking libraries, a custom rom from a higher end phone may work, or porting the libs and fixing them can too!)
 
 ## Setup
 
