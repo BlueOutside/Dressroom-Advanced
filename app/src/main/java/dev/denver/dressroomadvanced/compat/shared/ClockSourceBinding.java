@@ -29,19 +29,28 @@ final class ClockSourceBinding {
         Method stretch = NativeContract.method(provider, "hasStretchFontHeights", boolean.class);
         var methods = new java.util.ArrayList<Method>();
         methods.add(stretch);
-        Class<?> model =
-                Class.forName(
-                        "com.samsung.android.app.facewidget.FaceWidgetViewModel", false, loader);
-        Class<?> page =
-                Class.forName(
-                        "com.samsung.android.app.facewidget.pages.clock.FaceWidgetClockPage",
-                        false,
-                        loader);
-        Class<?> view =
-                Class.forName(
-                        "com.samsung.android.clockpack.plugins.clock.ClockView", false, loader);
-        addCallers(methods, model, font, view, false);
-        addCallers(methods, page, font, view, true);
+        try {
+            Class<?> model =
+                    Class.forName(
+                            "com.samsung.android.app.facewidget.FaceWidgetViewModel", false, loader);
+            Class<?> view =
+                    Class.forName(
+                            "com.samsung.android.clockpack.plugins.clock.ClockView", false, loader);
+            addCallers(methods, model, font, view, false);
+        } catch (ReflectiveOperationException ignored) {
+        }
+        try {
+            Class<?> page =
+                    Class.forName(
+                            "com.samsung.android.app.facewidget.pages.clock.FaceWidgetClockPage",
+                            false,
+                            loader);
+            Class<?> view =
+                    Class.forName(
+                            "com.samsung.android.clockpack.plugins.clock.ClockView", false, loader);
+            addCallers(methods, page, font, view, true);
+        } catch (ReflectiveOperationException ignored) {
+        }
         callers = List.copyOf(methods);
     }
 
@@ -58,7 +67,14 @@ final class ClockSourceBinding {
                         clockStyle ? "aod.qn1" : "aod.uq6", "aod.an1");
         if (known != null)
             return NativeContract.findStaticMethod(
-                    known, known.getName().equals("aod.an1") ? "c0" : clockStyle ? "T" : "X", List.class, int.class, font, List.class);
+                    known,
+                    known.getName().equals("aod.uq6")
+                            ? "T"
+                            : known.getName().equals("aod.an1") ? "c0" : "X",
+                    List.class,
+                    int.class,
+                    font,
+                    List.class);
         Class<?> aod8936 =
                 NativeContract.knownClass(
                         loader,
@@ -86,7 +102,14 @@ final class ClockSourceBinding {
                             clockStyle ? "aod.uq6" : "aod.qn1",
                             clockStyle ? "aod.qn1" : "aod.uq6", "aod.an1");
             return NativeContract.findStaticMethod(
-                    owner, clockStyle ? "T" : "X", List.class, int.class, font, List.class);
+                    owner,
+                    owner.getName().equals("aod.uq6")
+                            ? "T"
+                            : owner.getName().equals("aod.an1") ? "c0" : "X",
+                    List.class,
+                    int.class,
+                    font,
+                    List.class);
         } catch (NativeContract.AmbiguousClassException ambiguous) {
             throw ambiguous;
         } catch (ClassNotFoundException missingModernAbi) {

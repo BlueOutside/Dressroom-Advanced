@@ -1141,7 +1141,10 @@ public final class DressroomModule extends XposedModule {
                                                                         saved)
                                                                 && (saved.getBoolean("manual")
                                                                         || saved.getBoolean(
-                                                                                "depthEnabled"));
+                                                                                "depthEnabled"))
+                                                                && saved.getFloatArray(
+                                                                                "manualHeights")
+                                                                        != null;
                                                 if (saved == null)
                                                     editorRendererProfiles.remove(view);
                                                 else editorRendererProfiles.put(view, saved);

@@ -14,6 +14,7 @@ import android.graphics.Region;
 import android.os.Bundle;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.WindowManager;
 import android.widget.TextView;
 
 import io.github.libxposed.api.XposedModule;
@@ -364,8 +365,19 @@ final class DepthEffects {
     }
 
     private static Matrix subjectTransform(View clock, Entry entry, float hostX, float hostY) {
-        float width = clock.getResources().getDisplayMetrics().widthPixels * entry.previewScale;
-        float height = clock.getResources().getDisplayMetrics().heightPixels * entry.previewScale;
+        float screenWidth = clock.getResources().getDisplayMetrics().widthPixels;
+        float screenHeight = clock.getResources().getDisplayMetrics().heightPixels;
+        try {
+            WindowManager wm = clock.getContext().getSystemService(WindowManager.class);
+            if (wm != null) {
+                Rect bounds = wm.getCurrentWindowMetrics().getBounds();
+                screenWidth = bounds.width();
+                screenHeight = bounds.height();
+            }
+        } catch (Throwable ignored) {
+        }
+        float width = screenWidth * entry.previewScale;
+        float height = screenHeight * entry.previewScale;
         RectF source = new RectF(0, 0, entry.mask.getWidth(), entry.mask.getHeight());
         float ratio = width / height;
         if (source.width() / source.height() > ratio) {

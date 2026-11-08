@@ -24,6 +24,7 @@ final class RuntimeClockData {
         return settings != null
                         && FontAxisSettings.nativeStretch(settings)
                         && (settings.getBoolean("manual") || settings.getBoolean("depthEnabled"))
+                        && settings.getFloatArray("manualHeights") != null
                 ? SavedStretch.heights(settings.getFloatArray("manualHeights"))
                 : null;
     }

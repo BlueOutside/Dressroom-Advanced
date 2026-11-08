@@ -202,7 +202,10 @@ final class RuntimeClockHooks {
                                                                         settings)
                                                                 && (settings.getBoolean("manual")
                                                                         || settings.getBoolean(
-                                                                                "depthEnabled"));
+                                                                                "depthEnabled"))
+                                                                && settings.getFloatArray(
+                                                                                "manualHeights")
+                                                                        != null;
                                                 manual.set(previous || held);
                                                 if (held)
                                                     requestedFont =
@@ -254,7 +257,9 @@ final class RuntimeClockHooks {
                                                 && (profile == null
                                                         || (!profile.getBoolean("manual")
                                                                 && !profile.getBoolean(
-                                                                        "depthEnabled"))))
+                                                                        "depthEnabled"))
+                                                        || profile.getFloatArray("manualHeights")
+                                                                == null))
                                             return chain.proceed();
                                         Object values = chain.getArg(0);
                                         if (!(values instanceof List<?> list) || list.isEmpty())
@@ -559,6 +564,7 @@ final class RuntimeClockHooks {
             profiles.put(view, settings);
             if (FontAxisSettings.nativeStretch(settings)
                     && (settings.getBoolean("manual") || settings.getBoolean("depthEnabled"))
+                    && settings.getFloatArray("manualHeights") != null
                     && restoringFont.add(view)) {
                 try {
                     Object current = ClockBinding.of(view).font(view);
