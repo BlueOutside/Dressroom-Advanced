@@ -12,6 +12,7 @@ An LSPosed (API 102) module that adds clock, widget and Now Bar controls to Sams
 - Wallpaper depth with Samsung Object Capture, automatic subject detection and crop/zoom tracking.
 - Widget scaling, custom grids, free placement and independent depth controls.
 - Separate portrait and landscape layouts on supported large screens.
+- Independent clock, widget and Extras settings for cover and inner screens on supported One UI 9 foldables.
 - Keep the charging Now Bar card visible, add a custom text card, and show up to eight cards in the stack.
 - Fullscreen album artwork in the expanded media player.
 
@@ -22,28 +23,28 @@ Imported fonts use their own variable axes. Samsung's dynamic per-digit stretchi
 | One UI | Apps | Status |
 | --- | --- | --- |
 | 9.0 | AOD + Dressroom | Tested on SM-S948B |
+| 9.0, foldable | AOD + Dressroom | Experimental; tested on SM-F971B, cover and inner screens |
 | 8.5 | Clock Style + Dressroom | Tested on SM-P613 with a custom ROM |
-| 8.5 | AOD + Dressroom | Experimental adapter; not tested on an AOD device |
+| 8.5 | AOD + Dressroom | Experimental; widget issues remain on some app versions |
 | 9.0 | Clock Style + Dressroom | Unsupported |
 | 8.0 | Any combination | Unsupported |
 | 7.0 | Any combination | Unsupported |
 
-- ZFLip is only supported on the inner screen, not the cover screen.
-- Independent cover/inner profiles are available in the experimental One UI 9 foldable port.
-- Z series have 0 guarantee of working fine for any version, simply because I do NOT have any.
-- Features depend on the device and app versions.
+Requires Android 16 or 17 and an LSPosed-compatible framework with API 102 support. Features also depend on the installed Dressroom and clock-provider versions.
 
-The experimental One UI 9 foldable port uses signature-checked shims, with inspected contracts for Dressroom 3.0.01.20 and AOD 8.9.57.1 alongside the existing adapters. Clock saving, lockscreen depth, independent cover/inner widget selections and independent Extras have been confirmed on SM-F971B. See [One UI 9 foldable support](docs/compatibility/ONE_UI_9_FOLDABLES.md) for eligibility and interface checks, and the [device validation](docs/compatibility/FOLDABLE_PARITY.md) for the live results and limits. Existing non-fold adapters remain present.
+The One UI 9 foldable port has been tested with Dressroom 3.0.01.20 and AOD 8.9.57.1 on SM-F971B. Clock saving, depth and separate widget selections work on the tested cover and inner screens. Other foldable models and some media and animation cases still need testing. Z Flip cover screens are not supported.
+
+See [foldable support](docs/compatibility/ONE_UI_9_FOLDABLES.md) and [device validation](docs/compatibility/FOLDABLE_PARITY.md) for details.
 
 ## Setup
 
 1. Install the module and enable it in LSPosed/Vector.
-2. Select Dressroom, SystemUI, and **AOD** or **Clock Style**, depending on your device (so basically all scopes).
-3. Restart all hooked processes and open the lockscreen editor.
+2. Enable its scopes for Dressroom, SystemUI, and your device's **AOD** or **Clock Style** app.
+3. Reboot, then open the lockscreen editor.
 4. Tap the clock for **Advanced**, or use the bottom-bar **Advanced** button for **Widgets** and **Extras**.
 5. Tap Apply/Done to save. Closing without applying discards the editor draft.
 
-- When you update the mod, make sure to restart all hooked processes so they get hooked by the new app.
+Reboot after module updates too, so all scoped processes load the new version.
 
 For a font file, open **Clock → Advanced → Layout → Typography → Choose font file**. The module keeps a private copy, so the lockscreen does not need access to your Downloads folder.
 
@@ -51,19 +52,20 @@ For a font file, open **Clock → Advanced → Layout → Typography → Choose 
 
 - Some editor panels still need spacing and layout fixes.
 - Media transitions and the fullscreen song-change effect still need visual polish.
-- Subject detection can miss fine details (blame the libraries Samsung uses for object detection). Animated, video and gyro wallpapers are not supported for depth.
-- Subject detection does not work for MTK chipsets at the moment. (blame Samsung for hardcoding a tiny check to make it unsupported for MTK 😭)
+- Custom widgets can render incorrectly on some 8.5 AOD versions. Older Dressroom builds may lack the APIs needed for custom rotation.
+- Subject detection can miss fine details or fail to initialize on some devices, including reported MediaTek setups. Animated, video and gyro wallpapers are not supported for depth.
+- Dressroom's main preview can differ from the actual editor and lockscreen.
 - Device-wide blur forcing is not included.
-- Regressions happen :[ (yes very sad ik)
-- Other devices and Samsung app versions may behave differently from the tested setups.
-- The preview in the menu you can access from settings is incorrect. (The actual editor is fine)
-- Some details aren't polished (But is conform with One UI's attention to details and quality <3)
 
-For more issues, see the changelog of each versions as they keep track of the issues with said version. This list contains the major ones that may not get fixed between one version and another.
+Check the [release notes](https://github.com/BlueOutside/Dressroom-Advanced/releases) for issues affecting a particular version.
 
 ## Building and contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for build instructions and [docs/](docs/README.md) for the source layout and compatibility notes.
+
+## Credits
+
+One UI 9 foldable support was contributed by [thatjoshguy67](https://github.com/thatjoshguy67) in [PR #3](https://github.com/BlueOutside/Dressroom-Advanced/pull/3).
 
 ## License
 
