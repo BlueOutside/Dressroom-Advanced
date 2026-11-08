@@ -139,5 +139,7 @@ Validation: Java/D8 build, 311 JVM checks, 624 configured Android checks and
 34 synthetic native-profile checks passed. The installed-APK probe resolves
 the final-save contract and the editor/provider bindings. VersionCode 1015
 was installed in place and scoped processes reloaded with app data retained.
-The new cross-screen invalidation behavior is regression-tested; live visual
-confirmation of this build is still pending.
+The user confirmed the 1.0.15 live retest: after saving a cover clock/depth
+change, the inner screen retained its existing depth/stretch and both editors
+continued to Apply normally. The screen-isolation edge cases above also remain
+covered by the regression probes.
