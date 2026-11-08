@@ -47,12 +47,35 @@ final class ClockBinding {
         boolean aod =
                 present(
                         loader,
-                        "com.samsung.android.app.aodservice.settings.provider.SettingsSearchProvider");
+                        "com.samsung.android.app.aodservice.settings.provider.SettingsSearchProvider")
+                        || present(loader, "com.samsung.android.app.aodservice.AlwaysOnDisplayEx")
+                        || present(
+                                loader,
+                                "com.samsung.android.app.aodservice.provider.LockScreenDataContent");
         boolean pack =
-                present(
-                        loader,
-                        "com.samsung.android.app.clockpack.settings.provider.SettingsSearchProvider");
-        if (aod == pack)
+                !aod
+                        && (present(
+                                        loader,
+                                        "com.samsung.android.app.clockpack.settings.provider.SettingsSearchProvider")
+                                || present(
+                                        loader,
+                                        "com.samsung.android.app.clockpack.provider.LockSettingsProvider")
+                                || present(
+                                        loader,
+                                        "com.samsung.android.app.clockpack.db.entity.ProfileState")
+                                || present(
+                                        loader,
+                                        "com.samsung.android.app.facewidget.utils.KeyguardClockProvider")
+                                || present(
+                                        loader,
+                                        "com.samsung.android.clockpack.plugins.clock.ClockView")
+                                || present(
+                                        loader,
+                                        "com.samsung.android.clockpack.plugins.clock.ClockFontData")
+                                || present(
+                                        loader,
+                                        "com.samsung.android.uniform.widget.clock.AbsClockView"));
+        if (!aod && !pack)
             throw new ClassNotFoundException("Clock provider identity is missing or ambiguous");
         clockStyle = pack;
         font = NativeContract.findField(base, null, type);
