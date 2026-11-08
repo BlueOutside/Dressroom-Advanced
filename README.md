@@ -26,11 +26,12 @@ Imported fonts use their own variable axes. Samsung's dynamic per-digit stretchi
 | 8.5 | AOD + Dressroom | Experimental adapter; not tested on an AOD device |
 | 9.0 | Clock Style + Dressroom | Unsupported |
 | 8.0 | Any combination | Unsupported |
+| 7.0 | Any combination | Unsupported |
 
-ZFLip is only supported on the inner screen, not the cover screen.
-No support is currently available for folded/unfolded states on ZFold, only rotation.
-Z series have 0 guarantee of working fine for any version, simply because I do NOT have any.
-Features depend on the device and app versions.
+- ZFLip is only supported on the inner screen, not the cover screen.
+- No support is currently available for folded/unfolded states on ZFold, only rotation.
+- Z series have 0 guarantee of working fine for any version, simply because I do NOT have any.
+- Features depend on the device and app versions.
 
 ## Setup
 
@@ -40,6 +41,8 @@ Features depend on the device and app versions.
 4. Tap the clock for **Advanced**, or use the bottom-bar **Advanced** button for **Widgets** and **Extras**.
 5. Tap Apply/Done to save. Closing without applying discards the editor draft.
 
+- When you update the mod, make sure to restart all hooked processes so they get hooked by the new app.
+
 For a font file, open **Clock → Advanced → Layout → Typography → Choose font file**. The module keeps a private copy, so the lockscreen does not need access to your Downloads folder.
 
 ## Known issues
@@ -47,10 +50,14 @@ For a font file, open **Clock → Advanced → Layout → Typography → Choose 
 - Some editor panels still need spacing and layout fixes.
 - Media transitions and the fullscreen song-change effect still need visual polish.
 - Subject detection can miss fine details (blame the libraries Samsung uses for object detection). Animated, video and gyro wallpapers are not supported for depth.
+- Subject detection does not work for MTK chipsets at the moment. (blame Samsung for hardcoding a tiny check to make it unsupported for MTK 😭)
 - Device-wide blur forcing is not included.
+- Regressions happen :[ (yes very sad ik)
 - Other devices and Samsung app versions may behave differently from the tested setups.
 - The preview in the menu you can access from settings is incorrect. (The actual editor is fine)
 - Some details aren't polished (But is conform with One UI's attention to details and quality <3)
+
+For more issues, see the changelog of each versions as they keep track of the issues with said version. This list contains the major ones that may not get fixed between one version and another.
 
 ## Building and contributing
 
