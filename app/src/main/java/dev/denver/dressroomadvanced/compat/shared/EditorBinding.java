@@ -54,18 +54,17 @@ final class EditorBinding {
                 protected EditorBinding computeValue(Class<?> owner) {
                     try {
                         ClassLoader loader = owner.getClassLoader();
-                        boolean isLegacy = owner.getName().equals(OneUi85Editor.names().controller);
-                        if (!isLegacy && !owner.getName().equals(OneUi9Editor.names().controller)) {
-                            Class<?> typeData =
-                                    Class.forName(
-                                            "com.samsung.android.lockscreen.editor.item.domain.entity.item.clock.ClockTypeData",
-                                            false,
-                                            loader);
-                            try {
-                                typeData.getDeclaredMethod("isSupportWeatherInfo");
-                            } catch (NoSuchMethodException ignored) {
-                                isLegacy = true;
-                            }
+                        Class<?> typeData =
+                                Class.forName(
+                                        "com.samsung.android.lockscreen.editor.item.domain.entity.item.clock.ClockTypeData",
+                                        false,
+                                        loader);
+                        boolean isLegacy;
+                        try {
+                            NativeContract.method(typeData, "isSupportWeatherInfo", boolean.class);
+                            isLegacy = false;
+                        } catch (NoSuchMethodException ignored) {
+                            isLegacy = true;
                         }
                         Names names = isLegacy ? OneUi85Editor.names() : OneUi9Editor.names();
                         return new EditorBinding(loader, owner, names);
@@ -181,10 +180,7 @@ final class EditorBinding {
                         controller, names.createMethod, void.class, ViewGroup.class, data);
         bind =
                 NativeContract.findMethod(
-                        helperType,
-                        names.bindMethod,
-                        void.class,
-                        legacy ? View.class : clockView);
+                        helperType, names.bindMethod, void.class, legacy ? View.class : clockView);
         Class<?> weatherType =
                 NativeContract.findClass(
                         loader,
@@ -217,8 +213,7 @@ final class EditorBinding {
                             names.managerWrapperClass);
             managerWrapper =
                     NativeContract.findField(controller, names.managerWrapperField, wrapper);
-            managerGetter =
-                    NativeContract.findMethod(wrapper, names.managerGetterMethod, manager);
+            managerGetter = NativeContract.findMethod(wrapper, names.managerGetterMethod, manager);
             weatherCapability =
                     NativeContract.method(
                             manager,

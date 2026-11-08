@@ -129,14 +129,14 @@ final class WidgetPanel {
                 new PanelTabs(
                         pageStrip,
                         loader,
-                        new String[] {editor.legacy() ? "Size" : "Layout", "Position", "Effects"},
+                        new String[] {"Layout", "Position", "Effects"},
                         widgetPage,
                         page -> {
                             widgetPage = page;
                             content.requestLayout();
                         });
         section("Layout & size");
-        if (!editor.legacy()) {
+        if (editor.customGridAvailable()) {
             toggle(
                     "Custom grid",
                     b.getBoolean("layout"),
@@ -150,32 +150,34 @@ final class WidgetPanel {
                     },
                     true);
             if (b.getBoolean("layout")) {
-                TextView rotate =
-                        label(
-                                "Arrangement: "
-                                        + (editor.vertical() ? "Vertical" : "Horizontal")
-                                        + "  •  Rotate");
-                PanelRows.action(
-                        rotate,
-                        "Rotate arrangement",
-                        editor.vertical() ? "Vertical" : "Horizontal");
-                rotate.setOnClickListener(
-                        v -> {
-                            try {
-                                editor.rotate();
-                                content.postDelayed(
-                                        () -> {
-                                            try {
-                                                render();
-                                            } catch (Exception e) {
-                                                error(e);
-                                            }
-                                        },
-                                        500);
-                            } catch (Exception e) {
-                                error(e);
-                            }
-                        });
+                if (!editor.nativeRotationAvailable()) {
+                    TextView rotate =
+                            label(
+                                    "Arrangement: "
+                                            + (editor.vertical() ? "Vertical" : "Horizontal")
+                                            + "  •  Rotate");
+                    PanelRows.action(
+                            rotate,
+                            "Rotate arrangement",
+                            editor.vertical() ? "Vertical" : "Horizontal");
+                    rotate.setOnClickListener(
+                            v -> {
+                                try {
+                                    editor.rotate();
+                                    content.postDelayed(
+                                            () -> {
+                                                try {
+                                                    render();
+                                                } catch (Exception e) {
+                                                    error(e);
+                                                }
+                                            },
+                                            500);
+                                } catch (Exception e) {
+                                    error(e);
+                                }
+                            });
+                } else note("Rotate using Samsung's layout control.");
                 slider(
                         "Columns",
                         1,
@@ -194,7 +196,7 @@ final class WidgetPanel {
                         true);
                 note("Grid capacity: " + b.getInt("columns") + " × " + b.getInt("rows") + ".");
             }
-        } else note("Use the stock layout control to rotate the grid.");
+        } else note("Custom grid is unavailable for this editor/provider combination.");
         slider(
                 "Widget scale",
                 50,

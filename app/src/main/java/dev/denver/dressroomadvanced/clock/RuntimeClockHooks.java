@@ -131,7 +131,7 @@ final class RuntimeClockHooks {
             } else {
                 if (!binding.clockStyle) DepthBlurHooks.install(module, base);
                 try {
-                    module.widgetEngine.installScale(loader);
+                    module.widgetEngine.installLegacyCapacity(loader);
                     widgets.installLegacy(loader);
                 } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
                     module.report("Optional 8.5 widget runtime unavailable", error);

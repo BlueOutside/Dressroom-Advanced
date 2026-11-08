@@ -92,8 +92,17 @@ final class WidgetEngine {
         return settings((Context) Reflect.field(manager, "context"));
     }
 
+    synchronized boolean installLegacyCapacity(ClassLoader loader)
+            throws ReflectiveOperationException {
+        if (installed.contains(loader)) return true;
+        if (!scaleInstalled.contains(loader)) install(loader);
+        if (installed.contains(loader)) return true;
+        installScale(loader);
+        return false;
+    }
+
     synchronized void installScale(ClassLoader loader) throws ReflectiveOperationException {
-        if (scaleInstalled.contains(loader)) return;
+        if (scaleInstalled.contains(loader) || installed.contains(loader)) return;
         Class<?> manager = Class.forName(SIZE, false, loader);
         NativeContract.field(manager, "_scaleFactor", float.class);
         Class<?> display =
@@ -296,17 +305,12 @@ final class WidgetEngine {
                                             Object manager =
                                                     Reflect.call(
                                                             controller, "getWidgetSizeManager");
-                                            if (!main(manager))
-                                                return chain.proceed();
+                                            if (!main(manager)) return chain.proceed();
                                             Object requested = nativeArrangement.get();
                                             Object targetAlign =
-                                                    requested == null
-                                                            ? chain.getArg(0)
-                                                            : requested;
+                                                    requested == null ? chain.getArg(0) : requested;
                                             Reflect.call(
-                                                    controller,
-                                                    "changeAlignType",
-                                                    targetAlign);
+                                                    controller, "changeAlignType", targetAlign);
                                             reflow(controller);
                                             return null;
                                         }));
@@ -541,7 +545,15 @@ final class WidgetEngine {
         Object container = Reflect.call(manager, "b", id);
         if (container == null) return;
         Object items = Reflect.call(container, "f");
-        if (!Boolean.TRUE.equals(Reflect.call(container, "o", items, Collections.emptySet(), true)))
+        Method rearrange =
+                NativeContract.findMethod(
+                        container.getClass(),
+                        "o",
+                        boolean.class,
+                        java.util.List.class,
+                        java.util.Set.class,
+                        boolean.class);
+        if (!Boolean.TRUE.equals(rearrange.invoke(container, items, Collections.emptySet(), true)))
             throw new IllegalStateException(
                     "Samsung could not fit these widgets. Increase the grid size.");
     }

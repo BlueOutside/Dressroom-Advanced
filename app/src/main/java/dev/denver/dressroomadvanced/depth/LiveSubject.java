@@ -48,8 +48,8 @@ final class LiveSubject {
     static boolean isSameWallpaper(Object s1, Object s2) {
         if (java.util.Objects.equals(s1, s2)) return true;
         if (s1 instanceof Stamp stamp1 && s2 instanceof Stamp stamp2) {
-            if (stamp1.original != null && java.util.Objects.equals(stamp1.original, stamp2.original))
-                return true;
+            if (stamp1.original != null
+                    && java.util.Objects.equals(stamp1.original, stamp2.original)) return true;
         }
         return false;
     }
@@ -84,8 +84,7 @@ final class LiveSubject {
             original = image.getClass().getMethod("getOriginalDrawable").invoke(image);
         } catch (NoSuchMethodException ignored) {
         }
-        return new Stamp(
-                inner, bitmap, bitmap == null ? 0 : bitmap.getGenerationId(), original);
+        return new Stamp(inner, bitmap, bitmap == null ? 0 : bitmap.getGenerationId(), original);
     }
 
     static record Capture(LiveSubject subject, Bitmap bitmap) {}
@@ -233,7 +232,7 @@ final class LiveSubject {
                 String fp = fingerprint(view);
                 return fp != null && fp.equals(this.fingerprint);
             } catch (Exception ignored) {
-                return true;
+                return false;
             }
         }
         try {
@@ -245,27 +244,22 @@ final class LiveSubject {
 
     Matrix global() {
         View view = image.get();
-        if (!EditorWallpaperSource.available(view)) return lastGlobal;
+        if (!EditorWallpaperSource.available(view)) return null;
         try {
-            if (!isSameWallpaper(view)) return lastGlobal;
+            if (!isSameWallpaper(view)) return null;
             Matrix global = new Matrix();
             view.transformMatrixToGlobal(global);
             Matrix matrix =
                     compose(
                             width,
                             height,
-                            new RectF(drawable.getBounds()),
+                            new RectF(ready(view).getBounds()),
                             ((android.widget.ImageView) view).getImageMatrix(),
                             global);
-            lastGlobal = matrix;
             return matrix;
         } catch (Exception error) {
-            return lastGlobal;
+            return null;
         }
-    }
-
-    Matrix lastGlobal() {
-        return lastGlobal;
     }
 
     boolean matches(byte[] bytes) {
@@ -277,7 +271,8 @@ final class LiveSubject {
     boolean changed() {
         Matrix current = global();
         if (java.util.Objects.equals(current, lastGlobal)) return false;
-        lastGlobal = current;
+        // Draw/blur callers also query global(). Only this observer advances its snapshot.
+        lastGlobal = current == null ? null : new Matrix(current);
         return true;
     }
 
@@ -304,7 +299,6 @@ final class LiveSubject {
     byte[] bake(Bitmap mask) throws Exception {
         View view = image.get();
         Matrix matrix = global();
-        if (matrix == null) matrix = lastGlobal;
         if (view == null || matrix == null || mask == null || mask.isRecycled())
             throw new IllegalStateException("Wallpaper source changed during detection");
         int width = Math.min(1440, view.getWidth()),
@@ -318,7 +312,7 @@ final class LiveSubject {
                     compose(
                             this.width,
                             this.height,
-                            new RectF(drawable.getBounds()),
+                            new RectF(ready(view).getBounds()),
                             ((android.widget.ImageView) view).getImageMatrix(),
                             scale);
             new Canvas(output)

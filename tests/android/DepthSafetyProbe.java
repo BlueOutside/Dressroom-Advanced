@@ -14,7 +14,7 @@ import org.json.JSONObject;
 
 public final class DepthSafetyProbe {
     public static final class Crop extends ImageView {
-        private final BitmapDrawable original;
+        private BitmapDrawable original;
 
         Crop(Context c) {
             super(c);
@@ -135,15 +135,25 @@ public final class DepthSafetyProbe {
                         new float[] {
                             0, 0, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0
                         }));
+        LiveSubject tracked = LiveSubject.bind(source, png, fingerprint, null);
+        check(tracked.changed(), "Initial wallpaper transform not reported");
+        check(!tracked.changed(), "Unchanged transform reported repeatedly");
         Matrix crop = new Matrix();
         crop.setScale(2, 2);
         crop.postTranslate(-10, 5);
         source.setImageMatrix(crop);
+        tracked.global(); // Draw/blur queries must not consume the observer's change.
+        check(tracked.changed(), "Zoom change consumed by a drawing query");
+        check(!tracked.changed(), "Settled zoom repeatedly invalidated depth");
+        tracked.global().postTranslate(99, 77);
+        check(!tracked.changed(), "Caller modified the stored transform snapshot");
         check(
                 LiveSubject.fingerprint(source).equals(fingerprint),
                 "Filter/crop changed original image identity");
         check(DepthEffects.editorMask(png) != null, "Crop/filter invalidated current subject");
-        source.setImageDrawable(new BitmapDrawable(context.getResources(), mask));
+        source.original = new BitmapDrawable(context.getResources(), mask);
+        source.setImageDrawable(source.original);
+        check(tracked.global() == null, "Replacement image reused the last valid transform");
         check(DepthEffects.editorMask(png) == null, "Old source survived drawable replacement");
         DepthEffects.clearEditorSubject();
         check(DepthEffects.editorMask(png) == null, "Clear restored an old fallback");

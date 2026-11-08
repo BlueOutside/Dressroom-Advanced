@@ -63,6 +63,7 @@ public final class DressroomModule extends XposedModule {
     private RuntimeClockHooks runtimeHooks;
     private DepthAuto depthAuto;
     private boolean legacyDepthReady;
+    private String legacyDepthFailure = "Editor depth hooks have not initialized";
     private WallpaperSourceBinding wallpaperSourceBinding;
     private final DepthSourcePolicy wallpaperSource = new DepthSourcePolicy();
     private java.lang.ref.WeakReference<Object> editorActivity =
@@ -103,6 +104,15 @@ public final class DressroomModule extends XposedModule {
         return resetDepthProfiles;
     }
 
+    boolean depthProfileInvalid(android.os.Bundle profile) {
+        return DepthSourcePolicy.invalidProfile(
+                sourceKnown,
+                sourceImage,
+                resetDepthProfiles,
+                imageKey(),
+                profile == null ? "" : profile.getString("depthImageKey", ""));
+    }
+
     private String imageKey() {
         String key = wallpaperSource.key();
         return key == null
@@ -110,14 +120,18 @@ public final class DressroomModule extends XposedModule {
                 : DepthStorage.hash(key.getBytes(java.nio.charset.StandardCharsets.UTF_8));
     }
 
+    private void queueWallpaperSourceCheck() {
+        if (sourceCheckQueued.compareAndSet(false, true))
+            sourceMain.post(
+                    () -> {
+                        sourceCheckQueued.set(false);
+                        syncWallpaperSource();
+                    });
+    }
+
     private void syncWallpaperSource() {
         if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) {
-            if (sourceCheckQueued.compareAndSet(false, true))
-                sourceMain.post(
-                        () -> {
-                            sourceCheckQueued.set(false);
-                            syncWallpaperSource();
-                        });
+            queueWallpaperSourceCheck();
             return;
         }
         if (sourceSyncing || wallpaperSourceBinding == null || editorActivity.get() == null) return;
@@ -182,10 +196,28 @@ public final class DressroomModule extends XposedModule {
         depthStatus(reason);
     }
 
+    void depthDetectionFailed(String message) {
+        // A failed scan is not a wallpaper replacement. Keep user choices, suspend the matte.
+        DepthEffects.clearEditorSubject();
+        DepthEffects.pendingSource(true);
+        editorDrafts.values().forEach(DepthSafety::clearMask);
+        layoutClocks.values().forEach(DepthSafety::clearMask);
+        DepthSafety.clearMask(draftSettings);
+        depthStatus(message);
+    }
+
     boolean depthAvailable(Object clock) {
         return clock != null
                 && DepthBinding.provider(clock)
                 && (editorBinding == null || !editorBinding.legacy || legacyDepthReady);
+    }
+
+    String depthUnavailableReason(Object clock) {
+        String issue = DepthBinding.providerIssue(clock);
+        if (issue != null) return "Clock provider binding failed: " + issue;
+        if (editorBinding != null && editorBinding.legacy && !legacyDepthReady)
+            return "Depth editor binding failed: " + legacyDepthFailure;
+        return "Depth is not available for this clock";
     }
 
     private java.lang.ref.WeakReference<Object> activeClockController =
@@ -227,26 +259,30 @@ public final class DressroomModule extends XposedModule {
     }
 
     void widgetDepthChanged() {
-        if (depthAuto != null && editorContext != null) {
-            Object owner = activeClockController.get();
-            if (owner != null)
-                try {
-                    Object data = editorBinding.data(owner);
-                    android.os.Bundle settings = readSettings(data, editorContext);
-                    if (settings == null) settings = new android.os.Bundle();
-                    settings.putInt(
-                            "type", ((Number) Reflect.call(data, "getClockType")).intValue());
-                    settings.putInt(
-                            "font",
-                            ((Number)
-                                            Reflect.call(
-                                                    Reflect.call(data, "getClockFontData"),
-                                                    "getClockFontType"))
-                                    .intValue());
-                    depthAuto.settings(settings, widgetDepthOn(editorContext));
-                } catch (Exception error) {
-                    report("Widget depth detection unavailable", error);
-                }
+        Object owner = activeClockController.get();
+        if (editorBinding == null || owner == null) return;
+        try {
+            Object renderer = editorBinding.renderer(owner);
+            if (!(renderer instanceof View clock)) return;
+            applyEditorDepth(clock);
+            DepthEffects.refreshEditorClock(clock);
+            long generation = sessionGeneration;
+            // Grid reflow can rebuild Samsung's clock/blur owners after the widget callback.
+            // Rebind the selected clock, without changing the clock or widget draft settings.
+            clock.postOnAnimation(
+                    () -> {
+                        if (generation != sessionGeneration || activeClockController.get() != owner)
+                            return;
+                        try {
+                            Object current = editorBinding.renderer(owner);
+                            if (current instanceof View view && view.isAttachedToWindow())
+                                applyEditorDepth(view);
+                        } catch (ReflectiveOperationException | RuntimeException error) {
+                            report("Clock depth refresh after widget layout unavailable", error);
+                        }
+                    });
+        } catch (ReflectiveOperationException | RuntimeException error) {
+            report("Widget depth refresh unavailable", error);
         }
     }
 
@@ -324,16 +360,8 @@ public final class DressroomModule extends XposedModule {
         if (fontPath != null && !fontPath.isEmpty()) query.putString("fontPath", fontPath);
         android.os.Bundle saved =
                 SettingsBridge.read(editorContext == null ? context : editorContext, query);
-        if (saved != null) {
-            boolean replaced =
-                    !saved.getString("depthImageKey", "").isEmpty()
-                            && sourceKnown
-                            && !imageKey().equals(saved.getString("depthImageKey"));
-            if (replaced && !resetDepthProfiles)
-                invalidateDepth("Wallpaper image changed. Enable depth for the new image.");
-            if (resetDepthProfiles || (sourceKnown && !sourceImage) || replaced)
-                DepthSafety.disable(saved);
-        }
+        // Reading an old profile must not reset the currently active wallpaper or other clocks.
+        if (saved != null && depthProfileInvalid(saved)) DepthSafety.disable(saved);
         return saved;
     }
 
@@ -401,7 +429,8 @@ public final class DressroomModule extends XposedModule {
                             .intercept(
                                     chain -> {
                                         Object result = chain.proceed();
-                                        syncWallpaperSource();
+                                        // Native setters update source/type fields as a batch.
+                                        queueWallpaperSourceCheck();
                                         return result;
                                     }));
             deoptimize(method);
@@ -943,7 +972,8 @@ public final class DressroomModule extends XposedModule {
                                             }
                                             restoreManualData(data, saved);
                                             String restoreKey = selectionKey(type, font);
-                                            boolean firstRestore = restoredSelections.add(restoreKey);
+                                            boolean firstRestore =
+                                                    restoredSelections.add(restoreKey);
                                             // Native refreshes (widget grid, clock position)
                                             // rebuild ClockData with default shadow/blur. Keep
                                             // re-applying the staged draft so Apply does not
@@ -1191,7 +1221,8 @@ public final class DressroomModule extends XposedModule {
                                                 // draft whenever native code rebinds the clock
                                                 // (for example after widget grid edits).
                                                 Object rawPath =
-                                                        Reflect.call(chain.getArg(0), "getFontPath");
+                                                        Reflect.call(
+                                                                chain.getArg(0), "getFontPath");
                                                 android.os.Bundle saved =
                                                         editorSettings(
                                                                 view.getContext(),
@@ -1602,6 +1633,8 @@ public final class DressroomModule extends XposedModule {
                         DepthEffects.watchEditorWallpaper(this, loader, true);
                         legacyDepthReady = true;
                     } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+                        legacyDepthReady = false;
+                        legacyDepthFailure = DepthBinding.failureReason(error);
                         report("8.5 depth source unavailable", error);
                     }
                     try {

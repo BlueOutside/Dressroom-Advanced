@@ -165,7 +165,6 @@ final class DepthEffects {
     private static void drawMask(Canvas canvas, View view, Entry entry) {
         if (entry.live != null) {
             Matrix source = entry.live.global();
-            if (source == null) source = entry.live.lastGlobal();
             if (source == null) return;
             Matrix global = new Matrix(), inverse = new Matrix();
             view.transformMatrixToGlobal(global);
@@ -258,6 +257,14 @@ final class DepthEffects {
             view.invalidate();
             refreshNativeBlur(view);
         }
+    }
+
+    static void refreshEditorClock(View view) {
+        if (!isEditorClock(view)) return;
+        view.invalidate();
+        // Native blur lives outside the clock's normal draw pass. Its matte can be
+        // unchanged while Samsung has replaced the underlying blur owner.
+        refreshNativeBlur(view);
     }
 
     private static void refreshNativeBlur(View view) {
@@ -674,6 +681,36 @@ final class DepthEffects {
                             "com.samsung.android.app.dressroom.editorcomponent.component.wallpaper.image.effects.weather.WeatherSurfaceView",
                             false,
                             loader);
+            // SurfaceView has its own lifecycle and can become ready after the controller's
+            // configuration callback. Bind there too, without relying on a short method name.
+            for (Method lifecycle :
+                    new Method[] {
+                        surfaceType.getDeclaredMethod(
+                                "surfaceCreated", android.view.SurfaceHolder.class),
+                        surfaceType.getDeclaredMethod(
+                                "surfaceChanged",
+                                android.view.SurfaceHolder.class,
+                                int.class,
+                                int.class,
+                                int.class)
+                    }) {
+                module.hook(lifecycle)
+                        .setId("dressroom-advanced.weather-surface-source")
+                        .intercept(
+                                chain -> {
+                                    Object result = chain.proceed();
+                                    View surface = (View) chain.getThisObject();
+                                    View crop = findCropView(surface.getRootView(), false);
+                                    if (crop != null) {
+                                        EditorWallpaperSource.bind(crop, surface);
+                                        if (wallpaperListener != null)
+                                            wallpaperListener.accept(crop);
+                                        updateLiveMask();
+                                    }
+                                    return result;
+                                });
+                module.deoptimize(lifecycle);
+            }
             Class<?> weather =
                     NativeContract.findClass(
                             loader,
@@ -884,7 +921,8 @@ final class DepthEffects {
                                         readyMask.recycle();
                                         callback.done(
                                                 null,
-                                                "Wallpaper changed. Detecting the new source…");
+                                                "Wallpaper changed. Detecting the new"
+                                                        + " source…");
                                         return;
                                     }
                                     if (activeSubject != null) activeSubject.stop();
@@ -895,15 +933,18 @@ final class DepthEffects {
                                     activeSubject = capture;
                                     capture.watch(DepthEffects::updateLiveMask);
                                     callback.done(
-                                            mask, "Subject detected · follows wallpaper movement");
+                                            mask,
+                                            "Subject detected · follows" + " wallpaper movement");
                                 }))
                             throw new IllegalStateException("Editor result handler stopped");
                         prepared = null;
                     } catch (Exception | LinkageError e) {
-                        String message =
-                                e.getCause() != null ? e.getCause().getMessage() : e.getMessage();
-                        if (message != null && message.length() > 110)
-                            message = message.substring(0, 110) + "…";
+                        android.util.Log.w(DressroomModule.TAG, "Subject detection failed", e);
+                        String message = e.getMessage();
+                        if ((message == null || message.isBlank()) && e.getCause() != null)
+                            message = e.getCause().getMessage();
+                        if (message != null && message.length() > 300)
+                            message = message.substring(0, 300) + "...";
                         final String visibleMessage = "Depth detection: " + message;
                         scanMain.post(
                                 () -> {
@@ -963,116 +1004,25 @@ final class DepthEffects {
 
     private static Object initializeDetector(
             android.content.Context editorContext, ClassLoader loader) throws Exception {
-        Class<?> provider =
-                Class.forName(
-                        "com.samsung.android.app.sdk.deepsky.objectcapture.ObjectCaptureProvider",
-                        false,
-                        loader);
-        Object detector = null;
-        try {
-            detector =
-                    provider.getMethod("getInstance", android.content.Context.class)
-                            .invoke(null, editorContext);
-        } catch (Exception e) {
-            android.util.Log.w(
-                    DressroomModule.TAG, "Failed to get default ObjectCaptureProvider instance", e);
-        }
-        if (detector != null
-                && Boolean.TRUE.equals(Reflect.call(detector, "isObjectCaptureSupported"))) {
-            try {
-                Reflect.call(detector, "init");
-                return detector;
-            } catch (Exception e) {
-                android.util.Log.w(
-                        DressroomModule.TAG,
-                        "Primary detector init failed, attempting fallback",
-                        e);
-                if (tryInitArcSoft(detector)) {
-                    return detector;
-                }
-            }
-        }
-        String primaryName = detector != null ? detector.getClass().getName() : "";
-        String fallbackName =
-                primaryName.contains("Srib")
-                        ? "com.samsung.android.app.sdk.deepsky.objectcapture.impl.ArcSoftObjectCaptureImpl"
-                        : "com.samsung.android.app.sdk.deepsky.objectcapture.impl.SribObjectCaptureImpl";
-        try {
-            Class<?> fallbackClass = Class.forName(fallbackName, false, loader);
-            Object fallback =
-                    fallbackClass
-                            .getConstructor(android.content.Context.class)
-                            .newInstance(editorContext);
-            if (Boolean.TRUE.equals(Reflect.call(fallback, "isObjectCaptureSupported"))) {
-                try {
-                    Reflect.call(fallback, "init");
-                    return fallback;
-                } catch (Exception e) {
-                    if (tryInitArcSoft(fallback)) {
-                        return fallback;
-                    }
-                }
-            }
-        } catch (Exception ignored) {
-        }
-        throw new IllegalStateException(
-                "Samsung object capture is unavailable on this device chipset (ret: 3)");
-    }
-
-    private static boolean tryInitArcSoft(Object detector) {
-        if (detector == null || !detector.getClass().getName().contains("ArcSoft")) return false;
-        try {
-            Object wrapper = null;
-            try {
-                wrapper = Reflect.call(detector, "getInstance");
-            } catch (Exception ignored) {
-                try {
-                    Object delegate = Reflect.field(detector, "instance$delegate");
-                    if (delegate != null) wrapper = Reflect.call(delegate, "getValue");
-                } catch (Exception ignored2) {
-                }
-            }
-            if (wrapper == null) return false;
-            Object jniInstance = Reflect.field(wrapper, "instance");
-            if (jniInstance == null) return false;
-            int[] platformIds = {5, 0, 4, 1, 2, 6};
-            for (int id : platformIds) {
-                try {
-                    Object ret = Reflect.call(jniInstance, "OBJECT_CAPTURE_Init", id);
-                    if (ret instanceof Number n && n.intValue() == 0) {
-                        java.lang.reflect.Field initStateField =
-                                detector.getClass().getDeclaredField("IS_INIT_STATE");
-                        initStateField.setAccessible(true);
-                        java.util.concurrent.atomic.AtomicBoolean initState =
-                                (java.util.concurrent.atomic.AtomicBoolean) initStateField.get(null);
-                        if (initState != null) initState.set(true);
-                        android.util.Log.i(
-                                DressroomModule.TAG,
-                                "ArcSoft object capture initialized with fallback platformId="
-                                        + id);
-                        return true;
-                    }
-                } catch (Exception ignored) {
-                }
-            }
-        } catch (Exception error) {
-            android.util.Log.w(DressroomModule.TAG, "ArcSoft fallback initialization failed", error);
-        }
-        return false;
+        return ObjectCaptureBackend.open(editorContext, loader);
     }
 
     private static View findCropView(View root) {
+        return findCropView(root, true);
+    }
+
+    private static View findCropView(View root, boolean visible) {
         View largest =
                 root.getClass()
                                         .getName()
                                         .equals(
                                                 "com.samsung.android.app.dressroom.presentation.preview.widget.CropImageView")
-                                && EditorWallpaperSource.available(root)
+                                && (!visible || EditorWallpaperSource.available(root))
                         ? root
                         : null;
         if (root instanceof ViewGroup group)
             for (int i = 0; i < group.getChildCount(); i++) {
-                View found = findCropView(group.getChildAt(i));
+                View found = findCropView(group.getChildAt(i), visible);
                 if (found != null
                         && (largest == null
                                 || (long) found.getWidth() * found.getHeight()
@@ -1086,10 +1036,10 @@ final class DepthEffects {
         if (draft == null) return null;
         android.os.Bundle copy = new android.os.Bundle(draft);
         boolean stale =
-                activeSubject != null
-                        && activeSubject.matches(copy.getByteArray("depthMask"))
-                        && activeSubject.global() == null
-                        && activeSubject.lastGlobal() == null;
+                sourcePending
+                        || (activeSubject != null
+                                && activeSubject.matches(copy.getByteArray("depthMask"))
+                                && activeSubject.global() == null);
         if (stale) {
             for (String field : DepthMetadata.BLOBS) {
                 copy.remove(field);

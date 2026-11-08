@@ -20,6 +20,13 @@ final class HookTransaction implements AutoCloseable {
         rollback.clear();
     }
 
+    void commitTo(HookTransaction parent) {
+        if (parent == this || closed || committed || parent.closed || parent.committed)
+            throw new IllegalStateException("Hook transaction already finished");
+        parent.rollback.addAll(rollback);
+        commit();
+    }
+
     @Override
     public void close() {
         if (closed) return;

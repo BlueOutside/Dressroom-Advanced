@@ -22,6 +22,26 @@ final class OneUi85AodBlur {
                 Class.forName(
                         "com.samsung.android.clockpack.plugins.clock.WeatherInfo", false, loader);
         Class<?> builder = Class.forName("android.view.SemBlurInfo$Builder");
+        Class<?> aod8936 =
+                NativeContract.knownClass(
+                        loader,
+                        type ->
+                                NativeContract.hasMethod(type, PointF.class, ViewGroup.class)
+                                        && NativeContract.hasMethod(
+                                                type, void.class, int.class, ImageView.class),
+                        "aod.Nv");
+        if (aod8936 != null) {
+            Class<?> options = OneUi9AodBlur.options(loader, aod8936, weather);
+            Class<?> helper =
+                    NativeContract.findClass(
+                            loader,
+                            type ->
+                                    NativeContract.hasStaticMethod(
+                                            type, void.class, builder, Path.class),
+                            "aod.i20");
+            // Nv.b -> Cy0.a is the clock; Nv.b() submits its path through i20.c().
+            return new ClockBlurBinding(aod8936, options, weather, helper, "c", "a");
+        }
         Class<?> strategy =
                 NativeContract.findClass(
                         loader,
@@ -34,7 +54,9 @@ final class OneUi85AodBlur {
         Class<?> helper =
                 NativeContract.findClass(
                         loader,
-                        type -> NativeContract.hasStaticMethod(type, void.class, builder, Path.class),
+                        type ->
+                                NativeContract.hasStaticMethod(
+                                        type, void.class, builder, Path.class),
                         CLIP_HELPER);
         // Lv.b points at a synthetic holder; that holder's b is the AbsClockView.
         return new ClockBlurBinding(strategy, options, weather, helper, "c", "b");
@@ -47,7 +69,8 @@ final class OneUi85AodBlur {
                 NativeContract.findClass(
                         loader,
                         type ->
-                                NativeContract.hasStaticMethod(type, void.class, builder, Path.class)
+                                NativeContract.hasStaticMethod(
+                                                type, void.class, builder, Path.class)
                                         && NativeContract.hasStaticMethod(
                                                 type, void.class, View.class, info, String.class),
                         CLIP_HELPER);

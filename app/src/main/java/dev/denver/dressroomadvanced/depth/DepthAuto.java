@@ -194,7 +194,7 @@ final class DepthAuto {
                             schedule(250, force);
                             return;
                         }
-                        module.invalidateDepth("Depth detection failed: " + msg);
+                        module.depthDetectionFailed("Depth detection failed: " + msg);
                     }
                 };
         main.postDelayed(check, delay);
@@ -228,7 +228,7 @@ final class DepthAuto {
                     if (mask != null) {
                         DepthEffects.pendingSource(false);
                         module.depthDetected(clock.get(), mask, message);
-                    } else module.invalidateDepth(message);
+                    } else module.depthDetectionFailed(message);
                 },
                 complete);
     }

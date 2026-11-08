@@ -17,6 +17,15 @@ final class DepthSourcePolicy {
         return key;
     }
 
+    static boolean invalidProfile(
+            boolean known, boolean image, boolean reset, String currentKey, String savedKey) {
+        if (known && !image) return true;
+        boolean stamped = savedKey != null && !savedKey.isEmpty();
+        boolean current = known && image && stamped && savedKey.equals(currentKey);
+        if (known && stamped && !current) return true;
+        return reset && !current;
+    }
+
     static boolean image(int type, int parent) {
         return still(type) && (parent <= 0 || still(parent));
     }

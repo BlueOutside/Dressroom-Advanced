@@ -4,7 +4,6 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Enumeration;
 import java.util.List;
@@ -13,8 +12,16 @@ import java.util.WeakHashMap;
 import java.util.function.Predicate;
 
 final class NativeContract {
-    private static final Map<ClassLoader, List<String>> dexClassCache =
+    private static final Map<ClassLoader, DexIndex> dexClassCache =
             Collections.synchronizedMap(new WeakHashMap<>());
+
+    static final class AmbiguousClassException extends ClassNotFoundException {
+        AmbiguousClassException(String message) {
+            super(message);
+        }
+    }
+
+    private record DexIndex(long stamp, List<String> names) {}
 
     private NativeContract() {}
 
@@ -57,11 +64,17 @@ final class NativeContract {
             } catch (NoSuchFieldException ignored) {
             }
         }
+        Field found = null;
         for (Field f : owner.getDeclaredFields()) {
             if (!Modifier.isStatic(f.getModifiers()) && type.isAssignableFrom(f.getType())) {
-                f.setAccessible(true);
-                return f;
+                if (found != null)
+                    throw new NoSuchFieldException("Ambiguous fields: " + found + " and " + f);
+                found = f;
             }
+        }
+        if (found != null) {
+            found.setAccessible(true);
+            return found;
         }
         throw new NoSuchFieldException(
                 owner.getName() + " has no field matching " + type.getName());
@@ -70,95 +83,57 @@ final class NativeContract {
     static Method findMethod(
             Class<?> owner, String preferredName, Class<?> result, Class<?>... parameters)
             throws NoSuchMethodException {
-        if (preferredName != null) {
-            try {
-                if (result != null && !containsNull(parameters)) {
-                    return method(owner, preferredName, result, parameters);
-                }
-                for (Method m : owner.getDeclaredMethods()) {
-                    if (m.getName().equals(preferredName)
-                            && !Modifier.isStatic(m.getModifiers())
-                            && !m.isBridge()
-                            && (result == null || result.isAssignableFrom(m.getReturnType()))
-                            && matchParameters(m.getParameterTypes(), parameters)) {
-                        m.setAccessible(true);
-                        return m;
-                    }
-                }
-            } catch (NoSuchMethodException ignored) {
-            }
-        }
-        for (Method m : owner.getDeclaredMethods()) {
-            if (!Modifier.isStatic(m.getModifiers())
-                    && !m.isBridge()
-                    && (result == null || result.isAssignableFrom(m.getReturnType()))
-                    && matchParameters(m.getParameterTypes(), parameters)) {
-                m.setAccessible(true);
-                return m;
-            }
-        }
-        throw new NoSuchMethodException(
-                owner.getName()
-                        + " has no method matching "
-                        + (result != null ? result.getName() : "any"));
+        return selectMethod(owner, preferredName, result, false, false, parameters);
     }
 
     static Method findStaticMethod(
             Class<?> owner, String preferredName, Class<?> result, Class<?>... parameters)
             throws NoSuchMethodException {
-        if (preferredName != null) {
-            for (Method m : owner.getDeclaredMethods()) {
-                if (m.getName().equals(preferredName)
-                        && Modifier.isStatic(m.getModifiers())
-                        && !m.isBridge()
-                        && (result == null || result.isAssignableFrom(m.getReturnType()))
-                        && matchParameters(m.getParameterTypes(), parameters)) {
-                    m.setAccessible(true);
-                    return m;
-                }
-            }
-        }
-        for (Method m : owner.getDeclaredMethods()) {
-            if (Modifier.isStatic(m.getModifiers())
-                    && !m.isBridge()
-                    && (result == null || result.isAssignableFrom(m.getReturnType()))
-                    && matchParameters(m.getParameterTypes(), parameters)) {
-                m.setAccessible(true);
-                return m;
-            }
-        }
-        throw new NoSuchMethodException(
-                owner.getName()
-                        + " has no static method matching "
-                        + (result != null ? result.getName() : "any"));
+        return selectMethod(owner, preferredName, result, true, false, parameters);
     }
 
     static Method findMethodPrefix(
             Class<?> owner, String preferredName, Class<?> result, Class<?>... prefixParameters)
             throws NoSuchMethodException {
-        if (preferredName != null) {
-            for (Method m : owner.getDeclaredMethods()) {
-                if (m.getName().equals(preferredName)
-                        && !Modifier.isStatic(m.getModifiers())
-                        && !m.isBridge()
-                        && (result == null || result.isAssignableFrom(m.getReturnType()))
-                        && matchPrefix(m.getParameterTypes(), prefixParameters)) {
-                    m.setAccessible(true);
-                    return m;
-                }
+        return selectMethod(owner, preferredName, result, false, true, prefixParameters);
+    }
+
+    private static Method selectMethod(
+            Class<?> owner,
+            String preferredName,
+            Class<?> result,
+            boolean isStatic,
+            boolean prefix,
+            Class<?>[] parameters)
+            throws NoSuchMethodException {
+        // Known mappings are deliberate tie-breakers, but even a named wildcard must be unique.
+        for (int pass = preferredName == null ? 1 : 0; pass < 2; pass++) {
+            Method found = null;
+            for (Method method : owner.getDeclaredMethods()) {
+                if (Modifier.isStatic(method.getModifiers()) != isStatic
+                        || method.isBridge()
+                        || (pass == 0 && !method.getName().equals(preferredName))
+                        || (result != null && !result.isAssignableFrom(method.getReturnType()))
+                        || !(prefix
+                                ? matchPrefix(method.getParameterTypes(), parameters)
+                                : matchParameters(method.getParameterTypes(), parameters)))
+                    continue;
+                if (found != null)
+                    throw new NoSuchMethodException(
+                            "Ambiguous methods: " + found + " and " + method);
+                found = method;
             }
-        }
-        for (Method m : owner.getDeclaredMethods()) {
-            if (!Modifier.isStatic(m.getModifiers())
-                    && !m.isBridge()
-                    && (result == null || result.isAssignableFrom(m.getReturnType()))
-                    && matchPrefix(m.getParameterTypes(), prefixParameters)) {
-                m.setAccessible(true);
-                return m;
+            if (found != null) {
+                found.setAccessible(true);
+                return found;
             }
         }
         throw new NoSuchMethodException(
-                owner.getName() + " has no method starting with prefix parameters");
+                owner.getName()
+                        + " has no matching "
+                        + (isStatic ? "static " : "instance ")
+                        + "method for "
+                        + preferredName);
     }
 
     static boolean hasField(Class<?> owner, Class<?> type) {
@@ -224,36 +199,56 @@ final class NativeContract {
     static Class<?> findClass(
             ClassLoader loader, Predicate<Class<?>> signature, String... candidates)
             throws ClassNotFoundException {
-        for (String name : candidates) {
-            if (name == null || name.isEmpty()) continue;
-            try {
-                Class<?> cls = Class.forName(name, false, loader);
-                if (signature == null || signature.test(cls)) return cls;
-            } catch (Throwable ignored) {
-            }
-        }
+        Class<?> known = knownClass(loader, signature, candidates);
+        if (known != null) return known;
         if (signature != null) {
+            Class<?> found = null;
             for (String name : dexClasses(loader)) {
+                Class<?> cls;
                 try {
-                    Class<?> cls = Class.forName(name, false, loader);
-                    if (signature.test(cls)) return cls;
-                } catch (Throwable ignored) {
+                    cls = Class.forName(name, false, loader);
+                    if (!signature.test(cls)) continue;
+                } catch (LinkageError | RuntimeException | ClassNotFoundException ignored) {
+                    continue;
                 }
+                if (found != null && found != cls)
+                    throw new AmbiguousClassException(
+                            "Ambiguous classes: " + found.getName() + " and " + cls.getName());
+                found = cls;
             }
+            if (found != null) return found;
         }
         throw new ClassNotFoundException(
                 "No class matched signature for candidates: " + String.join(", ", candidates));
     }
 
+    static Class<?> knownClass(
+            ClassLoader loader, Predicate<Class<?>> signature, String... candidates) {
+        for (String name : candidates) {
+            if (name == null || name.isEmpty()) continue;
+            try {
+                Class<?> cls = Class.forName(name, false, loader);
+                if (signature == null || signature.test(cls)) return cls;
+            } catch (ClassNotFoundException | RuntimeException | LinkageError ignored) {
+            }
+        }
+        return null;
+    }
+
     @SuppressWarnings("deprecation")
     private static List<String> dexClasses(ClassLoader loader) {
-        List<String> cached = dexClassCache.get(loader);
-        if (cached != null) return cached;
-        List<String> names = new ArrayList<>();
         try {
             Object pathList = Reflect.field(loader, "pathList");
             Object elements = Reflect.field(pathList, "dexElements");
             int length = java.lang.reflect.Array.getLength(elements);
+            long stamp = System.identityHashCode(elements);
+            for (int i = 0; i < length; i++) {
+                Object element = java.lang.reflect.Array.get(elements, i);
+                stamp = stamp * 31 + System.identityHashCode(Reflect.field(element, "dexFile"));
+            }
+            DexIndex cached = dexClassCache.get(loader);
+            if (cached != null && cached.stamp == stamp) return cached.names;
+            java.util.Set<String> names = new java.util.LinkedHashSet<>();
             for (int i = 0; i < length; i++) {
                 Object element = java.lang.reflect.Array.get(elements, i);
                 Object dexFile = Reflect.field(element, "dexFile");
@@ -265,11 +260,13 @@ final class NativeContract {
                     }
                 }
             }
-        } catch (Throwable ignored) {
+            List<String> result = List.copyOf(names);
+            // Empty/failed scans must not poison discovery before a plugin finishes loading.
+            if (!result.isEmpty()) dexClassCache.put(loader, new DexIndex(stamp, result));
+            return result;
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
+            return List.of();
         }
-        List<String> result = Collections.unmodifiableList(names);
-        dexClassCache.put(loader, result);
-        return result;
     }
 
     private static boolean isCandidateClassName(String name) {
@@ -279,15 +276,10 @@ final class NativeContract {
         return dot > 0 && dot <= 3 && name.lastIndexOf('.') == dot;
     }
 
-    private static boolean containsNull(Class<?>[] array) {
-        for (Class<?> item : array) if (item == null) return true;
-        return false;
-    }
-
     private static boolean matchParameters(Class<?>[] actual, Class<?>[] expected) {
         if (actual.length != expected.length) return false;
         for (int i = 0; i < actual.length; i++) {
-            if (expected[i] != null && !expected[i].isAssignableFrom(actual[i])) return false;
+            if (expected[i] != null && expected[i] != actual[i]) return false;
         }
         return true;
     }
@@ -295,7 +287,7 @@ final class NativeContract {
     private static boolean matchPrefix(Class<?>[] actual, Class<?>[] prefix) {
         if (actual.length < prefix.length) return false;
         for (int i = 0; i < prefix.length; i++) {
-            if (prefix[i] != null && !prefix[i].isAssignableFrom(actual[i])) return false;
+            if (prefix[i] != null && prefix[i] != actual[i]) return false;
         }
         return true;
     }
