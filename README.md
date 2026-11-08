@@ -29,9 +29,11 @@ Imported fonts use their own variable axes. Samsung's dynamic per-digit stretchi
 | 7.0 | Any combination | Unsupported |
 
 - ZFLip is only supported on the inner screen, not the cover screen.
-- No support is currently available for folded/unfolded states on ZFold, only rotation.
+- Independent cover/inner profiles are available in the experimental One UI 9 foldable port.
 - Z series have 0 guarantee of working fine for any version, simply because I do NOT have any.
 - Features depend on the device and app versions.
+
+The experimental One UI 9 foldable port uses signature-checked shims, with inspected contracts for Dressroom 3.0.01.20 and AOD 8.9.57.1 alongside the existing adapters. Clock saving, lockscreen depth, independent cover/inner widget selections and independent Extras have been confirmed on SM-F971B. See [One UI 9 foldable support](docs/compatibility/ONE_UI_9_FOLDABLES.md) for eligibility and interface checks, and the [device validation](docs/compatibility/FOLDABLE_PARITY.md) for the live results and limits. Existing non-fold adapters remain present.
 
 ## Setup
 

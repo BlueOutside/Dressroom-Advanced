@@ -35,6 +35,7 @@ final class WidgetPreferences {
     static Bundle clean(Bundle input) {
         Bundle b = defaults();
         LayoutOrientation.copy(input, b);
+        if (input.containsKey("wallpaperId")) b.putInt("wallpaperId", input.getInt("wallpaperId"));
         b.putBoolean("layout", input.getBoolean("layout"));
         b.putInt("columns", WidgetLayout.clamp(input.getInt("columns", 4), 1, 8));
         b.putInt(
@@ -68,7 +69,9 @@ final class WidgetPreferences {
         Bundle query = new Bundle();
         query.putString("scene", scene);
         query.putInt(LayoutOrientation.FIELD, orientation);
-        query.putInt("wallpaperId", SettingsBridge.wallpaperId(context));
+        LayoutOrientation.stamp(context, query);
+        query.putInt("wallpaperId", SettingsBridge.wallpaperId(context, ScreenIdentity.value(query)));
+        query.putInt("legacyWallpaperId", SettingsBridge.wallpaperId(context, 0));
         if (query.getInt("wallpaperId", -1) < 0) return defaults();
         Bundle saved =
                 context.getContentResolver().call(SettingsProvider.URI, "readWidgets", null, query);
@@ -86,8 +89,8 @@ final class WidgetPreferences {
             return;
         }
         Bundle b = clean(snapshot);
-        b.putInt("wallpaperId", SettingsBridge.wallpaperId(context));
         LayoutOrientation.stamp(context, b);
+        b = SettingsBridge.committedIdentity(b, screen -> SettingsBridge.wallpaperId(context, screen));
         Bundle result =
                 context.getContentResolver()
                         .call(
@@ -99,13 +102,35 @@ final class WidgetPreferences {
             throw new IllegalStateException("Widget settings were not saved");
     }
 
+    private static void seedDepthPolicies(android.content.SharedPreferences prefs, String base, Bundle args) {
+        if (ScreenIdentity.value(args) != 0 && !prefs.getBoolean(base + "_screen_depth_seeded", false)) {
+            String inherited = prefs.getString(base + "_depth_policy", null);
+            android.content.SharedPreferences.Editor seed = prefs.edit();
+            for (int screen : new int[] {ScreenIdentity.MAIN, ScreenIdentity.SUB}) {
+                Bundle scope = new Bundle();
+                scope.putInt(ScreenIdentity.FIELD, screen);
+                String sibling = ScreenIdentity.key(base, scope) + "_depth_policy";
+                if (inherited != null && prefs.getString(sibling, null) == null)
+                    seed.putString(sibling, inherited);
+            }
+            if (!seed.putBoolean(base + "_screen_depth_seeded", true).commit())
+                throw new IllegalStateException("Could not separate widget depth policies");
+        }
+    }
+
     static Bundle store(Context context, String method, Bundle args) throws org.json.JSONException {
+        return store(context.getSharedPreferences("committed_widget_settings", 0), method, args,
+                () -> context.getContentResolver().notifyChange(SettingsProvider.URI, null));
+    }
+
+    static Bundle store(android.content.SharedPreferences prefs, String method, Bundle args,
+            Runnable changed) throws org.json.JSONException {
         int wallpaper = args == null ? -1 : args.getInt("wallpaperId", -1);
         if (wallpaper < 0) throw new IllegalArgumentException("Missing wallpaper identity");
         String base = "wallpaper_" + wallpaper + "_main";
         String key = LayoutOrientation.key(base, args);
-        android.content.SharedPreferences prefs =
-                context.getSharedPreferences("committed_widget_settings", 0);
+        String policyKey = ScreenIdentity.key(base, args) + "_depth_policy";
+        seedDepthPolicies(prefs, base, args);
         if (method.equals("commitWidgets")) {
             Bundle b = clean(args);
             JSONObject json = new JSONObject();
@@ -116,23 +141,31 @@ final class WidgetPreferences {
                 json.put(field, value);
             }
             android.content.SharedPreferences.Editor edit =
-                    prefs.edit().putString(key, json.toString());
-            if (b.getInt("depthLayouts") == 0) edit.remove(base + "_depth_policy");
+                    prefs.edit().putString(key, json.toString()).putBoolean(policyKey + "_imported", true);
+            if (b.getInt("depthLayouts") == 0) edit.remove(policyKey);
             else
                 edit.putString(
-                        base + "_depth_policy",
+                        policyKey,
                         new JSONObject()
                                 .put("depth", b.getInt("depth"))
                                 .put("depthLayouts", b.getInt("depthLayouts"))
                                 .toString());
             if (!edit.commit()) throw new IllegalStateException("Widget persistence failed");
-            context.getContentResolver().notifyChange(SettingsProvider.URI, null);
+            changed.run();
             Bundle result = new Bundle();
             result.putBoolean("saved", true);
             return result;
         }
-        String saved = LayoutOrientation.read(prefs, base, args);
-        String policy = prefs.getString(base + "_depth_policy", null);
+        int oldWallpaper = args.getInt("legacyWallpaperId", wallpaper);
+        String legacyBase = oldWallpaper >= 0 ? "wallpaper_" + oldWallpaper + "_main" : base;
+        String saved = LayoutOrientation.readWallpaper(prefs, base, legacyBase, args);
+        if (saved != null && oldWallpaper != wallpaper && !prefs.getBoolean(policyKey + "_imported", false) && prefs.getString(policyKey, null) == null) {
+            seedDepthPolicies(prefs, legacyBase, args);
+            String oldPolicy = prefs.getString(ScreenIdentity.key(legacyBase, args) + "_depth_policy", null);
+            if (!prefs.edit().putBoolean(policyKey + "_imported", true).putString(policyKey, oldPolicy).commit())
+                throw new IllegalStateException("Could not migrate display wallpaper depth policy");
+        }
+        String policy = prefs.getString(policyKey, null);
         if (saved == null && policy == null) return null;
         JSONObject json = saved == null ? new JSONObject() : new JSONObject(saved);
         if (!SettingsScope.sceneMatches(args.getString("scene", ""), json.optString("scene", "")))

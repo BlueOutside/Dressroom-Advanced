@@ -42,7 +42,7 @@ final class WallpaperBlurTone {
         Native nativeApi = readers.get(managerType);
         int color;
         float saturation;
-        if (Boolean.TRUE.equals(Reflect.field(clock, "L0"))) {
+        if (Boolean.TRUE.equals(ClockGlassBinding.of(clock).fixedTone.get(clock))) {
             color = ((Number) Reflect.field(clock, "t")).intValue();
             float[] hsv = new float[3];
             Color.colorToHSV(color, hsv);

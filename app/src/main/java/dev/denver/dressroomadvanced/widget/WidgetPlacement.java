@@ -100,12 +100,20 @@ final class WidgetPlacement {
     }
 
     static void apply(View root, Bundle settings, Object provider) {
-        if (settings == null || settings.getInt("anchor") == 0) {
+        if (settings == null) {
+            clear(root);
+            return;
+        }
+        boolean foldable = ScreenIdentity.supported();
+        int anchor = WidgetLayout.effectiveAnchor(settings.getInt("anchor"), settings.getBoolean("layout"),
+                settings.getBoolean("vertical"), foldable);
+        if (anchor == 0) {
             clear(root);
             return;
         }
         State state = states.computeIfAbsent(root, State::new);
         state.settings = new Bundle(settings);
+        state.settings.putInt("anchor", anchor);
         if (provider != null)
             try {
                 Object clock = Reflect.field(provider, "clockView");
@@ -122,6 +130,7 @@ final class WidgetPlacement {
             state.layoutListener = (v, l, t, r, b, ol, ot, or, ob) -> state.onPreDraw();
             root.addOnLayoutChangeListener(state.layoutListener);
         }
+        WidgetDepthBlur.afterPlacement(root);
         root.invalidate();
     }
 

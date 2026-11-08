@@ -134,6 +134,22 @@ success queues the same refresh on both editor adapters. Scale/position-only
 slider updates do not request this heavier rebuild unless the depth policy also
 changes.
 
+## One UI 9 foldable profiles
+
+The foldable port uses the same NativeContract resolver as the shared shims.
+Inspected Dressroom 3.0.01.20 and AOD 8.9.57.1 names are additional checked
+hints, not a device/version dispatch table. ClockTransitionBinding and
+ClockGlassBinding cache native state owners and checked scalar layouts.
+FoldProfileBinding resolves the native load/save, policy, row-mapping and
+widget-deletion transaction before migration hooks install. Missing or
+ambiguous declarations disable the affected capability.
+
+A missing modern weather-capability getter does not imply a legacy editor:
+the helper's ClockView bind signature selects the ABI. Weather support can
+still be queried through its native manager wrapper. Widget preview fields
+resolve by role and type. The optional rotation guide is never found by an
+unconstrained no-argument scan, which also matches unrelated editor bindings.
+
 ### Apply and unlock clipping
 
 Apply rejects an enabled depth profile while its subject is pending or missing. The draft stays in the editor for retry instead of saving an empty matte. Clock, widget and Extras commits report failures separately, so a clock upload failure cannot silently skip the grid commit. Widget profiles are stamped with the saved wallpaper source just like clock profiles.

@@ -20,9 +20,10 @@ final class EditorWidgets {
     private Bundle draft, clock;
     private String scene;
     private boolean dirty;
-    private int depthLayouts = -1, sharedDepth;
+    private final WidgetDepthPolicies depthPolicies = new WidgetDepthPolicies();
     private final java.util.Map<String, Bundle> layoutDrafts = new java.util.HashMap<>();
     private final java.util.Set<String> dirtyLayouts = new java.util.HashSet<>();
+    private final ThreadLocal<Boolean> nativePreview = ThreadLocal.withInitial(() -> false);
     private final ThreadLocal<Boolean> largePicker = ThreadLocal.withInitial(() -> false);
     private final ThreadLocal<Boolean> nativeLifecycle = ThreadLocal.withInitial(() -> false);
     private Bundle dragStart;
@@ -101,19 +102,19 @@ final class EditorWidgets {
         return module.depthImageAvailable();
     }
 
-    void clearDepth() {
-        for (Bundle value : layoutDrafts.values()) {
+    void clearDepth(int screen) {
+        java.util.function.Consumer<Bundle> clear = value -> {
             DepthSafety.clearMask(value);
             if (value.getInt("depth") == 1) value.putInt("depth", 2);
+        };
+        EditorDepthSources.forScreen(layoutDrafts.values(), screen, clear);
+        if (draft != null && ScreenIdentity.value(draft) == screen) clear.accept(draft);
+        depthPolicies.clearDepth(screen);
+        if (draft != null && ScreenIdentity.value(draft) == screen) {
+            clock = null;
+            applyPolicy();
+            applyEffects();
         }
-        if (draft != null) {
-            DepthSafety.clearMask(draft);
-            if (draft.getInt("depth") == 1) draft.putInt("depth", 2);
-        }
-        if (sharedDepth == 1) sharedDepth = 2;
-        clock = null;
-        applyPolicy();
-        applyEffects();
     }
 
     String rowTag(EditorBinding.Row row) {
@@ -133,8 +134,7 @@ final class EditorWidgets {
         dirty = false;
         layoutDrafts.clear();
         dirtyLayouts.clear();
-        depthLayouts = -1;
-        sharedDepth = 0;
+        depthPolicies.clear();
         dragStart = null;
         dragging = false;
         legacyScaleReady = false;
@@ -151,11 +151,13 @@ final class EditorWidgets {
         host = new WeakReference<>(application == null ? context : application);
         String current = module.scene();
         int orientation = module.layoutOrientation(context);
+        int screen = ScreenIdentity.current();
         if (draft == null
                 || !current.equals(scene)
-                || draft.getInt(LayoutOrientation.FIELD) != orientation) {
-            if (!current.equals(scene)) depthLayouts = -1;
-            String key = current + ":" + orientation;
+                || draft.getInt(LayoutOrientation.FIELD) != orientation
+                || ScreenIdentity.value(draft) != screen) {
+            if (!current.equals(scene)) depthPolicies.clear();
+            String key = current + ":" + orientation + ":" + screen;
             Bundle previous = layoutDrafts.get(key);
             draft =
                     previous == null
@@ -168,7 +170,7 @@ final class EditorWidgets {
             }
             dirty = dirtyLayouts.contains(key);
             clock = null;
-            if (depthLayouts < 0) adoptDepthPolicy(draft);
+            if (!depthPolicies.contains(screen)) adoptDepthPolicy(draft);
             overlayDepthPolicy(draft);
             applyPolicy();
         }
@@ -178,7 +180,7 @@ final class EditorWidgets {
     void layoutChanging() {
         cancelScalePreview();
         if (draft == null) return;
-        String key = scene + ":" + draft.getInt(LayoutOrientation.FIELD);
+        String key = scene + ":" + ScreenIdentity.draft(draft);
         Bundle frozen = DepthEffects.freezeMask(draft);
         frozen.putString("scene", scene);
         layoutDrafts.put(key, frozen);
@@ -207,14 +209,11 @@ final class EditorWidgets {
     }
 
     private void adoptDepthPolicy(Bundle value) {
-        depthLayouts = value.getInt("depthLayouts");
-        sharedDepth = value.getInt("depth");
+        depthPolicies.adopt(value);
     }
 
     private void overlayDepthPolicy(Bundle value) {
-        if (depthLayouts < 0) return;
-        value.putInt("depthLayouts", depthLayouts);
-        if (depthLayouts != 0) value.putInt("depth", sharedDepth);
+        depthPolicies.overlay(value);
     }
 
     Bundle freeze() {
@@ -235,7 +234,7 @@ final class EditorWidgets {
         Bundle b = DepthEffects.freezeMask(WidgetPreferences.clean(draft));
         DepthEffects.requireSaveReady(b);
         b.putString("scene", module.scene());
-        layoutDrafts.put(scene + ":" + b.getInt(LayoutOrientation.FIELD), b);
+        layoutDrafts.put(scene + ":" + ScreenIdentity.draft(b), b);
         java.util.ArrayList<Bundle> layouts = new java.util.ArrayList<>();
         for (var entry : layoutDrafts.entrySet()) {
             if (module.scene().equals(entry.getValue().getString("scene", ""))) {
@@ -319,6 +318,10 @@ final class EditorWidgets {
             throw new IllegalStateException("Widget preview is not ready");
         if (!next.containsKey(LayoutOrientation.FIELD) && draft != null)
             LayoutOrientation.copy(draft, next);
+        if (!next.containsKey(ScreenIdentity.FIELD) && draft != null)
+            ScreenIdentity.copy(draft, next);
+        if (ScreenIdentity.value(next) != ScreenIdentity.current())
+            throw new IllegalStateException("Reopen widget controls after switching screens.");
         if (next.getInt(LayoutOrientation.FIELD) != module.layoutOrientation(c))
             throw new IllegalStateException("Layout changed. Open Advanced again.");
         next = WidgetPreferences.clean(next);
@@ -451,7 +454,7 @@ final class EditorWidgets {
     void previewScale(float zoom) throws ReflectiveOperationException {
         Object item = owner.get();
         if (item == null || draft == null) return;
-        if (Reflect.field(item, legacy() ? "N" : "L") instanceof View view)
+        if ((legacy() ? Reflect.field(item, "N") : OneUi9WidgetEditor.root(item)) instanceof View view)
             scalePreview.show(
                     view, draft.getFloat("scale", 1), WidgetLayout.finite(zoom, 1, .5f, 2));
     }
@@ -501,13 +504,13 @@ final class EditorWidgets {
                 }
                 return;
             }
-            Object view = Reflect.field(item, "L");
+            Object view = OneUi9WidgetEditor.root(item);
             if (view instanceof View root)
                 DepthEffects.applyEditorWidgets(
                         root,
                         clock != null && clock.getBoolean("depthEnabled"),
                         clock == null ? null : clock.getByteArray("depthMask"));
-            Object inner = Reflect.field(item, "H");
+            Object inner = OneUi9WidgetEditor.inner(item);
             if (inner instanceof View root) WidgetDepthBlur.blur(root, draft.getBoolean("blurOff"));
         } catch (Exception e) {
             module.report("Widget editor effects unavailable", e);
@@ -568,9 +571,13 @@ final class EditorWidgets {
                                 host = new WeakReference<>(c);
                                 ui = new WeakReference<>(Reflect.field(item, "i"));
                                 settings(c);
-                                restoreModel(Reflect.field(item, "G"));
+                                restoreModel(OneUi9WidgetEditor.data(item));
                             }
-                            Object result = chain.proceed();
+                            boolean wasPreview = nativePreview.get();
+                            Object result;
+                            nativePreview.set(item == owner.get());
+                            try { result = chain.proceed(); }
+                            finally { nativePreview.set(wasPreview); }
                             if (item == owner.get()) {
                                 applyEffects();
                                 if (result instanceof View view) {
@@ -607,6 +614,7 @@ final class EditorWidgets {
                         "com.samsung.android.clockpack.plugins.briefwidget.WidgetAlignType",
                         false,
                         loader);
+        try {
         Method trimmed = OneUi9WidgetEditor.rotationTrimmed(loader, alignType);
         module.hook(trimmed)
                 .setId("dressroom-advanced.portrait-widget-arrangement")
@@ -620,6 +628,13 @@ final class EditorWidgets {
                             return chain.proceed();
                         });
         module.deoptimize(trimmed);
+        } catch (ClassNotFoundException missingTrimmedPolicy) {
+            Method portrait = OneUi9WidgetEditor.portraitPolicy(loader);
+            module.hook(portrait).setId("dressroom-advanced.widget-portrait-policy")
+                    .intercept(chain -> nativePreview.get() && draft != null && draft.getBoolean("layout")
+                            ? false : chain.proceed());
+            module.deoptimize(portrait);
+        }
         Method editable =
                 Class.forName(
                                 "com.samsung.android.lockscreen.editor.item.domain.entity.item.widget.WidgetData",
@@ -633,7 +648,7 @@ final class EditorWidgets {
                             if (owner.get() != null
                                     && draft != null
                                     && draft.getBoolean("layout")
-                                    && chain.getThisObject() == Reflect.field(owner.get(), "G"))
+                                    && chain.getThisObject() == OneUi9WidgetEditor.data(owner.get()))
                                 return chain.proceed(new Object[] {true});
                             return chain.proceed();
                         });
@@ -924,7 +939,7 @@ final class EditorWidgets {
         Object current = owner.get();
         if (current == null) return;
         try {
-            Object root = Reflect.field(current, legacy() ? "N" : "L");
+            Object root = (legacy() ? Reflect.field(current, "N") : OneUi9WidgetEditor.root(current));
             long generation = module.generation();
             if (root instanceof View view)
                 view.postOnAnimation(
@@ -1178,6 +1193,7 @@ final class EditorWidgets {
     }
 
     private void installMetrics(ClassLoader loader) throws ReflectiveOperationException {
+        try {
         Method guide = OneUi9WidgetEditor.guide(loader);
         module.hook(guide)
                 .setId("dressroom-advanced.hide-widget-rotation-guide")
@@ -1189,6 +1205,9 @@ final class EditorWidgets {
                             return result;
                         });
         module.deoptimize(guide);
+        } catch (ReflectiveOperationException missingGuide) {
+            module.report("Optional widget rotation guide unavailable", missingGuide);
+        }
         installDrag(loader);
         installDirectDragBinding(loader);
         Class<?> gridType =
@@ -1368,7 +1387,7 @@ final class EditorWidgets {
                         .intercept(
                                 chain -> {
                                     if (owner.get() == null
-                                            || !(Reflect.field(owner.get(), legacy() ? "N" : "L")
+                                            || !((legacy() ? Reflect.field(owner.get(), "N") : OneUi9WidgetEditor.root(owner.get()))
                                                     instanceof View root)
                                             || !root.isShown()) return chain.proceed();
                                     if (legacy()
@@ -1539,7 +1558,7 @@ final class EditorWidgets {
         }
         update(next, false);
         if (pendingBinding != null) {
-            View root = (View) Reflect.field(owner.get(), legacy() ? "N" : "L");
+            View root = (View) (legacy() ? Reflect.field(owner.get(), "N") : OneUi9WidgetEditor.root(owner.get()));
             Object binding = pendingBinding.invoke(null, root);
             if (binding != null) Reflect.call(binding, "executePendingBindings");
         }

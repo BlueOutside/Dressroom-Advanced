@@ -49,6 +49,31 @@ final class MediaFullscreenExtras {
     private static DressroomModule module;
     private static boolean rootInstalled;
 
+    static void screenChanged() {
+        clockPaths.clear();
+        for (WeakReference<Backdrop> reference : new ArrayList<>(hosts.values())) {
+            Backdrop backdrop = reference.get();
+            if (backdrop == null) continue;
+            backdrop.restore();
+            backdrop.current = null;
+            backdrop.showing = false;
+            backdrop.returnBounds.setEmpty();
+            backdrop.returnExclusion.setEmpty();
+            ViewGroup root = backdrop.root.get();
+            if (root != null) {
+                MediaClockContrast.depth(root, false);
+                WidgetMediaOcclusion.publish(root, null);
+                MediaClockContrast.clear(root);
+            }
+            backdrop.invalidate();
+        }
+        for (Art state : new ArrayList<>(art.values())) {
+            state.reveal.discard();
+            state.overlayActive = state.closing = false;
+            state.returningCard.clear();
+        }
+    }
+
     static void clockPath(View clock, float x, float y, Path path) {
         ClockPath old = clockPaths.get(clock);
         if (path == null) {

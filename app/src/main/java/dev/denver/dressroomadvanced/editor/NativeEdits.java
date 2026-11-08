@@ -26,17 +26,17 @@ final class NativeEdits {
             throws Exception {
         ClassLoader loader = controller.getClass().getClassLoader();
         Class<?> continuation = Class.forName("kotlin.coroutines.Continuation", false, loader);
-        java.lang.reflect.Constructor<?> constructor =
-                owner.equals("vo.g")
-                        ? Class.forName(owner, false, loader)
-                                .getDeclaredConstructor(
-                                        model.getClass(), boolean.class, continuation, int.class)
-                        : Class.forName(owner, false, loader)
-                                .getDeclaredConstructor(
-                                        model.getClass(), boolean.class, continuation);
+        boolean modern = !EditorBinding.of(controller).legacy;
+        Class<?> transactionType = NativeContract.findClass(loader,
+                cls -> modern
+                        ? NativeContract.hasConstructor(cls, model.getClass(), boolean.class, continuation, int.class)
+                        : NativeContract.hasConstructor(cls, model.getClass(), boolean.class, continuation), owner);
+        java.lang.reflect.Constructor<?> constructor = modern
+                ? transactionType.getDeclaredConstructor(model.getClass(), boolean.class, continuation, int.class)
+                : transactionType.getDeclaredConstructor(model.getClass(), boolean.class, continuation);
         constructor.setAccessible(true);
         Object transaction =
-                owner.equals("vo.g")
+                modern
                         ? constructor.newInstance(model, value, null, weather ? 0 : 1)
                         : constructor.newInstance(model, value, null);
         Class<?> scope = Class.forName("kotlinx.coroutines.CoroutineScope", false, loader);

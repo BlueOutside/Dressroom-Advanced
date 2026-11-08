@@ -55,10 +55,10 @@ final class ClockSourceBinding {
                                 NativeContract.hasStaticMethod(
                                         type, List.class, int.class, font, List.class),
                         clockStyle ? "aod.uq6" : "aod.qn1",
-                        clockStyle ? "aod.qn1" : "aod.uq6");
+                        clockStyle ? "aod.qn1" : "aod.uq6", "aod.an1");
         if (known != null)
             return NativeContract.findStaticMethod(
-                    known, clockStyle ? "T" : "X", List.class, int.class, font, List.class);
+                    known, known.getName().equals("aod.an1") ? "c0" : clockStyle ? "T" : "X", List.class, int.class, font, List.class);
         Class<?> aod8936 =
                 NativeContract.knownClass(
                         loader,
@@ -84,7 +84,7 @@ final class ClockSourceBinding {
                                     NativeContract.hasStaticMethod(
                                             type, List.class, int.class, font, List.class),
                             clockStyle ? "aod.uq6" : "aod.qn1",
-                            clockStyle ? "aod.qn1" : "aod.uq6");
+                            clockStyle ? "aod.qn1" : "aod.uq6", "aod.an1");
             return NativeContract.findStaticMethod(
                     owner, clockStyle ? "T" : "X", List.class, int.class, font, List.class);
         } catch (NativeContract.AmbiguousClassException ambiguous) {

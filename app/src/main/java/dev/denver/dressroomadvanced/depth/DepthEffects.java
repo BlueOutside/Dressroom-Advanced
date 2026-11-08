@@ -554,11 +554,16 @@ final class DepthEffects {
             png = editorMask(png);
         apply(widgets, enabled, png);
         Entry entry = entries.get(widgets);
-        if (entry != null) {
-            entry.nodeClip = false;
+        if (ScreenIdentity.supported()) {
+            boolean active = entry != null && entry.enabled;
+            if (entry != null) entry.nodeClip = active && WidgetContentClip.supported();
+            WidgetDepthBlur.clipWidgets(widgets, active);
+            WidgetDepthBlur.watch(widgets, active || WidgetMediaOcclusion.active(widgets));
+        } else {
+            if (entry != null) entry.nodeClip = false;
+            WidgetContentClip.apply(widgets, false);
+            WidgetDepthBlur.watch(widgets, false);
         }
-        WidgetContentClip.apply(widgets, false);
-        WidgetDepthBlur.watch(widgets, false);
         WidgetDepthDraw.watch(widgets, entry != null && enabled);
     }
 

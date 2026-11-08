@@ -54,18 +54,17 @@ final class EditorBinding {
                 protected EditorBinding computeValue(Class<?> owner) {
                     try {
                         ClassLoader loader = owner.getClassLoader();
-                        Class<?> typeData =
-                                Class.forName(
-                                        "com.samsung.android.lockscreen.editor.item.domain.entity.item.clock.ClockTypeData",
-                                        false,
-                                        loader);
-                        boolean isLegacy;
-                        try {
-                            NativeContract.method(typeData, "isSupportWeatherInfo", boolean.class);
-                            isLegacy = false;
-                        } catch (NoSuchMethodException ignored) {
-                            isLegacy = true;
+                        Class<?> clockView = Class.forName(
+                                "com.samsung.android.clockpack.plugins.clock.ClockView", false, loader);
+                        // Weather capability moved independently of the editor ABI. Inspect the
+                        // helper's bind operation instead of treating its absence as an 8.5 signal.
+                        boolean modern = false;
+                        for (Field field : owner.getDeclaredFields()) {
+                            Class<?> helper = field.getType();
+                            if (NativeContract.hasField(helper, clockView)
+                                    && NativeContract.hasMethod(helper, void.class, clockView)) modern = true;
                         }
+                        boolean isLegacy = !modern;
                         Names names = isLegacy ? OneUi85Editor.names() : OneUi9Editor.names();
                         return new EditorBinding(loader, owner, names);
                     } catch (ReflectiveOperationException error) {
@@ -96,7 +95,7 @@ final class EditorBinding {
                         loader,
                         cls -> controllerShape(cls, data),
                         primary.controller,
-                        fallback.controller);
+                        fallback.controller, "so.x");
         return bindings.get(owner);
     }
 
@@ -150,6 +149,15 @@ final class EditorBinding {
             Field f = controller.getDeclaredField(names.dataUseCaseField);
             useCase = f.getType();
         }
+        if (!NativeContract.hasField(controller, useCase)) {
+            // The observable use case is constructor-injected; its declared getter
+            // returns the same stable ObservableData contract on both modern editors.
+            Field injected = controller.getDeclaredField(names.dataUseCaseField);
+            Class<?> observable = Class.forName(
+                    "com.samsung.android.lockscreen.editor.item.domain.entity.common.ObservableData", false, loader);
+            NativeContract.findMethod(injected.getType(), "a", observable);
+            useCase = injected.getType();
+        }
         open = NativeContract.findMethod(controller, "a", boolean.class);
         root = NativeContract.findField(controller, names.rootField, View.class);
         dataUseCase = NativeContract.findField(controller, names.dataUseCaseField, useCase);
@@ -188,7 +196,7 @@ final class EditorBinding {
                                 ? NativeContract.hasMethod(cls, void.class, boolean.class)
                                 : NativeContract.hasMethod(
                                         cls, void.class, boolean.class, boolean.class);
-        Class<?> weatherType = NativeContract.knownClass(loader, weatherShape, names.weatherType);
+        Class<?> weatherType = NativeContract.knownClass(loader, weatherShape, names.weatherType, "mf.f0");
         if (weatherType == null) {
             // A boolean setter is far too common to identify this use case by type alone.
             java.util.Set<Class<?>> matches = new java.util.LinkedHashSet<>();
@@ -222,7 +230,7 @@ final class EditorBinding {
                         "com.samsung.android.lockscreen.editor.item.domain.entity.item.clock.ClockTypeData",
                         false,
                         loader);
-        if (legacy && names.managerWrapperClass != null) {
+        if (!java.util.Arrays.stream(typeData.getDeclaredMethods()).anyMatch(m -> m.getName().equals("isSupportWeatherInfo") && m.getReturnType() == boolean.class && m.getParameterCount() == 0)) {
             Class<?> manager =
                     Class.forName(
                             "com.samsung.android.clockpack.plugins.clock.ClockManager",
@@ -232,9 +240,9 @@ final class EditorBinding {
                     NativeContract.findClass(
                             loader,
                             cls -> NativeContract.hasMethod(cls, manager),
-                            names.managerWrapperClass);
+                            names.managerWrapperClass, "pc.b");
             managerWrapper =
-                    NativeContract.findField(controller, names.managerWrapperField, wrapper);
+                    NativeContract.findField(controller, names.managerWrapperField == null ? "g" : names.managerWrapperField, wrapper);
             managerGetter = NativeContract.findMethod(wrapper, names.managerGetterMethod, manager);
             weatherCapability =
                     NativeContract.method(
@@ -256,7 +264,7 @@ final class EditorBinding {
 
     boolean supportsWeather(Object owner, Object data) throws ReflectiveOperationException {
         Object type = Reflect.call(data, "getClockTypeData");
-        if (!legacy) return Boolean.TRUE.equals(weatherCapability.invoke(type));
+        if (managerWrapper == null) return Boolean.TRUE.equals(weatherCapability.invoke(type));
         if (!Boolean.TRUE.equals(Reflect.call(data, "getEnable"))) return false;
         Object manager = managerGetter.invoke(managerWrapper.get(owner));
         return Boolean.TRUE.equals(
@@ -356,7 +364,18 @@ final class EditorBinding {
         else Reflect.call(position, legacy ? "h" : "f", draft, screen, dx, dy, assist, device);
         Reflect.call(position, legacy ? "a" : "l", draft, preview, screen);
         if (legacy) Reflect.call(position, "f", draft, screen, device, false);
-        else Reflect.call(position, "d", draft, device, screen, false);
+        else {
+            Method placement;
+            try {
+                placement = NativeContract.method(position.getClass(), "d", void.class,
+                        draft.getClass(), device.getClass(), screen.getClass(), boolean.class);
+                placement.invoke(position, draft, device, screen, false);
+            } catch (NoSuchMethodException reordered) {
+                placement = NativeContract.findMethod(position.getClass(), "d", void.class,
+                        draft.getClass(), screen.getClass(), device.getClass(), boolean.class);
+                placement.invoke(position, draft, screen, device, false);
+            }
+        }
         Reflect.call(position, legacy ? "m" : "o", draft, screen, assist, device);
     }
 }

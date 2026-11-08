@@ -90,6 +90,11 @@ public final class WidgetLayoutTest {
         float[] oversized = WidgetLayout.place(5, 0, 0, 0, 0, 2000, 3000, 1000, 2000, 0, 1, 1);
         check(oversized[0] == 0 && oversized[1] == 0, "Oversized grid produced negative position");
         check(WidgetLayout.finite(Float.NaN, 1, .5f, 2) == 1, "NaN reached native metrics");
+        check(WidgetLayout.effectiveAnchor(0, true, true, true) == 4, "Fold8 default vertical must dock right");
+        check(WidgetLayout.effectiveAnchor(0, true, false, true) == 0, "Horizontal native placement changed");
+        check(WidgetLayout.effectiveAnchor(5, true, true, true) == 5, "Free placement changed");
+        check(WidgetLayout.effectiveAnchor(0, true, true, false) == 0, "Existing providers changed");
+        check(WidgetLayout.effectiveAnchor(0, false, true, true) == 0, "Stock non-custom layout changed");
         System.out.println("Widget layout contracts: " + checks + " checks passed");
     }
 }

@@ -29,7 +29,7 @@ final class RuntimeWidgetHooks {
     private static final class State {
         WeakReference<ViewGroup> root = new WeakReference<>(null);
         final RootLayoutWatch layoutWatch = new RootLayoutWatch();
-        int type = -1, font = -1, orientation = -1;
+        int type = -1, font = -1, orientation = -1, screen = -1;
         boolean loaded;
         Bundle depthProfile;
         Boolean depthEnabled, maskReady;
@@ -38,6 +38,7 @@ final class RuntimeWidgetHooks {
 
     RuntimeWidgetHooks(DressroomModule module) {
         this.module = module;
+        ScreenIdentity.observe(() -> main.post(() -> refreshAll(true)));
     }
 
     synchronized void installLegacy(ClassLoader loader) throws ReflectiveOperationException {
@@ -401,7 +402,9 @@ final class RuntimeWidgetHooks {
             }
             State state = controllers.computeIfAbsent(controller, ignored -> new State());
             int orientation = LayoutOrientation.current(root.getContext());
-            if (state.orientation != orientation) {
+            int screen = ScreenIdentity.current();
+            if (state.orientation != orientation || state.screen != screen) {
+                state.screen = screen;
                 state.orientation = orientation;
                 force = true;
             }
@@ -497,7 +500,9 @@ final class RuntimeWidgetHooks {
         }
         State state = controllers.computeIfAbsent(controller, ignored -> new State());
         int orientation = LayoutOrientation.current(root.getContext());
-        if (state.orientation != orientation) {
+        int screen = ScreenIdentity.current();
+        if (state.orientation != orientation || state.screen != screen) {
+            state.screen = screen;
             state.orientation = orientation;
             force = true;
         }
@@ -612,7 +617,8 @@ final class RuntimeWidgetHooks {
                     State current = owner == null ? null : controllers.get(owner);
                     if (current != null
                             && current.root.get() == view
-                            && current.orientation != LayoutOrientation.current(view.getContext()))
+                            && (current.orientation != LayoutOrientation.current(view.getContext())
+                                    || current.screen != ScreenIdentity.current()))
                         schedule(owner, true);
                 });
     }

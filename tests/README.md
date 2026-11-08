@@ -1,5 +1,20 @@
 # Test suites
 
+`FoldSupportTest` checks model-independent One UI 9 capability gating: book and
+clamshell policies, both supported Android API levels, and rejection of
+non-fold/unknown hardware and other platform versions. Current fold eligibility
+is documented in [One UI 9 foldable support](../docs/compatibility/ONE_UI_9_FOLDABLES.md).
+
+`ScreenProfileProbe` now has 32 checks. Post-Apply identity cases verify that a
+new wallpaper ID replaces the frozen pre-save ID without changing the captured
+screen, orientation, depth selection or original snapshot. This applies to both
+clock and widget commit paths.
+
+`PostApplyWallpaperProbe` adds 16 deterministic checks for native wallpaper IDs
+changing after the save acknowledgement. It covers multiple late updates,
+immutable profiles, overlapping saves, independent screen requests, bounded
+expiry and unavailable IDs. No wallpaper or saved app settings are modified.
+
 Tests are outside the production source tree and are not packaged in the module.
 
 | Directory | Purpose | Command |
@@ -31,3 +46,31 @@ SongRevealProbe loads the reference provider's installed shader asset and checks
 `integration/ProviderBindingProbe` accepts a provider APK path without a matching editor. It checks clock source/measurement, native blur owner traversal and widget declarations for the inspected providers. It never installs the APK or creates a Samsung service; it does not establish rendering or plugin compatibility.
 
 The 8.5 media return cases in MediaReturnProbe check suspension until native completion, the final frame, close/reopen cancellation and missing/failed animator lookup. They use real Android animators with queued frame callbacks; the binding probes separately resolve each provider's native observer and animator fields.
+
+`integration/Fold8BindingProbe` resolves the Fold8 Dressroom 3.0.01.20 and AOD 8.9.57.1 core bindings without constructing views or saving data. See [the Fold8 adapter notes](../docs/compatibility/FOLD8_3.0.01.20.md) for scope and runtime limits.
+
+`integration/Fold8ScreenProfileProbe` exercises AOD 8.9.57.1's real profile builder, candidate screen policy and Samsung serializer in an isolated process using synthetic widget IDs. Its 34 checks include the production seed/read helpers and fingerprint stability. Build it with the module/API classes on the test classpath. It changes only detached objects and calls no provider, DB or widget-host API. Use the system-UID app_process harness, not plain dalvikvm; its single argument is the installed AOD APK path. See [the screen-profile investigation](../docs/compatibility/FOLD8_SCREEN_PROFILES.md) for scope and limits. These checks do not prove live editor Apply, actual widget binding cleanup or fold/unfold rendering.
+
+`ScreenProfileProbe` adds 21 in-memory checks for separate main/sub keys at matching orientations, retained legacy records, baked-mask isolation, immutable deletion filtering, profile-ID aliases and recovery before/after a native write. It does not touch real saved profiles.
+
+`WidgetDepthClipProbe` verifies the Fold8 widget-depth content path preserves native blur rounding, avoids stationary outline invalidation, updates moving content, and restores original content outlines when disabled.
+
+`WidgetPlacementOrderProbe` checks that free vertical placement precedes depth-blur geometry sampling in the same draw, then verifies stationary convergence and native translation restoration.
+
+`FoldParityProbe` adds 24 checks for explicit main/sub wallpaper IDs, independent Extras options and paired legacy migration, dirty snapshots spanning both screens, and late acknowledgements retaining newer edits. Preferences are in-memory; actual wallpaper ID lookups are read-only. `ScreenProfileProbe` now has 25 checks, including one-time migration from generic wallpaper identity without importing an old mask into a later wallpaper. MediaReturnProbe now has 68 checks, including fold-during-return cancellation and stale completion isolation. See [the foldable follow-up](../docs/compatibility/FOLDABLE_PARITY.md) for scope and live limits.
+
+The 1.0.14 signature-shim port runs the installed-APK `Fold8BindingProbe` through
+production NativeContract resolvers, without the retired AOD8957/Editor3001
+translation classes. It checks the modern editor ABI, widget creation/metrics/
+placement/policies, clock transition/glass/depth, Now Bar, media and native
+profile storage. The optional rotation guide is not a required capability.
+`ScreenProfileProbe` now has 35 checks, including an imported widget depth
+policy followed by an explicit per-orientation commit and reopen. The legacy
+policy remains available for rollback without overriding the new selection.
+
+Review regressions in 1.0.15: `ScreenDepthIsolationProbe` exercises per-screen
+source/reset and draft ownership, mixed-screen Apply metadata, shared widget
+policies and widget invalidation. `FoldStateMonitorTest` verifies retries after
+a failed subscription and subsequent fold events. `ScreenProfileProbe` has 40
+checks, including a cover-first migration from unsuffixed legacy depth policy.
+The APK binding probe also checks the upstream DEX final-save completion roles.

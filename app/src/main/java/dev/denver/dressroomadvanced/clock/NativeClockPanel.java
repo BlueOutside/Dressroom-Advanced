@@ -59,7 +59,7 @@ final class NativeClockPanel {
     private TextView status;
     private Object tabs, renderer;
     private Object initialSnapshot;
-    private int expectedType, expectedFont, expectedOrientation;
+    private int expectedType, expectedFont, expectedOrientation, expectedScreen;
     private boolean ready;
     private int movedX, movedY;
     private boolean customShadow;
@@ -218,9 +218,11 @@ final class NativeClockPanel {
                             || expectedType != newType
                             || expectedFont != newFont
                             || !expectedFontPath.equals(newFontPath)
+                            || expectedScreen != ScreenIdentity.current()
                             || expectedOrientation != module.layoutOrientation(context)
                             || !expectedScene.equals(module.scene());
             expectedOrientation = module.layoutOrientation(context);
+            expectedScreen = ScreenIdentity.current();
             expectedType = newType;
             expectedFont = newFont;
             expectedFontPath = newFontPath;
@@ -1155,6 +1157,7 @@ final class NativeClockPanel {
                     && number(Reflect.call(current, "getClockFontData"), "getClockFontType")
                                     .intValue()
                             == expectedFont
+                    && expectedScreen == ScreenIdentity.current()
                     && expectedOrientation == module.layoutOrientation(context)
                     && expectedScene.equals(module.scene())) {
                 stage(current);
@@ -1184,7 +1187,8 @@ final class NativeClockPanel {
                     || number(Reflect.call(source, "getClockFontData"), "getClockFontType")
                                     .intValue()
                             != expectedFont
-                    || expectedOrientation != module.layoutOrientation(context)
+                    || expectedScreen != ScreenIdentity.current()
+                            || expectedOrientation != module.layoutOrientation(context)
                     || !expectedScene.equals(module.scene())) {
                 throw new IllegalStateException("Clock changed. Select Advanced again.");
             }
@@ -1331,6 +1335,7 @@ final class NativeClockPanel {
     }
 
     void clearDepth(String message) {
+        if (ready && expectedScreen != ScreenIdentity.current()) return;
         releaseDepthStretch();
         depthEnabled = false;
         depthMask = null;
@@ -1349,6 +1354,8 @@ final class NativeClockPanel {
 
     void adoptDepth(android.os.Bundle settings, String message) throws Exception {
         if (!ready
+                || expectedScreen != ScreenIdentity.current()
+                || ScreenIdentity.value(settings) != expectedScreen
                 || settings.getInt("type", -1) != expectedType
                 || settings.getInt("font", -1) != expectedFont
                 || !expectedScene.equals(module.scene())) return;
@@ -1749,6 +1756,8 @@ final class NativeClockPanel {
                 v -> {
                     try {
                         flush();
+                        final int pickerScreen = ScreenIdentity.current();
+                        final long pickerSession = module.generation();
                         Object snapshot = copy(data());
                         boolean[] accepted = {false};
                         Class<?> listener =
@@ -1761,6 +1770,8 @@ final class NativeClockPanel {
                                         listener,
                                         (method, args) -> {
                                             if (method.getName().equals("onColorSet")) {
+                                                if (pickerScreen != ScreenIdentity.current()
+                                                        || pickerSession != module.generation()) return null;
                                                 accepted[0] = true;
                                                 int chosen = ((Number) args[0]).intValue();
                                                 lastColor[0] = chosen;
@@ -1791,6 +1802,8 @@ final class NativeClockPanel {
                                         changed,
                                         (method, args) -> {
                                             if (method.getName().equals("onColorChanged")) {
+                                                if (pickerScreen != ScreenIdentity.current()
+                                                        || pickerSession != module.generation()) return null;
                                                 int chosen = ((Number) args[0]).intValue();
                                                 edit("color-" + name, d -> edit.apply(d, chosen));
                                             }
@@ -1799,6 +1812,8 @@ final class NativeClockPanel {
                         Dialog dialog = (Dialog) pickerDialog;
                         dialog.setOnDismissListener(
                                 d -> {
+                                    if (pickerScreen != ScreenIdentity.current()
+                                            || pickerSession != module.generation()) return;
                                     if (!accepted[0]) {
                                         pending.clear();
                                         handler.removeCallbacks(applyPending);

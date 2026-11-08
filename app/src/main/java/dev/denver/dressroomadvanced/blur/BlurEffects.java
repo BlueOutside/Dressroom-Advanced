@@ -115,9 +115,7 @@ final class BlurEffects {
                                                     && "Custom"
                                                             .equals(
                                                                     String.valueOf(
-                                                                            Reflect.field(
-                                                                                    clock,
-                                                                                    "b0")))) {
+                                                                            ClockGlassBinding.of(clock).mode.get(clock)))) {
                                                 Object sampled =
                                                         WallpaperBlurTone.read(
                                                                 chain.getThisObject().getClass(),
@@ -148,9 +146,7 @@ final class BlurEffects {
                                                         "Custom"
                                                                 .equals(
                                                                         String.valueOf(
-                                                                                Reflect.field(
-                                                                                        clock,
-                                                                                        "b0")));
+                                                                                ClockGlassBinding.of(clock).mode.get(clock)));
                                                 double brightness = Double.NaN;
                                                 if (custom && settings.getBoolean("forceBlur"))
                                                     brightness =
@@ -170,9 +166,7 @@ final class BlurEffects {
                                                                 settings.getBoolean("forceBlur"),
                                                                 custom,
                                                                 ((Number)
-                                                                                Reflect.field(
-                                                                                        clock,
-                                                                                        "l0"))
+                                                                                ClockGlassBinding.of(clock).opacity.get(clock))
                                                                         .intValue(),
                                                                 brightness,
                                                                 nativeValue);
@@ -192,7 +186,7 @@ final class BlurEffects {
             module.deoptimize(
                     NativeContract.findMethod(
                             manager, "c", void.class, int.class, int.class, boolean.class));
-            module.deoptimize(base.getDeclaredMethod("E0"));
+            module.deoptimize(ClockGlassBinding.of(base).refresh);
             Method unsupported = base.getDeclaredMethod("y", boolean.class);
             handles.add(
                     module.hook(unsupported)
@@ -277,7 +271,7 @@ final class BlurEffects {
                                                             if (current == null
                                                                     || !target.isShown()) return;
                                                             try {
-                                                                if (Reflect.field(target, "h1")
+                                                                if (ClockGlassBinding.of(target).manager.get(target)
                                                                         == current)
                                                                     Reflect.call(
                                                                             current,
@@ -308,7 +302,7 @@ final class BlurEffects {
                     OneUi9AodBlur.glyphRunnable(loader, managerType).getDeclaredMethod("run"));
             module.deoptimize(base.getDeclaredMethod("setClockTextBlur"));
             module.deoptimize(
-                    base.getDeclaredMethod("x0", int.class, android.widget.TextView[].class));
+                    ClockGlassBinding.of(base).collectGlyphs);
             glyphSyncInstalled.add(loader);
             Log.i(
                     DressroomModule.TAG,
@@ -339,7 +333,10 @@ final class BlurEffects {
     }
 
     static boolean discardOutline(View clock) throws ReflectiveOperationException {
-        Object strategy = Reflect.field(Reflect.field(clock, "h1"), "p");
+        return discardStrategy(Reflect.field(ClockGlassBinding.of(clock).manager.get(clock), "p"));
+    }
+
+    static boolean discardStrategy(Object strategy) throws ReflectiveOperationException {
         if (strategy == null) return false;
         Reflect.call(strategy, "c");
         return true;
@@ -364,7 +361,7 @@ final class BlurEffects {
         clock.post(
                 () -> {
                     try {
-                        if (Boolean.TRUE.equals(Reflect.field(clock, "s0"))) return;
+                        if (Boolean.TRUE.equals(ClockGlassBinding.of(clock).dozing.get(clock))) return;
                         Reflect.call(clock, "setBlurEffectEnabled", true);
                         float scale = ((Number) Reflect.call(clock, "getScale")).floatValue();
                         Reflect.call(
@@ -389,7 +386,7 @@ final class BlurEffects {
         try {
             Bundle query = new Bundle();
             query.putInt("type", ((Number) Reflect.call(clock, "getClockType")).intValue());
-            query.putInt("font", ((Number) Reflect.field(clock, "D0")).intValue());
+            query.putInt("font", ((Number) ClockBinding.of(clock).fontId(clock)).intValue());
             return SettingsBridge.read(clock.getContext(), query);
         } catch (Exception ignored) {
             return null;

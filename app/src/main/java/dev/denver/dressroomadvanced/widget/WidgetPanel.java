@@ -25,6 +25,7 @@ final class WidgetPanel {
     private boolean binding;
     private TextView status;
     private boolean extrasSelected;
+    private int renderedScreen;
 
     interface Choice {
         void change(Bundle b, int value) throws Exception;
@@ -117,6 +118,7 @@ final class WidgetPanel {
         content.removeAllViews();
         group = content;
         Bundle b = draft();
+        renderedScreen = ScreenIdentity.current();
         if (extrasSelected) {
             renderExtras(b);
             binding = false;
@@ -293,6 +295,7 @@ final class WidgetPanel {
         reset.setOnClickListener(
                 v -> {
                     try {
+                        checkScreen();
                         editor.resetAdjustments();
                         render();
                     } catch (Exception e) {
@@ -311,6 +314,9 @@ final class WidgetPanel {
     }
 
     private void renderExtras(Bundle b) throws Exception {
+        if (ScreenIdentity.value(b) != 0)
+            label(ScreenIdentity.value(b) == ScreenIdentity.SUB
+                    ? "Settings for the cover screen" : "Settings for the inner screen");
         PanelRows.heading(label("Now Bar"));
         toggle(
                 "Keep charging card",
@@ -355,8 +361,9 @@ final class WidgetPanel {
         PanelRows.action(reset, "Reset extra settings", "");
         reset.setOnClickListener(
                 v -> {
-                    editor.extras().update(context, ExtrasPreferences.clean(null));
                     try {
+                        checkScreen();
+                        editor.extras().update(context, ExtrasPreferences.clean(null));
                         render();
                     } catch (Exception e) {
                         error(e);
@@ -393,8 +400,9 @@ final class WidgetPanel {
 
     private void change(Edit edit, boolean structural, boolean rebuild) {
         if (binding) return;
-        Bundle next = draft();
         try {
+            checkScreen();
+            Bundle next = draft();
             edit.change(next);
             if (extrasSelected) {
                 editor.extras().update(context, next);
@@ -420,6 +428,11 @@ final class WidgetPanel {
                         }
                     });
         }
+    }
+
+    private void checkScreen() {
+        if (renderedScreen != ScreenIdentity.current())
+            throw new IllegalStateException("Reopen Advanced after switching screens.");
     }
 
     private void toggle(String name, boolean checked, Edit edit, boolean structural)

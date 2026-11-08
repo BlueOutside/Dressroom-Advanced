@@ -15,6 +15,7 @@ import java.util.HashSet;
 import java.util.Set;
 
 public final class SettingsProvider extends ContentProvider {
+    private PostApplyWallpaper postApply;
     private final Object maskReady = new Object();
     private final java.util.concurrent.ExecutorService maskWriter =
             java.util.concurrent.Executors.newSingleThreadExecutor();
@@ -29,6 +30,17 @@ public final class SettingsProvider extends ContentProvider {
 
     @Override
     public boolean onCreate() {
+        android.os.Handler main = new android.os.Handler(android.os.Looper.getMainLooper());
+        postApply = new PostApplyWallpaper((task, delay) -> main.postDelayed(task, delay),
+                android.os.SystemClock::uptimeMillis,
+                screen -> SettingsBridge.wallpaperId(getContext(), screen),
+                (method, data) -> {
+                    Bundle result = dispatch(method, data, true);
+                    if (result == null || !result.getBoolean("saved"))
+                        throw new IllegalStateException("Post-Apply settings were not saved");
+                    android.util.Log.i(DressroomModule.TAG, "Settings rebound to committed wallpaper: screen="
+                            + ScreenIdentity.value(data) + ", id=" + data.getInt("wallpaperId"));
+                });
         new android.os.Handler(android.os.Looper.getMainLooper())
                 .post(() -> getContext().getContentResolver().notifyChange(URI, null));
         return true;
@@ -48,6 +60,21 @@ public final class SettingsProvider extends ContentProvider {
 
     @Override
     public Bundle call(String method, String argument, Bundle extras) {
+        if ("readFoldProfile".equals(method) || "markFoldProfile".equals(method)) {
+            checkCaller(false);
+            String key = OneUi9FoldProfiles.profileId(argument);
+            android.content.SharedPreferences state = getContext().getSharedPreferences("fold_profile_ready", 0);
+            if ("markFoldProfile".equals(method)) {
+                String[] packages = getContext().getPackageManager().getPackagesForUid(Binder.getCallingUid());
+                if (packages == null || !Arrays.asList(packages).contains("com.samsung.android.app.aodservice"))
+                    throw new SecurityException("Only the native profile owner can confirm migration");
+                if (!state.edit().putBoolean(key, true).commit())
+                    throw new IllegalStateException("Could not publish profile migration");
+            }
+            Bundle result = new Bundle();
+            result.putBoolean("ready", state.getBoolean(key, false));
+            return result;
+        }
         if ("beginFontPick".equals(method) || "fontPickResult".equals(method)) {
             checkCaller(true);
             return "beginFontPick".equals(method)
@@ -60,6 +87,14 @@ public final class SettingsProvider extends ContentProvider {
                         || "commitExtras".equals(method);
         checkCaller(write);
         if (write && extras != null) awaitMasks(extras);
+        if (write && postApply != null) {
+            synchronized (postApply) {
+                Bundle result = dispatch(method, extras, true);
+                if (extras != null && result != null && result.getBoolean("saved"))
+                    postApply.follow(method, extras);
+                return result;
+            }
+        }
         return dispatch(method, extras, write);
     }
 
@@ -176,16 +211,20 @@ public final class SettingsProvider extends ContentProvider {
             String legacy = "shadow_" + extras.getInt("type", -1) + "_" + extras.getInt("font", -1);
             String migrated =
                     "migrated_" + extras.getInt("type", -1) + "_" + extras.getInt("font", -1);
-            String saved = LayoutOrientation.read(prefs, baseKey(extras), extras);
+            int oldWallpaper = extras.getInt("legacyWallpaperId", extras.getInt("wallpaperId", -1));
+            Bundle oldIdentity = new Bundle(extras);
+            if (oldWallpaper >= 0) oldIdentity.putInt("wallpaperId", oldWallpaper);
+            String saved = LayoutOrientation.readWallpaper(prefs, baseKey(extras), baseKey(oldIdentity), extras);
             if (saved == null
                     && SettingsScope.canImportLegacy(
                             extras.getInt("wallpaperId", -1), prefs.getBoolean(migrated, false))) {
                 saved = prefs.getString(legacy, null);
                 if (saved != null && extras.getInt("wallpaperId", -1) >= 0) {
                     if (!prefs.edit()
-                            .putString(key(extras), saved)
-                            .putBoolean(migrated, true)
-                            .commit())
+                            .putString(SettingsScope.oriented(baseKey(extras), extras.getInt(LayoutOrientation.FIELD)), saved)
+                            .commit()) throw new IllegalStateException("Could not stage legacy clock settings");
+                    saved = LayoutOrientation.read(prefs, baseKey(extras), extras);
+                    if (!prefs.edit().putBoolean(migrated, true).commit())
                         throw new IllegalStateException("Could not migrate clock settings");
                 }
             }

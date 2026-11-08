@@ -35,7 +35,7 @@ final class OneUi9AodBlur {
                 NativeContract.findClass(
                         loader,
                         type -> NativeContract.hasStaticMethod(type, void.class, builder, Path.class),
-                        HELPER);
+                        HELPER, "aod.x60");
         return new ClockBlurBinding(strategy, options, weather, helper, "a", "o");
     }
 
@@ -52,7 +52,7 @@ final class OneUi9AodBlur {
                                         weather,
                                         float.class,
                                         ViewGroup.class),
-                STRATEGY);
+                STRATEGY, "aod.jx0");
     }
 
     static Class<?> options(ClassLoader loader, Class<?> strategy, Class<?> weather)
@@ -81,7 +81,7 @@ final class OneUi9AodBlur {
                         NativeContract.hasMethod(
                                         type, void.class, ArrayList.class, int.class, float.class)
                                 && NativeContract.hasField(type, weather),
-                MANAGER);
+                MANAGER, "aod.sp0");
     }
 
     static Class<?> glyphRunnable(ClassLoader loader, Class<?> manager)
@@ -92,7 +92,7 @@ final class OneUi9AodBlur {
                         Runnable.class.isAssignableFrom(type)
                                 && NativeContract.hasConstructor(
                                         type, manager, int.class, int.class, boolean.class),
-                GLYPH_RUNNABLE);
+                GLYPH_RUNNABLE, "aod.op0");
     }
 
     static List<Method> submissions(ClassLoader loader) throws ReflectiveOperationException {
@@ -115,7 +115,7 @@ final class OneUi9AodBlur {
                                                 float.class,
                                                 Integer.class,
                                                 String.class),
-                        HELPER);
+                        HELPER, "aod.x60");
         return List.of(
                 NativeContract.findStaticMethod(
                         utils, "c", void.class, View.class, float.class, float[].class, Integer.class),
@@ -137,7 +137,7 @@ final class OneUi9AodBlur {
                         NativeContract.hasStaticMethod(type, type)
                                 && NativeContract.hasMethod(type, float[].class, Object.class)
                                 && NativeContract.hasMethod(type, int.class, Object.class),
-                TONE_SAMPLER);
+                TONE_SAMPLER, "aod.i16");
     }
 
     static Class<?> brightness(ClassLoader loader) throws ReflectiveOperationException {
@@ -147,7 +147,7 @@ final class OneUi9AodBlur {
                         NativeContract.hasStaticMethod(type, double.class, int.class)
                                 && NativeContract.hasStaticMethod(
                                         type, Shader.TileMode.class, int.class),
-                BRIGHTNESS);
+                BRIGHTNESS, "aod.ev2");
     }
 
     static Class<?> toneInfo(ClassLoader loader) throws ReflectiveOperationException {
@@ -157,7 +157,7 @@ final class OneUi9AodBlur {
                         NativeContract.hasConstructor(type, double.class, float.class)
                                 && NativeContract.hasField(type, double.class)
                                 && NativeContract.hasField(type, float.class),
-                TONE_INFO);
+                TONE_INFO, "aod.q39");
     }
 
     static Method widgetSizing(ClassLoader loader, Class<?> spec)
@@ -175,7 +175,7 @@ final class OneUi9AodBlur {
                                         int.class,
                                         int.class,
                                         boolean.class),
-                        WIDGET_SIZING);
+                        WIDGET_SIZING, "aod.x89");
         return NativeContract.findStaticMethod(
                 sizing,
                 "a",

@@ -14,6 +14,13 @@ final class MediaDepthTransition {
 
     private MediaDepthTransition() {}
 
+    static void screenChanged() {
+        for (View clock : new java.util.ArrayList<>(pending.keySet())) {
+            cancel(clock);
+            DepthEffects.media(clock, false);
+        }
+    }
+
     static void update(View clock, boolean expanded, Function<View, Animator> animation) {
         cancel(clock);
         if (expanded) {

@@ -11,6 +11,9 @@ import java.util.ArrayList;
 
 final class RuntimeExtras {
     private static Bundle cached, lastKnown;
+    private static int screen = -1;
+    private static boolean foldObserved;
+    private static final java.util.Map<Integer, Bundle> committed = new java.util.HashMap<>();
     private static final Bundle defaults = ExtrasPreferences.clean(null);
     private static Context context;
     private static final Handler main = new Handler(Looper.getMainLooper());
@@ -26,11 +29,30 @@ final class RuntimeExtras {
             context = c.getApplicationContext();
             if (context == null) context = c;
         }
+        if (!foldObserved) {
+            foldObserved = true;
+            ScreenIdentity.observe(() -> main.post(() -> {
+                synchronized (RuntimeExtras.class) { switchScreen(); load(); }
+                changed();
+            }));
+        }
+        switchScreen();
         load();
         return cached != null ? cached : lastKnown != null ? lastKnown : defaults;
     }
 
+    private static void switchScreen() {
+        int next = ScreenIdentity.current();
+        if (next == screen) return;
+        screen = next;
+        cached = null;
+        lastKnown = committed.get(next);
+        retryAt = 0;
+        failures = 0;
+    }
+
     private static void load() {
+        switchScreen();
         if (cached != null || context == null || SystemClock.uptimeMillis() < retryAt) return;
         try {
             if (!observing) {
@@ -55,6 +77,7 @@ final class RuntimeExtras {
             Bundle value = ExtrasPreferences.read(context);
             cached = value;
             lastKnown = value;
+            committed.put(screen, value);
             failures = 0;
             retryAt = 0;
         } catch (RuntimeException error) {

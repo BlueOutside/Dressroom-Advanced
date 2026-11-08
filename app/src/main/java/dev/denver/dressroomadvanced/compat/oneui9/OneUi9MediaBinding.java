@@ -40,7 +40,7 @@ final class OneUi9MediaBinding {
                         NativeContract.hasField(type, page)
                                 && NativeContract.hasField(type, model)
                                 && NativeContract.hasField(type, mask),
-                HOLDER);
+                HOLDER, "aod.u92");
     }
 
     static Class<?> coordinator(ClassLoader loader) throws ReflectiveOperationException {
@@ -65,7 +65,7 @@ final class OneUi9MediaBinding {
                                         mask,
                                         ImageView.class,
                                         ImageView.class),
-                COORDINATOR);
+                COORDINATOR, "aod.wf4");
     }
 
     static Method animatorUpdate(ClassLoader loader) throws ReflectiveOperationException {
@@ -76,7 +76,7 @@ final class OneUi9MediaBinding {
                                 ValueAnimator.AnimatorUpdateListener.class.isAssignableFrom(type)
                                         && NativeContract.hasConstructor(
                                                 type, int.class, Object.class),
-                        ANIMATOR_LISTENER);
+                        ANIMATOR_LISTENER, "aod.k8");
         return listener.getDeclaredMethod("onAnimationUpdate", ValueAnimator.class);
     }
 
@@ -93,7 +93,7 @@ final class OneUi9MediaBinding {
                                                 Object.class,
                                                 Object.class,
                                                 int.class),
-                        EXPAND_LAMBDA);
+                        EXPAND_LAMBDA, "aod.a82");
         return NativeContract.findMethod(lambda, "invoke", Object.class);
     }
 
@@ -111,7 +111,7 @@ final class OneUi9MediaBinding {
                                                 type, boolean.class, View.class, int.class, int.class)
                                         && NativeContract.hasStaticMethod(
                                                 type, dbItem, String.class),
-                        PILL_BOUNDS);
+                        PILL_BOUNDS, "aod.dp1");
         return NativeContract.findStaticMethod(
                 helper, "D", boolean.class, View.class, int.class, int.class);
     }

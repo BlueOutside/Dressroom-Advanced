@@ -302,7 +302,10 @@ final class MediaClockContrast {
             if (clock == null
                     || !clock.isShown()
                     || clock.getWindowToken() != root.getWindowToken()) continue;
-            if (clock.getDisplay() == null || clock.getDisplay().getDisplayId() != 0) continue;
+            if (clock.getDisplay() == null
+                    || (!ScreenIdentity.supported() && clock.getDisplay().getDisplayId() != 0)
+                    || root.getDisplay() == null
+                    || clock.getDisplay().getDisplayId() != root.getDisplay().getDisplayId()) continue;
             try {
                 String category = String.valueOf(Reflect.call(clock, "getCategory"));
                 if (!category.equals("LOCK_SCREEN") && !category.equals("AOD")) continue;

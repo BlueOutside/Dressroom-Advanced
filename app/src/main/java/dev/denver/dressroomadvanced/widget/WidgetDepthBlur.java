@@ -28,11 +28,18 @@ final class WidgetDepthBlur {
     private static final Set<ClassLoader> deoptimized =
             Collections.newSetFromMap(new WeakHashMap<>());
     private static boolean installed;
+    private static boolean separateSurfaces;
+
+    static void clipWidgets(View root, boolean depth) {
+        if (separateSurfaces) WidgetDepthClip.apply(root, depth);
+        else WidgetContentClip.apply(root, depth);
+    }
 
     private WidgetDepthBlur() {}
 
     static synchronized void install(DressroomModule module, ClassLoader loader) {
         try {
+            if (ScreenIdentity.supported()) separateSurfaces = true;
             if (!installed) {
                 Class<?> info = Class.forName("android.view.SemBlurInfo");
                 WidgetBlurInfo copies = new WidgetBlurInfo(info);
@@ -49,7 +56,7 @@ final class WidgetDepthBlur {
                                     Object submitted = original;
                                     try {
                                         Path subject =
-                                                original == null
+                                                original == null || separateSurfaces
                                                         ? null
                                                         : DepthEffects.localSubjectPath(view);
                                         Path cover =
@@ -156,6 +163,7 @@ final class WidgetDepthBlur {
             ViewTreeObserver oldObserver = watch == null ? null : watch.observer.get();
             if (oldObserver != null && oldObserver.isAlive())
                 oldObserver.removeOnPreDrawListener(watch.listener);
+            if (separateSurfaces) WidgetDepthClip.apply(widgets, false);
             refreshTree(widgets, true);
             geometry.remove(widgets);
             return;
@@ -172,9 +180,11 @@ final class WidgetDepthBlur {
                 () -> {
                     View root = reference.get();
                     if (root != null) {
-                        boolean outlineChanged = WidgetContentClip.apply(root, true);
-                        if (geometryChanged(root) || outlineChanged) {
-                            WidgetContentClip.refresh(root);
+                        if (separateSurfaces) {
+                            clipWidgets(root, DepthEffects.hasSubject(root));
+                        } else {
+                            boolean outlineChanged = WidgetContentClip.apply(root, true);
+                            if (geometryChanged(root) || outlineChanged) WidgetContentClip.refresh(root);
                         }
                         refreshTree(root, false);
                     }
@@ -183,6 +193,23 @@ final class WidgetDepthBlur {
         roots.put(widgets, new Watch(new java.lang.ref.WeakReference<>(observer), listener));
         observer.addOnPreDrawListener(listener);
         widgets.invalidate();
+    }
+
+    static void afterPlacement(View root) {
+        for (var entry : roots.entrySet()) {
+            View current = entry.getKey();
+            while (current != null && current != root)
+                current = current.getParent() instanceof View parent ? parent : null;
+            if (current == null) continue;
+            Watch watch = entry.getValue();
+            ViewTreeObserver observer = watch.observer.get();
+            if (observer != null && observer.isAlive()) {
+                // Sample the root and nested blur surfaces after free placement,
+                // otherwise this frame uses the previous widget location.
+                observer.removeOnPreDrawListener(watch.listener);
+                observer.addOnPreDrawListener(watch.listener);
+            }
+        }
     }
 
     static void mediaChanged(View root) {

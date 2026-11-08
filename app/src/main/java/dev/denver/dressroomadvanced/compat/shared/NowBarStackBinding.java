@@ -88,7 +88,7 @@ final class NowBarStackBinding {
                         cls ->
                                 NativeContract.hasField(cls, Animator.class)
                                         && NativeContract.hasMethod(card, cls),
-                        names.model);
+                        names.model, "aod.kx4");
         Class<?> manager =
                 NativeContract.findClass(
                         loader,
@@ -102,7 +102,7 @@ final class NowBarStackBinding {
                                                         int.class)
                                                 || NativeContract.hasMethod(
                                                         cls, void.class, View.class, model)),
-                        names.manager);
+                        names.manager, "aod.cy6");
         items = NativeContract.findField(stack, names.items, ArrayList.class);
         restricted = NativeContract.field(stack, names.restricted, boolean.class);
         mode = NativeContract.findField(stack, names.mode, Enum.class);
@@ -141,19 +141,19 @@ final class NowBarStackBinding {
                         cls ->
                                 NativeContract.hasConstructor(cls, stack, int.class)
                                         && NativeContract.hasMethod(cls, Object.class),
-                        names.stackSize);
+                        names.stackSize, "aod.px4");
         stackSize = stackSizeClass.getDeclaredConstructor(stack, int.class);
         stackSize.setAccessible(true);
-        wave =
-                names.wave == null
-                        ? null
-                        : NativeContract.findMethod(
-                                Class.forName(
-                                        "com.samsung.android.app.facewidget.presentation.NowBarMediaCardView",
-                                        false,
-                                        loader),
-                                names.wave,
-                                void.class);
+        Method mediaWave = null;
+        if (names.wave != null) {
+            Class<?> media = Class.forName(
+                    "com.samsung.android.app.facewidget.presentation.NowBarMediaCardView", false, loader);
+            try { mediaWave = NativeContract.method(media, names.wave, void.class); }
+            catch (NoSuchMethodException renamed) {
+                mediaWave = NativeContract.findMethod(media, "w0", void.class);
+            }
+        }
+        wave = mediaWave;
         resources = names.resources;
     }
 

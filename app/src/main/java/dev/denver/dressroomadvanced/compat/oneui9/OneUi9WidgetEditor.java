@@ -30,6 +30,29 @@ final class OneUi9WidgetEditor {
 
     private OneUi9WidgetEditor() {}
 
+    private record Preview(java.lang.reflect.Field root, java.lang.reflect.Field inner,
+            java.lang.reflect.Field data) {}
+    private static final ClassValue<Preview> previews = new ClassValue<>() {
+        @Override protected Preview computeValue(Class<?> owner) {
+            try {
+                Class<?> data = entity(owner.getClassLoader(), "item.widget.WidgetData");
+                java.lang.reflect.Field root;
+                try { root = NativeContract.assignableField(owner, "L", View.class); }
+                catch (NoSuchFieldException changed) { root = NativeContract.findField(owner, "K", View.class); }
+                java.lang.reflect.Field inner;
+                try { inner = NativeContract.assignableField(owner, "H", android.widget.FrameLayout.class); }
+                catch (NoSuchFieldException changed) { inner = NativeContract.findField(owner, "G", android.widget.FrameLayout.class); }
+                return new Preview(root, inner, NativeContract.findField(owner, "G", data));
+            } catch (ReflectiveOperationException error) {
+                throw new IllegalStateException("Unsupported widget preview ownership", error);
+            }
+        }
+    };
+    static View root(Object owner) throws IllegalAccessException { return (View) previews.get(owner.getClass()).root.get(owner); }
+    static View inner(Object owner) throws IllegalAccessException { return (View) previews.get(owner.getClass()).inner.get(owner); }
+    static Object data(Object owner) throws IllegalAccessException { return previews.get(owner.getClass()).data.get(owner); }
+
+
     private static Class<?> entity(ClassLoader loader, String suffix)
             throws ClassNotFoundException {
         return Class.forName(
@@ -86,7 +109,7 @@ final class OneUi9WidgetEditor {
                         cls ->
                                 NativeContract.hasField(cls, widgetData)
                                         && NativeContract.hasMethod(cls, View.class),
-                        PREVIEW);
+                        PREVIEW, "lp.l");
         return NativeContract.findMethod(owner, PREVIEW_METHOD, View.class);
     }
 
@@ -102,8 +125,16 @@ final class OneUi9WidgetEditor {
                                         && NativeContract.hasField(cls, Uri.class)
                                         && NativeContract.hasMethod(
                                                 cls, widgetData, profileData, uiMode),
-                        STORE);
+                        STORE, "sd.p");
         return NativeContract.findMethod(owner, "b", widgetData, profileData, uiMode);
+    }
+
+    static Method portraitPolicy(ClassLoader loader) throws ReflectiveOperationException {
+        Class<?> owner = NativeContract.findClass(loader,
+                cls -> cls.isInterface() && NativeContract.hasMethod(cls, int.class)
+                        && NativeContract.hasMethod(cls, void.class, int.class)
+                        && NativeContract.hasMethod(cls, boolean.class), "df.b");
+        return NativeContract.findMethod(owner, "a", boolean.class);
     }
 
     static Method rotationTrimmed(ClassLoader loader, Class<?> alignType)
@@ -135,20 +166,18 @@ final class OneUi9WidgetEditor {
                 NativeContract.findClass(
                         loader,
                         cls -> NativeContract.hasMethod(cls, boolean.class, alignType),
-                        ROTATION);
+                        ROTATION, "cg.u");
         return NativeContract.findMethod(owner, "a", boolean.class, alignType);
     }
 
     static Method guide(ClassLoader loader) throws ReflectiveOperationException {
-        Class<?> dataBinding =
-                Class.forName("androidx.databinding.ViewDataBinding", false, loader);
-        Class<?> owner =
-                NativeContract.findClass(
-                        loader,
-                        cls ->
-                                dataBinding.isAssignableFrom(cls)
-                                        && NativeContract.hasMethod(cls, void.class),
-                        GUIDE);
+        Class<?> dataBinding = Class.forName("androidx.databinding.ViewDataBinding", false, loader);
+        // A generic binding/no-arg shape matches unrelated panels. Unknown guide owners
+        // must not hide an arbitrary editor view or prevent the widget controls loading.
+        Class<?> owner = NativeContract.knownClass(loader,
+                cls -> dataBinding.isAssignableFrom(cls)
+                        && NativeContract.hasMethod(cls, void.class), GUIDE);
+        if (owner == null) throw new ClassNotFoundException("Optional widget rotation guide");
         return NativeContract.findMethod(owner, "executeBindings", void.class);
     }
 
@@ -161,7 +190,7 @@ final class OneUi9WidgetEditor {
                                 !cls.isInterface()
                                         && NativeContract.hasMethodPrefix(
                                                 cls, void.class, gridType, alignType),
-                        GRID_METRICS);
+                        GRID_METRICS, "sd.g");
         return NativeContract.findMethodPrefix(owner, "a", void.class, gridType, alignType);
     }
 
@@ -174,7 +203,7 @@ final class OneUi9WidgetEditor {
                                 !cls.isInterface()
                                         && NativeContract.hasMethodPrefix(
                                                 cls, void.class, gridType, sizeType),
-                        CELL_METRICS);
+                        CELL_METRICS, "sd.n");
         return NativeContract.findMethodPrefix(owner, "a", void.class, gridType, sizeType);
     }
 
@@ -192,7 +221,7 @@ final class OneUi9WidgetEditor {
                                                 widgetDataType,
                                                 widgetAssistType,
                                                 clockAssist),
-                        PLACEMENT);
+                        PLACEMENT, "sd.l");
         return NativeContract.findMethodPrefix(
                 owner, "f", void.class, widgetDataType, widgetAssistType, clockAssist);
     }
@@ -227,7 +256,7 @@ final class OneUi9WidgetEditor {
                                 int.class,
                                 int.class,
                                 boolean.class),
-                ADAPTER);
+                ADAPTER, "u2.a");
     }
 
     static Method pickerScope(ClassLoader loader) throws ReflectiveOperationException {
@@ -240,7 +269,7 @@ final class OneUi9WidgetEditor {
                                 !cls.isInterface()
                                         && NativeContract.hasMethod(
                                                 cls, ArrayList.class, uiMode, deviceType),
-                        PICKER_SIZE);
+                        PICKER_SIZE, "sd.c");
         return NativeContract.findMethod(owner, "a", ArrayList.class, uiMode, deviceType);
     }
 }
