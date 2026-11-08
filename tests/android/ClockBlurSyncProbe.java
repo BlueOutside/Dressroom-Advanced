@@ -120,13 +120,13 @@ public final class ClockBlurSyncProbe {
         ClockBlurSync.defer(view, v -> calls[0]++);
         view.draw(canvas);
         check(calls[0] == 14, "Failure blocked future work");
-        check(BlurEffects.discardOutline(view), "Existing compositor strategy was not cleared");
+        check(BlurEffects.discardStrategy(view.h1.p), "Existing compositor strategy was not cleared");
         check(view.h1.p.clears == 1, "Compact surface was not cleared exactly once");
         check(
                 view.h1.enabled && view.h1.radius == 123,
                 "Surface cleanup changed native blur settings");
         view.h1.p = null;
-        check(!BlurEffects.discardOutline(view), "Missing strategy not handled");
+        check(!BlurEffects.discardStrategy(view.h1.p), "Missing strategy not handled");
         glyph.S = true;
         glyph.R = true;
         check(!GlyphBlurReadiness.stale(glyph, Glyph.class), "Clean ready outline was rejected");

@@ -17,6 +17,7 @@ final class DepthAuto {
     private Object stamp, resolved;
     private boolean enabled;
     private long revision;
+    private int settlingRetries;
     private Runnable check;
 
     private record Request(long revision, long session, WeakReference<View> image, Object stamp) {}
@@ -31,6 +32,7 @@ final class DepthAuto {
     void reset() {
         enabled = false;
         revision++;
+        settlingRetries = 0;
         stamp = resolved = null;
         profile = null;
         clock.clear();
@@ -88,6 +90,7 @@ final class DepthAuto {
     void retry() {
         resolved = null;
         revision++;
+        settlingRetries = 0;
         jobs.clear();
         schedule(0, true);
     }
@@ -111,13 +114,18 @@ final class DepthAuto {
         try {
             Object current = LiveSubject.stamp(view);
             if (image.get() != view || !Objects.equals(stamp, current)) {
+                boolean sameWallpaper =
+                        image.get() == view && LiveSubject.isSameWallpaper(stamp, current);
                 image = new WeakReference<>(view);
                 stamp = current;
+                settlingRetries = 0;
                 resolved = null;
                 revision++;
                 jobs.clear();
                 DepthEffects.cancelScan();
-                DepthEffects.pendingSource(true);
+                if (!sameWallpaper) {
+                    DepthEffects.pendingSource(true);
+                }
                 schedule(350, false);
             } else if (resolved == null && check == null) schedule(350, false);
         } catch (Exception ignored) {
@@ -133,12 +141,22 @@ final class DepthAuto {
                     check = null;
                     if (!enabled || revision != expected) return;
                     View wallpaper = image.get(), renderer = clock.get();
-                    if (renderer == null || !EditorWallpaperSource.available(wallpaper)) return;
+                    if (renderer == null) return;
+                    if (!EditorWallpaperSource.available(wallpaper)
+                            || wallpaper.getWidth() <= 0
+                            || wallpaper.getHeight() <= 0) {
+                        if (settlingRetries < 5) {
+                            settlingRetries++;
+                            schedule(250, force);
+                        }
+                        return;
+                    }
                     try {
                         String fingerprint = LiveSubject.fingerprint(wallpaper);
                         byte[] live = force ? null : DepthEffects.liveMask(wallpaper);
                         if (live != null) {
                             resolved = stamp;
+                            settlingRetries = 0;
                             DepthEffects.pendingSource(false);
                             module.depthDetected(
                                     renderer, live, "Subject reused for this clock style");
@@ -149,6 +167,7 @@ final class DepthAuto {
                                 && profile.getByteArray(DepthMetadata.SOURCE) != null) {
                             DepthEffects.restoreSource(wallpaper, profile, fingerprint);
                             resolved = stamp;
+                            settlingRetries = 0;
                             DepthEffects.pendingSource(false);
                             module.depthDetected(
                                     renderer,
@@ -157,6 +176,7 @@ final class DepthAuto {
                             return;
                         }
                         resolved = stamp;
+                        settlingRetries = 0;
                         DepthEffects.pendingSource(true);
                         module.depthStatus("Detecting the full wallpaper subject…");
                         jobs.offer(
@@ -166,7 +186,15 @@ final class DepthAuto {
                                         new WeakReference<>(wallpaper),
                                         stamp));
                     } catch (Exception error) {
-                        module.invalidateDepth("Depth detection failed: " + error.getMessage());
+                        String msg = error.getMessage();
+                        if (settlingRetries < 5
+                                && msg != null
+                                && (msg.contains("ready") || msg.contains("measured"))) {
+                            settlingRetries++;
+                            schedule(250, force);
+                            return;
+                        }
+                        module.depthDetectionFailed("Depth detection failed: " + msg);
                     }
                 };
         main.postDelayed(check, delay);
@@ -200,7 +228,7 @@ final class DepthAuto {
                     if (mask != null) {
                         DepthEffects.pendingSource(false);
                         module.depthDetected(clock.get(), mask, message);
-                    } else module.invalidateDepth(message);
+                    } else module.depthDetectionFailed(message);
                 },
                 complete);
     }

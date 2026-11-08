@@ -40,11 +40,34 @@ final class DepthBinding {
     }
 
     static boolean provider(Object clock) {
-        ClockBinding binding = ClockBinding.of(clock);
-        return !binding.legacy
-                || binding.clockStyle
-                || DepthBlurHooks.ready(
-                        (clock instanceof Class<?> type ? type : clock.getClass())
-                                .getClassLoader());
+        return providerIssue(clock) == null;
+    }
+
+    static String providerIssue(Object clock) {
+        if (clock == null) return "No clock renderer is available";
+        try {
+            ClockBinding.of(clock);
+            return null;
+        } catch (Exception | LinkageError error) {
+            return failureReason(error);
+        }
+    }
+
+    static String failureReason(Throwable error) {
+        for (int i = 0; i < 8 && error.getCause() != null; i++) error = error.getCause();
+        String reason = error.getMessage();
+        if (reason == null || reason.isBlank()) reason = error.getClass().getSimpleName();
+        return reason.length() <= 220 ? reason : reason.substring(0, 220) + "...";
+    }
+
+    static Boolean isObjectCaptureSupported(Context context) {
+        if (context == null) return null;
+        try {
+            ClassLoader loader = context.getClassLoader();
+            // Factory support flags are hardware policy, not a probe of the fallback backend.
+            return ObjectCaptureBackend.available(loader);
+        } catch (Throwable error) {
+            return false;
+        }
     }
 }

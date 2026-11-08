@@ -22,11 +22,19 @@ final class WallpaperBlurTone {
     private record Native(Method singleton, Method hsv, Method brightness, Constructor<?> info) {
         Native(ClassLoader loader) throws ReflectiveOperationException {
             this(
-                    OneUi9Aod8957Runtime.type("aod.n16", false, loader).getDeclaredMethod("A"),
-                    OneUi9Aod8957Runtime.type("aod.n16", false, loader).getDeclaredMethod("C", Object.class),
-                    OneUi9Aod8957Runtime.type("aod.rv2", false, loader).getDeclaredMethod(OneUi9Aod8957Runtime.matches(loader) ? "O" : "w", int.class),
-                    OneUi9Aod8957Runtime.type("aod.l49", false, loader)
-                            .getConstructor(double.class, float.class));
+                    OneUi9AodBlur.toneSampler(loader),
+                    OneUi9AodBlur.brightness(loader),
+                    OneUi9AodBlur.toneInfo(loader));
+        }
+
+        private Native(Class<?> sampler, Class<?> brightnessType, Class<?> infoType)
+                throws ReflectiveOperationException {
+            this(
+                    NativeContract.findStaticMethod(sampler, "A", sampler),
+                    NativeContract.findMethod(sampler, "C", float[].class, Object.class),
+                    NativeContract.findStaticMethod(
+                            brightnessType, "w", double.class, int.class),
+                    infoType.getConstructor(double.class, float.class));
         }
     }
 
@@ -34,8 +42,8 @@ final class WallpaperBlurTone {
         Native nativeApi = readers.get(managerType);
         int color;
         float saturation;
-        if (Boolean.TRUE.equals(OneUi9Aod8957Runtime.field(clock, "L0"))) {
-            color = ((Number) OneUi9Aod8957Runtime.field(clock, "t")).intValue();
+        if (Boolean.TRUE.equals(ClockGlassBinding.of(clock).fixedTone.get(clock))) {
+            color = ((Number) Reflect.field(clock, "t")).intValue();
             float[] hsv = new float[3];
             Color.colorToHSV(color, hsv);
             saturation = hsv[1];
@@ -43,7 +51,7 @@ final class WallpaperBlurTone {
             float[] hsv =
                     (float[])
                             nativeApi.hsv.invoke(
-                                    nativeApi.singleton.invoke(null), OneUi9Aod8957Runtime.field(clock, "s"));
+                                    nativeApi.singleton.invoke(null), Reflect.field(clock, "s"));
             if (hsv == null) return null; // No sample yet: retain Samsung's original decision.
             color = Color.HSVToColor(hsv);
             saturation = hsv[1];

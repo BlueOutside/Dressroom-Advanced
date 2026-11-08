@@ -33,7 +33,7 @@ final class MediaInteraction {
 
     static void bind(DressroomModule module, Object holder, View root)
             throws ReflectiveOperationException {
-        targets.put(root, new Target(holder, (View) OneUi9Aod8957Runtime.field(holder, "c0")));
+        targets.put(root, new Target(holder, (View) Reflect.field(holder, "c0")));
         if (installed) return;
         Method dispatch =
                 ViewGroup.class.getDeclaredMethod("dispatchTouchEvent", MotionEvent.class);
@@ -71,8 +71,8 @@ final class MediaInteraction {
                                 Object holderObject = target.holder.get();
                                 if (holderObject != null && dx * dx + dy * dy <= slop * slop)
                                     try {
-                                        if (!Boolean.TRUE.equals(OneUi9Aod8957Runtime.field(holderObject, "T0")))
-                                            Reflect.call(OneUi9Aod8957Runtime.field(holderObject, "J"), "m");
+                                        if (!Boolean.TRUE.equals(Reflect.field(holderObject, "T0")))
+                                            Reflect.call(Reflect.field(holderObject, "J"), "m");
                                     } catch (Exception error) {
                                         module.report(
                                                 "Native media outside-close unavailable", error);
@@ -87,14 +87,12 @@ final class MediaInteraction {
     static void installStack(DressroomModule module, ClassLoader loader)
             throws ReflectiveOperationException {
         Class<?> stack =
-                OneUi9Aod8957Runtime.type(
+                Class.forName(
                         "com.samsung.android.app.facewidget.utils.NowBarCardStackView",
                         false,
                         loader);
         if (stacks.contains(stack)) return;
-        Method bounds =
-                OneUi9Aod8957Runtime.type("aod.di1", false, loader)
-                        .getDeclaredMethod(OneUi9Aod8957Runtime.matches(loader) ? "z" : "D", View.class, int.class, int.class);
+        Method bounds = OneUi9MediaBinding.pillBounds(loader);
         module.hook(bounds)
                 .setId("dressroom-advanced.native-pill-content-bounds")
                 .intercept(
@@ -113,7 +111,7 @@ final class MediaInteraction {
                         });
         module.deoptimize(bounds);
         module.deoptimize(
-                OneUi9Aod8957Runtime.type(
+                Class.forName(
                                 "com.samsung.android.app.facewidget.FaceWidgetViewModel",
                                 false,
                                 loader)

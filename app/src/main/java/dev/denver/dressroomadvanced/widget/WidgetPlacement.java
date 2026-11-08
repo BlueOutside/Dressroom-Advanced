@@ -17,7 +17,9 @@ final class WidgetPlacement {
         final WeakReference<View> root;
         WeakReference<View> clock = new WeakReference<>(null);
         WeakReference<ViewTreeObserver> observer = new WeakReference<>(null);
+        View.OnLayoutChangeListener layoutListener;
         Bundle settings;
+        final RectF lastClockRect = new RectF();
         float deltaX, deltaY, appliedX, appliedY;
 
         State(View root) {
@@ -34,17 +36,25 @@ final class WidgetPlacement {
             View time = clock.get();
             if (time == null || !time.isAttachedToWindow() || time.getWidth() == 0) {
                 time = findClock(view.getRootView());
-                clock = new WeakReference<>(time);
+                if (time != null) clock = new WeakReference<>(time);
             }
-            if (time == null && settings.getInt("anchor") != 5) return true;
+            if (time == null && lastClockRect.isEmpty() && settings.getInt("anchor") != 5) return true;
             Matrix parentGlobal = new Matrix();
             parent.transformMatrixToGlobal(parentGlobal);
             Matrix inverse = new Matrix();
             if (!parentGlobal.invert(inverse)) return true;
             RectF screen = rect(view.getRootView(), inverse);
             RectF current = rect(view, inverse);
-            RectF clockRect = time == null ? new RectF() : rect(time, inverse);
-            clockRect.offset(-screen.left, -screen.top);
+            RectF clockRect;
+            if (time != null) {
+                clockRect = rect(time, inverse);
+                clockRect.offset(-screen.left, -screen.top);
+                lastClockRect.set(clockRect);
+            } else if (!lastClockRect.isEmpty()) {
+                clockRect = new RectF(lastClockRect);
+            } else {
+                clockRect = new RectF();
+            }
             float density = view.getResources().getDisplayMetrics().density;
             float[] unit = {density, 0, 0, density};
             inverse.mapVectors(unit);
@@ -64,18 +74,18 @@ final class WidgetPlacement {
                             settings.getFloat("freeX", .5f),
                             settings.getFloat("freeY", .4f),
                             settings.getFloat("dockOffset") * (float) Math.hypot(unit[0], unit[1]));
-            float dx = target[0] + screen.left - current.left,
-                    dy = target[1] + screen.top - current.top;
+            float baseLeft = current.left - view.getTranslationX();
+            float baseTop = current.top - view.getTranslationY();
+            float targetTx = target[0] + screen.left - baseLeft;
+            float targetTy = target[1] + screen.top - baseTop;
             float tx = view.getTranslationX(), ty = view.getTranslationY();
-            if (Math.abs(dx) > .25f || Math.abs(dy) > .25f) {
-                if (Math.abs(tx - appliedX) > .01f) deltaX = 0;
-                if (Math.abs(ty - appliedY) > .01f) deltaY = 0;
-                deltaX += dx;
-                deltaY += dy;
-                appliedX = tx + dx;
-                appliedY = ty + dy;
-                view.setTranslationX(appliedX);
-                view.setTranslationY(appliedY);
+            if (Math.abs(tx - targetTx) > .25f || Math.abs(ty - targetTy) > .25f) {
+                deltaX = targetTx - (tx - deltaX);
+                deltaY = targetTy - (ty - deltaY);
+                appliedX = targetTx;
+                appliedY = targetTy;
+                view.setTranslationX(targetTx);
+                view.setTranslationY(targetTy);
                 view.invalidate();
             }
             return true;
@@ -116,8 +126,11 @@ final class WidgetPlacement {
             state.observer = new WeakReference<>(observer);
             observer.addOnPreDrawListener(state);
         }
-        if (settings.getBoolean("vertical") && (anchor == 5 || foldable && settings.getInt("anchor") == 0))
-            WidgetDepthBlur.afterPlacement(root);
+        if (state.layoutListener == null) {
+            state.layoutListener = (v, l, t, r, b, ol, ot, or, ob) -> state.onPreDraw();
+            root.addOnLayoutChangeListener(state.layoutListener);
+        }
+        WidgetDepthBlur.afterPlacement(root);
         root.invalidate();
     }
 
@@ -126,7 +139,28 @@ final class WidgetPlacement {
         if (state == null) return;
         ViewTreeObserver observer = state.observer.get();
         if (observer != null && observer.isAlive()) observer.removeOnPreDrawListener(state);
+        if (state.layoutListener != null) {
+            root.removeOnLayoutChangeListener(state.layoutListener);
+            state.layoutListener = null;
+        }
         state.restore(root);
+    }
+
+    static boolean isCustomPlacement(View root) {
+        if (root == null) return false;
+        for (View current = root; current != null; ) {
+            State state = states.get(current);
+            if (state != null && state.settings != null && state.settings.getInt("anchor") != 0)
+                return true;
+            Object parent = current.getParent();
+            current = parent instanceof View view ? view : null;
+        }
+        if (root instanceof ViewGroup group) {
+            for (int i = 0; i < group.getChildCount(); i++) {
+                if (isCustomPlacement(group.getChildAt(i))) return true;
+            }
+        }
+        return false;
     }
 
     private static RectF rect(View view, Matrix inverse) {
@@ -139,13 +173,20 @@ final class WidgetPlacement {
     }
 
     private static View findClock(View root) {
-        View best = null;
+        View visible = findClock(root, false);
+        return visible != null ? visible : findClock(root, true);
+    }
+
+    private static View findClock(View root, boolean allowHidden) {
+        if (root == null) return null;
         for (Class<?> type = root.getClass(); type != null; type = type.getSuperclass())
-            if (type.getName().equals("com.samsung.android.uniform.widget.clock.AbsClockView")
-                    && root.getVisibility() == View.VISIBLE) return root;
+            if (type.getName().equals("com.samsung.android.uniform.widget.clock.AbsClockView")) {
+                if (allowHidden || root.getVisibility() == View.VISIBLE) return root;
+            }
+        View best = null;
         if (root instanceof ViewGroup group)
             for (int i = 0; i < group.getChildCount(); i++) {
-                View candidate = findClock(group.getChildAt(i));
+                View candidate = findClock(group.getChildAt(i), allowHidden);
                 if (candidate != null
                         && (best == null
                                 || candidate.getWidth() * candidate.getHeight()

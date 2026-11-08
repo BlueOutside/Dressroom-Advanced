@@ -27,7 +27,8 @@ final class AodStretchExtras {
     }
 
     static void install(DressroomModule module, Class<?> base) throws ReflectiveOperationException {
-        Method transition = base.getDeclaredMethod(ClockBinding.of(base).aod8957 ? "G0" : "K0", float.class, boolean.class);
+        ClockTransitionBinding binding = ClockTransitionBinding.of(base);
+        Method transition = binding.transition;
         module.hook(transition)
                 .setId("dressroom-advanced.aod-keep-stretch")
                 .intercept(
@@ -37,10 +38,10 @@ final class AodStretchExtras {
                             boolean expanded, dozing;
                             float doze;
                             try {
-                                controller = OneUi9Aod8957Runtime.field(clock, "W0");
-                                expanded = Boolean.TRUE.equals(OneUi9Aod8957Runtime.field(controller, "h"));
-                                dozing = Boolean.TRUE.equals(OneUi9Aod8957Runtime.field(controller, "d"));
-                                doze = ((Number) OneUi9Aod8957Runtime.field(clock, "t0")).floatValue();
+                                controller = binding.controller.get(clock);
+                                expanded = Boolean.TRUE.equals(binding.expanded.get(controller));
+                                dozing = Boolean.TRUE.equals(binding.dozing.get(controller));
+                                doze = ((Number) binding.amount.get(clock)).floatValue();
                             } catch (Exception error) {
                                 return chain.proceed();
                             }
@@ -53,12 +54,12 @@ final class AodStretchExtras {
                             Object axis;
                             ArrayList<Object> remaining = new ArrayList<>();
                             try {
-                                axis = OneUi9Aod8957Runtime.field(controller, "j");
+                                axis = binding.axes.get(controller);
                                 if (!(axis instanceof List<?> list) || !list.contains("HEGT"))
                                     return chain.proceed();
                                 for (Object value : list)
                                     if (!"HEGT".equals(value)) remaining.add(value);
-                                Reflect.set(controller, "j", remaining);
+                                binding.axes.set(controller, remaining);
                             } catch (Exception error) {
                                 return chain.proceed();
                             }
@@ -66,7 +67,7 @@ final class AodStretchExtras {
                                 return chain.proceed();
                             } finally {
                                 try {
-                                    Reflect.set(controller, "j", axis);
+                                    binding.axes.set(controller, axis);
                                 } catch (Exception ignored) {
                                 }
                             }

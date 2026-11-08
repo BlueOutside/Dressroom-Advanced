@@ -425,7 +425,13 @@ final class NativeClockPanel {
             if (!binding.legacy) buildBlur(data);
             section("Depth effect");
             if (!module.depthAvailable(renderer)) {
-                label("Depth is not available for this provider version yet.", 12, false);
+                label(module.depthUnavailableReason(renderer), 12, false);
+            } else if (!module.depthHardwareAvailable()) {
+                label(
+                        "Depth effect requires Samsung Object Capture, which is not supported"
+                                + " on this device model.",
+                        12,
+                        false);
             } else {
                 boolean imageAvailable = module.depthImageAvailable();
                 toggle(

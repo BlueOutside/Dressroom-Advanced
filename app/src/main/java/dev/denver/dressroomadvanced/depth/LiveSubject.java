@@ -45,7 +45,16 @@ final class LiveSubject {
     private android.view.ViewTreeObserver observer;
     private android.view.ViewTreeObserver.OnPreDrawListener listener;
 
-    private record Stamp(Drawable drawable, Bitmap bitmap, int generation) {}
+    static boolean isSameWallpaper(Object s1, Object s2) {
+        if (java.util.Objects.equals(s1, s2)) return true;
+        if (s1 instanceof Stamp stamp1 && s2 instanceof Stamp stamp2) {
+            if (stamp1.original != null
+                    && java.util.Objects.equals(stamp1.original, stamp2.original)) return true;
+        }
+        return false;
+    }
+
+    private record Stamp(Drawable drawable, Bitmap bitmap, int generation, Object original) {}
 
     private LiveSubject(View image, Drawable drawable, int width, int height, String fingerprint)
             throws Exception {
@@ -70,7 +79,12 @@ final class LiveSubject {
         Drawable inner = inner(image);
         Drawable plain = ((android.widget.ImageView) image).getDrawable();
         Bitmap bitmap = plain instanceof BitmapDrawable b ? b.getBitmap() : null;
-        return new Stamp(inner, bitmap, bitmap == null ? 0 : bitmap.getGenerationId());
+        Object original = null;
+        try {
+            original = image.getClass().getMethod("getOriginalDrawable").invoke(image);
+        } catch (NoSuchMethodException ignored) {
+        }
+        return new Stamp(inner, bitmap, bitmap == null ? 0 : bitmap.getGenerationId(), original);
     }
 
     static record Capture(LiveSubject subject, Bitmap bitmap) {}
@@ -78,11 +92,12 @@ final class LiveSubject {
     static record Detail(Bitmap bitmap, Matrix toSource) {}
 
     Detail detail(Bitmap full) {
-        float ratio = Math.min(1f, Math.min(1440f / capturedWidth, 4096f / capturedHeight));
-        int width = Math.max(1, Math.round(capturedWidth * ratio)),
-                height = Math.max(1, Math.round(capturedHeight * ratio));
+        int capW = Math.max(1, capturedWidth), capH = Math.max(1, capturedHeight);
+        float ratio = Math.min(1f, Math.min(1440f / capW, 4096f / capH));
+        int width = Math.max(1, Math.round(capW * ratio)),
+                height = Math.max(1, Math.round(capH * ratio));
         Matrix scale = new Matrix();
-        scale.setScale((float) width / capturedWidth, (float) height / capturedHeight);
+        scale.setScale((float) width / capW, (float) height / capH);
         Matrix toDetail = new Matrix();
         toDetail.setConcat(scale, capturedToView);
         Matrix inverse = new Matrix();
@@ -205,19 +220,43 @@ final class LiveSubject {
         return result;
     }
 
+    boolean isSameWallpaper(View view) {
+        if (view == null) return false;
+        if (image.get() == view) {
+            try {
+                Object current = stamp(view);
+                if (source.equals(current)) return true;
+                if (source instanceof Stamp s1 && current instanceof Stamp s2) {
+                    if (s1.original != null && s1.original.equals(s2.original)) return true;
+                }
+                String fp = fingerprint(view);
+                return fp != null && fp.equals(this.fingerprint);
+            } catch (Exception ignored) {
+                return false;
+            }
+        }
+        try {
+            return source.equals(stamp(view));
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     Matrix global() {
         View view = image.get();
         if (!EditorWallpaperSource.available(view)) return null;
         try {
-            if (!source.equals(stamp(view))) return null;
+            if (!isSameWallpaper(view)) return null;
             Matrix global = new Matrix();
             view.transformMatrixToGlobal(global);
-            return compose(
-                    width,
-                    height,
-                    new RectF(drawable.getBounds()),
-                    ((android.widget.ImageView) view).getImageMatrix(),
-                    global);
+            Matrix matrix =
+                    compose(
+                            width,
+                            height,
+                            new RectF(ready(view).getBounds()),
+                            ((android.widget.ImageView) view).getImageMatrix(),
+                            global);
+            return matrix;
         } catch (Exception error) {
             return null;
         }
@@ -232,7 +271,8 @@ final class LiveSubject {
     boolean changed() {
         Matrix current = global();
         if (java.util.Objects.equals(current, lastGlobal)) return false;
-        lastGlobal = current;
+        // Draw/blur callers also query global(). Only this observer advances its snapshot.
+        lastGlobal = current == null ? null : new Matrix(current);
         return true;
     }
 
@@ -258,7 +298,8 @@ final class LiveSubject {
 
     byte[] bake(Bitmap mask) throws Exception {
         View view = image.get();
-        if (view == null || global() == null || mask == null || mask.isRecycled())
+        Matrix matrix = global();
+        if (view == null || matrix == null || mask == null || mask.isRecycled())
             throw new IllegalStateException("Wallpaper source changed during detection");
         int width = Math.min(1440, view.getWidth()),
                 height =
@@ -271,7 +312,7 @@ final class LiveSubject {
                     compose(
                             this.width,
                             this.height,
-                            new RectF(drawable.getBounds()),
+                            new RectF(ready(view).getBounds()),
                             ((android.widget.ImageView) view).getImageMatrix(),
                             scale);
             new Canvas(output)

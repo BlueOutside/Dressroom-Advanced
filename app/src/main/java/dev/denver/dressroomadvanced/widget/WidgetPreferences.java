@@ -91,13 +91,17 @@ final class WidgetPreferences {
     }
 
     static Bundle store(Context context, String method, Bundle args) throws org.json.JSONException {
+        return store(context.getSharedPreferences("committed_widget_settings", 0), method, args,
+                () -> context.getContentResolver().notifyChange(SettingsProvider.URI, null));
+    }
+
+    static Bundle store(android.content.SharedPreferences prefs, String method, Bundle args,
+            Runnable changed) throws org.json.JSONException {
         int wallpaper = args == null ? -1 : args.getInt("wallpaperId", -1);
         if (wallpaper < 0) throw new IllegalArgumentException("Missing wallpaper identity");
         String base = "wallpaper_" + wallpaper + "_main";
         String key = LayoutOrientation.key(base, args);
         String policyKey = ScreenIdentity.key(base, args) + "_depth_policy";
-        android.content.SharedPreferences prefs =
-                context.getSharedPreferences("committed_widget_settings", 0);
         if (ScreenIdentity.value(args) != 0 && !prefs.getBoolean(base + "_screen_depth_seeded", false)) {
             String inherited = prefs.getString(base + "_depth_policy", null);
             android.content.SharedPreferences.Editor seed = prefs.edit();
@@ -121,7 +125,7 @@ final class WidgetPreferences {
                 json.put(field, value);
             }
             android.content.SharedPreferences.Editor edit =
-                    prefs.edit().putString(key, json.toString());
+                    prefs.edit().putString(key, json.toString()).putBoolean(policyKey + "_imported", true);
             if (b.getInt("depthLayouts") == 0) edit.remove(policyKey);
             else
                 edit.putString(
@@ -131,7 +135,7 @@ final class WidgetPreferences {
                                 .put("depthLayouts", b.getInt("depthLayouts"))
                                 .toString());
             if (!edit.commit()) throw new IllegalStateException("Widget persistence failed");
-            context.getContentResolver().notifyChange(SettingsProvider.URI, null);
+            changed.run();
             Bundle result = new Bundle();
             result.putBoolean("saved", true);
             return result;
@@ -139,9 +143,9 @@ final class WidgetPreferences {
         int oldWallpaper = args.getInt("legacyWallpaperId", wallpaper);
         String legacyBase = oldWallpaper >= 0 ? "wallpaper_" + oldWallpaper + "_main" : base;
         String saved = LayoutOrientation.readWallpaper(prefs, base, legacyBase, args);
-        if (saved != null && oldWallpaper != wallpaper && prefs.getString(policyKey, null) == null) {
+        if (saved != null && oldWallpaper != wallpaper && !prefs.getBoolean(policyKey + "_imported", false) && prefs.getString(policyKey, null) == null) {
             String oldPolicy = prefs.getString(ScreenIdentity.key(legacyBase, args) + "_depth_policy", null);
-            if (oldPolicy != null && !prefs.edit().putString(policyKey, oldPolicy).commit())
+            if (!prefs.edit().putBoolean(policyKey + "_imported", true).putString(policyKey, oldPolicy).commit())
                 throw new IllegalStateException("Could not migrate display wallpaper depth policy");
         }
         String policy = prefs.getString(policyKey, null);

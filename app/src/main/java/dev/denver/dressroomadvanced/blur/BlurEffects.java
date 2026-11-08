@@ -32,15 +32,16 @@ final class BlurEffects {
                 new java.util.ArrayList<>();
         boolean addedRadius = false;
         try {
-            Class<?> strategy = OneUi9Aod8957Runtime.type("aod.tx0", false, loader);
             Class<?> weather =
-                    OneUi9Aod8957Runtime.type(
+                    Class.forName(
                             "com.samsung.android.clockpack.plugins.clock.WeatherInfo",
                             false,
                             loader);
-            Class<?> options = OneUi9Aod8957Runtime.type("aod.xb0", false, loader);
+            Class<?> strategy = OneUi9AodBlur.strategy(loader, weather);
+            Class<?> options = OneUi9AodBlur.options(loader, strategy, weather);
             Method transition =
-                    strategy.getDeclaredMethod("h", int.class, android.widget.ImageView.class);
+                    NativeContract.findMethod(
+                            strategy, "h", void.class, int.class, android.widget.ImageView.class);
             handles.add(
                     module.hook(transition)
                             .setId("dressroom-advanced.clock-stable-blur-tick")
@@ -63,8 +64,13 @@ final class BlurEffects {
                                     }));
             module.deoptimize(transition);
             Method draw =
-                    strategy.getDeclaredMethod(
-                            "b", android.widget.ImageView.class, weather, options);
+                    NativeContract.findMethod(
+                            strategy,
+                            "b",
+                            null,
+                            android.widget.ImageView.class,
+                            weather,
+                            options);
             handles.add(
                     module.hook(draw)
                             .setId("dressroom-advanced.blur-draw")
@@ -91,8 +97,9 @@ final class BlurEffects {
                                             else radiusForDraw.set(previous);
                                         }
                                     }));
-            Class<?> manager = OneUi9Aod8957Runtime.type("aod.cq0", false, loader);
-            Method tone = manager.getDeclaredMethod("h");
+            Class<?> manager = OneUi9AodBlur.manager(loader);
+            Method tone =
+                    NativeContract.findMethod(manager, "h", OneUi9AodBlur.toneInfo(loader));
             handles.add(
                     module.hook(tone)
                             .setId("dressroom-advanced.custom-glass-wallpaper-tone")
@@ -108,13 +115,11 @@ final class BlurEffects {
                                                     && "Custom"
                                                             .equals(
                                                                     String.valueOf(
-                                                                            OneUi9Aod8957Runtime.field(
-                                                                                    clock,
-                                                                                    "b0")))) {
+                                                                            ClockGlassBinding.of(clock).mode.get(clock)))) {
                                                 Object sampled =
                                                         WallpaperBlurTone.read(
                                                                 chain.getThisObject().getClass(),
-                                                                clock);
+                                                                 clock);
                                                 if (sampled != null) return sampled;
                                             }
                                         } catch (ReflectiveOperationException
@@ -124,7 +129,8 @@ final class BlurEffects {
                                     }));
             module.deoptimize(tone);
             Method collect =
-                    manager.getDeclaredMethod("d", ArrayList.class, int.class, float.class);
+                    NativeContract.findMethod(
+                            manager, "d", void.class, ArrayList.class, int.class, float.class);
             handles.add(
                     module.hook(collect)
                             .setId("dressroom-advanced.blur-text-visibility")
@@ -140,18 +146,17 @@ final class BlurEffects {
                                                         "Custom"
                                                                 .equals(
                                                                         String.valueOf(
-                                                                                OneUi9Aod8957Runtime.field(
-                                                                                        clock,
-                                                                                        "b0")));
+                                                                                ClockGlassBinding.of(clock).mode.get(clock)));
                                                 double brightness = Double.NaN;
                                                 if (custom && settings.getBoolean("forceBlur"))
                                                     brightness =
                                                             ((Number)
-                                                                            OneUi9Aod8957Runtime.field(
+                                                                            Reflect.field(
                                                                                     Reflect.call(
                                                                                             chain
                                                                                                     .getThisObject(),
-                                                                                            "h"),
+                                                                                            tone
+                                                                                                    .getName()),
                                                                                     "a"))
                                                                     .doubleValue();
                                                 visibility =
@@ -161,9 +166,7 @@ final class BlurEffects {
                                                                 settings.getBoolean("forceBlur"),
                                                                 custom,
                                                                 ((Number)
-                                                                                OneUi9Aod8957Runtime.field(
-                                                                                        clock,
-                                                                                        "l0"))
+                                                                                ClockGlassBinding.of(clock).opacity.get(clock))
                                                                         .intValue(),
                                                                 brightness,
                                                                 nativeValue);
@@ -180,8 +183,10 @@ final class BlurEffects {
                                                         });
                                     }));
             module.deoptimize(collect);
-            module.deoptimize(manager.getDeclaredMethod("c", int.class, int.class, boolean.class));
-            module.deoptimize(base.getDeclaredMethod(OneUi9Aod8957Runtime.matches(loader) ? "C0" : "E0"));
+            module.deoptimize(
+                    NativeContract.findMethod(
+                            manager, "c", void.class, int.class, int.class, boolean.class));
+            module.deoptimize(ClockGlassBinding.of(base).refresh);
             Method unsupported = base.getDeclaredMethod("y", boolean.class);
             handles.add(
                     module.hook(unsupported)
@@ -224,13 +229,15 @@ final class BlurEffects {
         if (glyphSyncInstalled.contains(loader)) return;
         io.github.libxposed.api.XposedInterface.HookHandle handle = null;
         try {
-            Class<?> managerType = OneUi9Aod8957Runtime.type("aod.cq0", false, loader);
+            Class<?> managerType = OneUi9AodBlur.manager(loader);
             Class<?> glyph =
-                    OneUi9Aod8957Runtime.type(
+                    Class.forName(
                             "com.samsung.android.uniform.widget.NonePaddingTextView",
                             false,
                             loader);
-            Method submit = managerType.getDeclaredMethod("c", int.class, int.class, boolean.class);
+            Method submit =
+                    NativeContract.findMethod(
+                            managerType, "c", void.class, int.class, int.class, boolean.class);
             handle =
                     module.hook(submit)
                             .setId("dressroom-advanced.native-blur-glyph-ready")
@@ -239,13 +246,13 @@ final class BlurEffects {
                                         Object manager = chain.getThisObject();
                                         try {
                                             View clock = clockFromOwner(manager, "a");
-                                            Object strategy = OneUi9Aod8957Runtime.field(manager, "p");
+                                            Object strategy = Reflect.field(manager, "p");
                                             if (clock != null
                                                     && clock.isShown()
                                                     && clock.isAttachedToWindow()
                                                     && !ClockBlurSync.rebuilding(clock)
                                                     && strategy != null
-                                                    && OneUi9Aod8957Runtime.field(strategy, "d")
+                                                    && Reflect.field(strategy, "d")
                                                             instanceof java.util.List<?> views
                                                     && (ClockBlurSync.pending(clock)
                                                             || GlyphBlurReadiness.needsDraw(
@@ -264,11 +271,14 @@ final class BlurEffects {
                                                             if (current == null
                                                                     || !target.isShown()) return;
                                                             try {
-                                                                if (OneUi9Aod8957Runtime.field(target, "h1")
+                                                                if (ClockGlassBinding.of(target).manager.get(target)
                                                                         == current)
                                                                     Reflect.call(
-                                                                            current, "c", color,
-                                                                            retry, force);
+                                                                            current,
+                                                                            submit.getName(),
+                                                                            color,
+                                                                            retry,
+                                                                            force);
                                                             } catch (Exception error) {
                                                                 module.report(
                                                                         "Native blur redraw resume"
@@ -285,11 +295,14 @@ final class BlurEffects {
                                         return chain.proceed();
                                     });
             module.deoptimize(submit);
-            module.deoptimize(managerType.getDeclaredMethod("b", Integer.class, boolean.class));
-            module.deoptimize(OneUi9Aod8957Runtime.type("aod.yp0", false, loader).getDeclaredMethod("run"));
+            module.deoptimize(
+                    NativeContract.findMethod(
+                            managerType, "b", void.class, Integer.class, boolean.class));
+            module.deoptimize(
+                    OneUi9AodBlur.glyphRunnable(loader, managerType).getDeclaredMethod("run"));
             module.deoptimize(base.getDeclaredMethod("setClockTextBlur"));
             module.deoptimize(
-                    base.getDeclaredMethod(OneUi9Aod8957Runtime.matches(loader) ? "t0" : "x0", int.class, android.widget.TextView[].class));
+                    ClockGlassBinding.of(base).collectGlyphs);
             glyphSyncInstalled.add(loader);
             Log.i(
                     DressroomModule.TAG,
@@ -320,7 +333,10 @@ final class BlurEffects {
     }
 
     static boolean discardOutline(View clock) throws ReflectiveOperationException {
-        Object strategy = OneUi9Aod8957Runtime.field(OneUi9Aod8957Runtime.field(clock, "h1"), "p");
+        return discardStrategy(Reflect.field(ClockGlassBinding.of(clock).manager.get(clock), "p"));
+    }
+
+    static boolean discardStrategy(Object strategy) throws ReflectiveOperationException {
         if (strategy == null) return false;
         Reflect.call(strategy, "c");
         return true;
@@ -345,7 +361,7 @@ final class BlurEffects {
         clock.post(
                 () -> {
                     try {
-                        if (Boolean.TRUE.equals(OneUi9Aod8957Runtime.field(clock, "s0"))) return;
+                        if (Boolean.TRUE.equals(ClockGlassBinding.of(clock).dozing.get(clock))) return;
                         Reflect.call(clock, "setBlurEffectEnabled", true);
                         float scale = ((Number) Reflect.call(clock, "getScale")).floatValue();
                         Reflect.call(
@@ -358,8 +374,8 @@ final class BlurEffects {
     }
 
     private static View clockFromOwner(Object owner, String field) throws Exception {
-        Object holder = OneUi9Aod8957Runtime.field(owner, field);
-        Object clock = OneUi9Aod8957Runtime.field(holder, "o");
+        Object holder = Reflect.field(owner, field);
+        Object clock = Reflect.field(holder, "o");
         return clock instanceof View ? (View) clock : null;
     }
 
@@ -370,7 +386,7 @@ final class BlurEffects {
         try {
             Bundle query = new Bundle();
             query.putInt("type", ((Number) Reflect.call(clock, "getClockType")).intValue());
-            query.putInt("font", ((Number) OneUi9Aod8957Runtime.field(clock, "D0")).intValue());
+            query.putInt("font", ((Number) ClockBinding.of(clock).fontId(clock)).intValue());
             return SettingsBridge.read(clock.getContext(), query);
         } catch (Exception ignored) {
             return null;

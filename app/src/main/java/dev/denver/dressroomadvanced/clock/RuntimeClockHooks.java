@@ -44,8 +44,8 @@ final class RuntimeClockHooks {
         ScreenIdentity.observe(() -> main.post(() -> {
             MediaDepthTransition.screenChanged();
             MediaFullscreenExtras.screenChanged();
+            for (View clock : new java.util.ArrayList<>(mediaRestorePending)) finishMediaReturn(clock);
             mediaReturnStarted.clear();
-            mediaRestorePending.clear();
             RuntimeClockData.invalidate();
             module.widgetEngine.invalidate();
             clocks.removeIf(ref -> ref.get() == null);
@@ -136,12 +136,20 @@ final class RuntimeClockHooks {
                     GlyphFontCache.install(module, base);
                     GlyphDrawReuse.install(module, loader);
                 }
-                module.widgetEngine.install(loader);
-                widgets.install(loader);
+                try {
+                    module.widgetEngine.install(loader);
+                } catch (Exception | LinkageError error) {
+                    module.report("Widget engine install failed", error);
+                }
+                try {
+                    widgets.install(loader);
+                } catch (Exception | LinkageError error) {
+                    module.report("Widget hooks install failed", error);
+                }
             } else {
                 if (!binding.clockStyle) DepthBlurHooks.install(module, base);
                 try {
-                    module.widgetEngine.installScale(loader);
+                    module.widgetEngine.installLegacyCapacity(loader);
                     widgets.installLegacy(loader);
                 } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
                     module.report("Optional 8.5 widget runtime unavailable", error);
@@ -212,6 +220,16 @@ final class RuntimeClockHooks {
                                                     (View) chain.getThisObject(),
                                                     profiles.get((View) chain.getThisObject()));
                                             VariableFonts.forget((View) chain.getThisObject());
+                                            Bundle fontProfile =
+                                                    profiles.get((View) chain.getThisObject());
+                                            if (fontProfile != null
+                                                    && DepthBinding.provider(
+                                                            (View) chain.getThisObject())) {
+                                                DepthEffects.apply(
+                                                        (View) chain.getThisObject(),
+                                                        fontProfile.getBoolean("depthEnabled"),
+                                                        fontProfile.getByteArray("depthMask"));
+                                            }
                                             Object result =
                                                     requestedFont == chain.getArg(0)
                                                             ? chain.proceed()
@@ -334,7 +352,7 @@ final class RuntimeClockHooks {
                                             try {
                                                 wasExpanded =
                                                         Boolean.TRUE.equals(
-                                                                OneUi9Aod8957Runtime.field(clock, "d1"));
+                                                                ClockTransitionBinding.of(clock).mediaExpanded.get(clock));
                                             } catch (Exception ignored) {
                                             }
                                             if (wasExpanded
@@ -385,7 +403,7 @@ final class RuntimeClockHooks {
             android.util.Log.i(
                     DressroomModule.TAG,
                     "Runtime clock provider hooks installed: "
-                            + (binding.aod8957 ? "AOD 8.9.57.1" : binding.legacy ? "8.5 core" : "reference"));
+                            + (binding.legacy ? "8.5 core" : "reference"));
             transaction.commit();
             installed.add(loader);
         } finally {
@@ -444,7 +462,7 @@ final class RuntimeClockHooks {
         try {
             if (!mediaRestorePending.contains(clock)) return;
             if (!clock.isAttachedToWindow()) return;
-            Object controller = OneUi9Aod8957Runtime.field(clock, "W0");
+            Object controller = ClockTransitionBinding.of(clock).controller.get(clock);
             if (Boolean.TRUE.equals(Reflect.field(controller, "h"))) {
                 finishMediaReturn(clock);
                 return;
@@ -471,7 +489,7 @@ final class RuntimeClockHooks {
                         (android.animation.Animator) Reflect.field(controller, "i");
                 if (animation != null && animation.isStarted()) mediaReturnStarted.add(clock);
                 if (mediaReturnStarted.add(clock)) {
-                    Reflect.call(clock, ClockBinding.of(clock).aod8957 ? "G0" : "K0", 0f, false);
+                    ClockTransitionBinding.of(clock).transition.invoke(clock, 0f, false);
                     animation = (android.animation.Animator) Reflect.field(controller, "i");
                 }
                 WeakReference<View> reference = new WeakReference<>(clock);
@@ -630,10 +648,10 @@ final class RuntimeClockHooks {
                         profile = profiles.get(clock);
                     }
                     if (profile != null && DepthBinding.provider(clock)) {
-                        DepthEffects.applyDigits(
-                                clock,
-                                profile.getBoolean("depthEnabled"),
-                                profile.getByteArray("depthMask"));
+                        boolean depthOn = profile.getBoolean("depthEnabled");
+                        byte[] mask = profile.getByteArray("depthMask");
+                        DepthEffects.apply(clock, depthOn, mask);
+                        DepthEffects.applyDigits(clock, depthOn, mask);
                     }
                 });
         if (!observing.compareAndSet(false, true)) return;

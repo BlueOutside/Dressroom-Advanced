@@ -15,11 +15,13 @@ version. Migration initializes every native ProfileScreen enum value, covering
 native main-screen variants such as Fold and Tablet. Missing contracts disable
 that capability with a diagnostic; unrelated features retain their adapters.
 
-Obfuscated mappings are still specific to app interfaces. They are named
-OneUi9Aod8957Runtime/Blur/ClockSource/Stack and OneUi9Editor3001Widgets instead
-of Fold8. Editor variants use structural checks for compatible One UI 9 fold
-builds outside the already mapped version numbers. Removing a hardware gate
-does not make unrelated Samsung method names interchangeable.
+The 1.0.14 port uses upstream's signature-based shim system. Known inspected
+names are signature-checked hints, followed by unique structural discovery;
+ambiguous matches disable the capability. The former AOD8957 and Editor3001
+translation adapters are superseded by shared clock, glass, editor, widget,
+media and Now Bar contracts. FoldProfileBinding resolves the complete native
+migration transaction before installing hooks. No model/version selection is
+used for the foldable feature path.
 
 The original Fold8 compatibility and screen-profile notes retain the historical
 device investigation. Their old model/version restrictions describe earlier
@@ -67,3 +69,40 @@ build is installed. After reapplying on the cover, the user confirmed manual
 stretch remains applied. A read-only check found the active cover wallpaper ID
 and saved clock profile both at 74, with manual stretch, depth and a mask
 reference retained. The inner wallpaper remained at 62.
+
+## Signature shim port: 1.0.14
+
+Ported onto upstream d8d6ca8, including its depth-source, widget refresh and
+object-capture fixes. Separate screen settings and the bounded post-Apply
+wallpaper rebinding are retained. Modern editor ABI selection checks the clock
+helper bind signature rather than using weather capability as a proxy. Known
+APK hints avoid full DEX scans on the inspected pair while retaining signature
+validation and ambiguity rejection.
+
+Widget preview ownership resolves fields by role and checked types. The older
+portrait policy is scoped to the active widget preview; an unavailable optional
+rotation guide does not disable the widget controls. Placement is registered
+before depth sampling so free-position backgrounds use the current frame.
+
+Fold transitions finish pending media-return registrations, release clock depth
+suspension and clear artwork widget occlusion before switching profiles. Explicit
+per-orientation widget depth choices cannot reimport the retained legacy policy.
+Shadow-only legacy clock imports seed both sibling screens before marking the
+import complete.
+
+The installed-APK probe resolves editor/widget, clock/font/source, transition,
+glass/depth, Now Bar, media and native-profile contracts. This validates native
+declarations; visual and hook lifecycle behavior still requires a live reload
+and editor/lockscreen testing. Earlier user confirmations above apply to 1.0.13
+and earlier, not automatically to this port.
+
+Validation for 1.0.14: Java 17/D8 build and APK signature verification passed;
+297 JVM checks, 584 Android checks across the full configured suite and 34
+synthetic native-profile checks passed. The installed Samsung APK contract
+probe also passed. Installed in place as versionCode 1014 with existing data
+retained; scoped processes were restarted. The live editor log confirms the
+signature shim installed and clock/widget saves reached the native completion
+callback. The user then confirmed Advanced opens on cover and inner screens,
+widget selections remain separate and the reapplied cover clock stretch/depth
+change survives on the lockscreen. Other devices and every media/fold-animation
+timing remain unverified.

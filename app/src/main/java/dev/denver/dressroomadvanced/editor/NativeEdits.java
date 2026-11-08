@@ -18,7 +18,7 @@ final class NativeEdits {
             }
             return launch(controller, model, "Pa.L$b", value, false);
         }
-        return launch(controller, model, EditorBinding.of(controller).editor3001 ? "so.h" : "vo.g", value, weather);
+        return launch(controller, model, "vo.g", value, weather);
     }
 
     private static Object launch(
@@ -26,17 +26,17 @@ final class NativeEdits {
             throws Exception {
         ClassLoader loader = controller.getClass().getClassLoader();
         Class<?> continuation = Class.forName("kotlin.coroutines.Continuation", false, loader);
-        java.lang.reflect.Constructor<?> constructor =
-                (owner.equals("vo.g") || owner.equals("so.h"))
-                        ? Class.forName(owner, false, loader)
-                                .getDeclaredConstructor(
-                                        model.getClass(), boolean.class, continuation, int.class)
-                        : Class.forName(owner, false, loader)
-                                .getDeclaredConstructor(
-                                        model.getClass(), boolean.class, continuation);
+        boolean modern = !EditorBinding.of(controller).legacy;
+        Class<?> transactionType = NativeContract.findClass(loader,
+                cls -> modern
+                        ? NativeContract.hasConstructor(cls, model.getClass(), boolean.class, continuation, int.class)
+                        : NativeContract.hasConstructor(cls, model.getClass(), boolean.class, continuation), owner);
+        java.lang.reflect.Constructor<?> constructor = modern
+                ? transactionType.getDeclaredConstructor(model.getClass(), boolean.class, continuation, int.class)
+                : transactionType.getDeclaredConstructor(model.getClass(), boolean.class, continuation);
         constructor.setAccessible(true);
         Object transaction =
-                (owner.equals("vo.g") || owner.equals("so.h"))
+                modern
                         ? constructor.newInstance(model, value, null, weather ? 0 : 1)
                         : constructor.newInstance(model, value, null);
         Class<?> scope = Class.forName("kotlinx.coroutines.CoroutineScope", false, loader);

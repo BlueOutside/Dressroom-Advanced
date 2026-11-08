@@ -58,3 +58,12 @@ The 8.5 media return cases in MediaReturnProbe check suspension until native com
 `WidgetPlacementOrderProbe` checks that free vertical placement precedes depth-blur geometry sampling in the same draw, then verifies stationary convergence and native translation restoration.
 
 `FoldParityProbe` adds 24 checks for explicit main/sub wallpaper IDs, independent Extras options and paired legacy migration, dirty snapshots spanning both screens, and late acknowledgements retaining newer edits. Preferences are in-memory; actual wallpaper ID lookups are read-only. `ScreenProfileProbe` now has 25 checks, including one-time migration from generic wallpaper identity without importing an old mask into a later wallpaper. MediaReturnProbe now has 68 checks, including fold-during-return cancellation and stale completion isolation. See [the foldable follow-up](../docs/compatibility/FOLDABLE_PARITY.md) for scope and live limits.
+
+The 1.0.14 signature-shim port runs the installed-APK `Fold8BindingProbe` through
+production NativeContract resolvers, without the retired AOD8957/Editor3001
+translation classes. It checks the modern editor ABI, widget creation/metrics/
+placement/policies, clock transition/glass/depth, Now Bar, media and native
+profile storage. The optional rotation guide is not a required capability.
+`ScreenProfileProbe` now has 35 checks, including an imported widget depth
+policy followed by an explicit per-orientation commit and reopen. The legacy
+policy remains available for rollback without overriding the new selection.

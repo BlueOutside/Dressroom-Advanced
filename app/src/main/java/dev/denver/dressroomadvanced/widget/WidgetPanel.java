@@ -74,9 +74,23 @@ final class WidgetPanel {
         Object nativePanel = Reflect.field(Reflect.field(ui, "a"), "c");
         Reflect.set(nativePanel, editor.legacy() ? "j" : "h", true);
         Reflect.call(nativePanel, "setAnchorStateSupported", false);
-        Object type =
-                WidgetEngine.enumValue(
-                        Class.forName(editor.legacy() ? "T2.K" : "k6.o", false, loader), "WIDGET");
+        Class<?> menuType = null;
+        for (java.lang.reflect.Method m : ui.getClass().getDeclaredMethods()) {
+            if (m.getParameterCount() == 10 && m.getParameterTypes()[6].isEnum()) {
+                menuType = m.getParameterTypes()[6];
+                break;
+            }
+        }
+        if (menuType == null) {
+            menuType =
+                    Class.forName(
+                            editor.legacy()
+                                    ? OneUi85WidgetEditor.PANEL_MENU
+                                    : OneUi9WidgetEditor.PANEL_MENU,
+                            false,
+                            loader);
+        }
+        Object type = WidgetEngine.enumValue(menuType, "WIDGET");
         Reflect.call(
                 ui,
                 editor.legacy() ? "j" : "d",
@@ -117,14 +131,14 @@ final class WidgetPanel {
                 new PanelTabs(
                         pageStrip,
                         loader,
-                        new String[] {editor.legacy() ? "Size" : "Layout", "Position", "Effects"},
+                        new String[] {"Layout", "Position", "Effects"},
                         widgetPage,
                         page -> {
                             widgetPage = page;
                             content.requestLayout();
                         });
         section("Layout & size");
-        if (!editor.legacy()) {
+        if (editor.customGridAvailable()) {
             toggle(
                     "Custom grid",
                     b.getBoolean("layout"),
@@ -138,32 +152,34 @@ final class WidgetPanel {
                     },
                     true);
             if (b.getBoolean("layout")) {
-                TextView rotate =
-                        label(
-                                "Arrangement: "
-                                        + (editor.vertical() ? "Vertical" : "Horizontal")
-                                        + "  •  Rotate");
-                PanelRows.action(
-                        rotate,
-                        "Rotate arrangement",
-                        editor.vertical() ? "Vertical" : "Horizontal");
-                rotate.setOnClickListener(
-                        v -> {
-                            try {
-                                editor.rotate();
-                                content.postDelayed(
-                                        () -> {
-                                            try {
-                                                render();
-                                            } catch (Exception e) {
-                                                error(e);
-                                            }
-                                        },
-                                        500);
-                            } catch (Exception e) {
-                                error(e);
-                            }
-                        });
+                if (!editor.nativeRotationAvailable()) {
+                    TextView rotate =
+                            label(
+                                    "Arrangement: "
+                                            + (editor.vertical() ? "Vertical" : "Horizontal")
+                                            + "  •  Rotate");
+                    PanelRows.action(
+                            rotate,
+                            "Rotate arrangement",
+                            editor.vertical() ? "Vertical" : "Horizontal");
+                    rotate.setOnClickListener(
+                            v -> {
+                                try {
+                                    editor.rotate();
+                                    content.postDelayed(
+                                            () -> {
+                                                try {
+                                                    render();
+                                                } catch (Exception e) {
+                                                    error(e);
+                                                }
+                                            },
+                                            500);
+                                } catch (Exception e) {
+                                    error(e);
+                                }
+                            });
+                } else note("Rotate using Samsung's layout control.");
                 slider(
                         "Columns",
                         1,
@@ -182,7 +198,7 @@ final class WidgetPanel {
                         true);
                 note("Grid capacity: " + b.getInt("columns") + " × " + b.getInt("rows") + ".");
             }
-        } else note("Use the stock layout control to rotate the grid.");
+        } else note("Custom grid is unavailable for this editor/provider combination.");
         slider(
                 "Widget scale",
                 50,

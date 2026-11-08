@@ -64,6 +64,7 @@ public final class DressroomModule extends XposedModule {
     private RuntimeClockHooks runtimeHooks;
     private DepthAuto depthAuto;
     private boolean legacyDepthReady;
+    private String legacyDepthFailure = "Editor depth hooks have not initialized";
     private WallpaperSourceBinding wallpaperSourceBinding;
     private final DepthSourcePolicy wallpaperSource = new DepthSourcePolicy();
     private java.lang.ref.WeakReference<Object> editorActivity =
@@ -78,6 +79,23 @@ public final class DressroomModule extends XposedModule {
     private final java.util.concurrent.atomic.AtomicBoolean sourceCheckQueued =
             new java.util.concurrent.atomic.AtomicBoolean();
 
+    private Boolean objectCaptureSupported;
+
+    boolean depthHardwareAvailable() {
+        if (objectCaptureSupported != null) return objectCaptureSupported;
+        android.content.Context context = editorContext;
+        if (context == null && editorActivity.get() instanceof android.content.Context act)
+            context = act;
+        if (context != null) {
+            Boolean supported = DepthBinding.isObjectCaptureSupported(context);
+            if (supported != null) {
+                objectCaptureSupported = supported;
+                return supported;
+            }
+        }
+        return true;
+    }
+
     boolean depthImageAvailable() {
         syncWallpaperSource();
         return sourceKnown && sourceImage;
@@ -87,6 +105,15 @@ public final class DressroomModule extends XposedModule {
         return resetDepthProfiles;
     }
 
+    boolean depthProfileInvalid(android.os.Bundle profile) {
+        return DepthSourcePolicy.invalidProfile(
+                sourceKnown,
+                sourceImage,
+                resetDepthProfiles,
+                imageKey(),
+                profile == null ? "" : profile.getString("depthImageKey", ""));
+    }
+
     private String imageKey() {
         String key = wallpaperSource.key();
         return key == null
@@ -94,14 +121,18 @@ public final class DressroomModule extends XposedModule {
                 : DepthStorage.hash(key.getBytes(java.nio.charset.StandardCharsets.UTF_8));
     }
 
+    private void queueWallpaperSourceCheck() {
+        if (sourceCheckQueued.compareAndSet(false, true))
+            sourceMain.post(
+                    () -> {
+                        sourceCheckQueued.set(false);
+                        syncWallpaperSource();
+                    });
+    }
+
     private void syncWallpaperSource() {
         if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) {
-            if (sourceCheckQueued.compareAndSet(false, true))
-                sourceMain.post(
-                        () -> {
-                            sourceCheckQueued.set(false);
-                            syncWallpaperSource();
-                        });
+            queueWallpaperSourceCheck();
             return;
         }
         if (sourceSyncing || wallpaperSourceBinding == null || editorActivity.get() == null) return;
@@ -166,10 +197,28 @@ public final class DressroomModule extends XposedModule {
         depthStatus(reason);
     }
 
+    void depthDetectionFailed(String message) {
+        // A failed scan is not a wallpaper replacement. Keep user choices, suspend the matte.
+        DepthEffects.clearEditorSubject();
+        DepthEffects.pendingSource(true);
+        editorDrafts.values().forEach(DepthSafety::clearMask);
+        layoutClocks.values().forEach(DepthSafety::clearMask);
+        DepthSafety.clearMask(draftSettings);
+        depthStatus(message);
+    }
+
     boolean depthAvailable(Object clock) {
         return clock != null
                 && DepthBinding.provider(clock)
                 && (editorBinding == null || !editorBinding.legacy || legacyDepthReady);
+    }
+
+    String depthUnavailableReason(Object clock) {
+        String issue = DepthBinding.providerIssue(clock);
+        if (issue != null) return "Clock provider binding failed: " + issue;
+        if (editorBinding != null && editorBinding.legacy && !legacyDepthReady)
+            return "Depth editor binding failed: " + legacyDepthFailure;
+        return "Depth is not available for this clock";
     }
 
     private java.lang.ref.WeakReference<Object> activeClockController =
@@ -215,26 +264,30 @@ public final class DressroomModule extends XposedModule {
     }
 
     void widgetDepthChanged() {
-        if (depthAuto != null && editorContext != null) {
-            Object owner = activeClockController.get();
-            if (owner != null)
-                try {
-                    Object data = editorBinding.data(owner);
-                    android.os.Bundle settings = readSettings(data, editorContext);
-                    if (settings == null) settings = new android.os.Bundle();
-                    settings.putInt(
-                            "type", ((Number) Reflect.call(data, "getClockType")).intValue());
-                    settings.putInt(
-                            "font",
-                            ((Number)
-                                            Reflect.call(
-                                                    Reflect.call(data, "getClockFontData"),
-                                                    "getClockFontType"))
-                                    .intValue());
-                    depthAuto.settings(settings, widgetDepthOn(editorContext));
-                } catch (Exception error) {
-                    report("Widget depth detection unavailable", error);
-                }
+        Object owner = activeClockController.get();
+        if (editorBinding == null || owner == null) return;
+        try {
+            Object renderer = editorBinding.renderer(owner);
+            if (!(renderer instanceof View clock)) return;
+            applyEditorDepth(clock);
+            DepthEffects.refreshEditorClock(clock);
+            long generation = sessionGeneration;
+            // Grid reflow can rebuild Samsung's clock/blur owners after the widget callback.
+            // Rebind the selected clock, without changing the clock or widget draft settings.
+            clock.postOnAnimation(
+                    () -> {
+                        if (generation != sessionGeneration || activeClockController.get() != owner)
+                            return;
+                        try {
+                            Object current = editorBinding.renderer(owner);
+                            if (current instanceof View view && view.isAttachedToWindow())
+                                applyEditorDepth(view);
+                        } catch (ReflectiveOperationException | RuntimeException error) {
+                            report("Clock depth refresh after widget layout unavailable", error);
+                        }
+                    });
+        } catch (ReflectiveOperationException | RuntimeException error) {
+            report("Widget depth refresh unavailable", error);
         }
     }
 
@@ -315,16 +368,8 @@ public final class DressroomModule extends XposedModule {
         if (fontPath != null && !fontPath.isEmpty()) query.putString("fontPath", fontPath);
         android.os.Bundle saved =
                 SettingsBridge.read(editorContext == null ? context : editorContext, query);
-        if (saved != null) {
-            boolean replaced =
-                    !saved.getString("depthImageKey", "").isEmpty()
-                            && sourceKnown
-                            && !imageKey().equals(saved.getString("depthImageKey"));
-            if (replaced && !resetDepthProfiles)
-                invalidateDepth("Wallpaper image changed. Enable depth for the new image.");
-            if (resetDepthProfiles || (sourceKnown && !sourceImage) || replaced)
-                DepthSafety.disable(saved);
-        }
+        // Reading an old profile must not reset the currently active wallpaper or other clocks.
+        if (saved != null && depthProfileInvalid(saved)) DepthSafety.disable(saved);
         return saved;
     }
 
@@ -375,7 +420,7 @@ public final class DressroomModule extends XposedModule {
     }
 
     private void installCommitHook(ClassLoader loader) throws ReflectiveOperationException {
-        wallpaperSourceBinding = new WallpaperSourceBinding(loader, editorBinding.legacy, editorBinding.editor3001);
+        wallpaperSourceBinding = new WallpaperSourceBinding(loader, editorBinding.legacy);
         java.util.ArrayList<Method> sourceChanges = new java.util.ArrayList<>();
         sourceChanges.add(wallpaperSourceBinding.changed);
         for (Method method : wallpaperSourceBinding.dataType.getDeclaredMethods())
@@ -392,7 +437,8 @@ public final class DressroomModule extends XposedModule {
                             .intercept(
                                     chain -> {
                                         Object result = chain.proceed();
-                                        syncWallpaperSource();
+                                        // Native setters update source/type fields as a batch.
+                                        queueWallpaperSourceCheck();
                                         return result;
                                     }));
             deoptimize(method);
@@ -468,7 +514,7 @@ public final class DressroomModule extends XposedModule {
             installLegacySave(loader);
             return;
         }
-        Class<?> saveController = Class.forName("dc.p", false, loader);
+        Class<?> saveController = OneUi9Editor.saveController(loader);
         for (Method request : saveController.getDeclaredMethods()) {
             if (!request.getName().equals("Y") || request.getParameterCount() != 2) continue;
             record(
@@ -522,8 +568,7 @@ public final class DressroomModule extends XposedModule {
                                     for (Object arg : chain.getArgs()) {
                                         if (arg instanceof Number && ((Number) arg).intValue() == 5)
                                             tagged = true;
-                                        else if (arg != null
-                                                && arg.getClass().getName().equals("dc.p"))
+                                        else if (arg != null && arg.getClass() == saveController)
                                             owner = true;
                                     }
                                     if (tagged && owner) nativeSaveStarted.set(true);
@@ -543,10 +588,8 @@ public final class DressroomModule extends XposedModule {
                                         nativeSave =
                                                 ((Number) Reflect.field(callback, "a")).intValue()
                                                                 == 5
-                                                        && Reflect.field(callback, "c")
-                                                                .getClass()
-                                                                .getName()
-                                                                .equals("dc.p");
+                                                        && Reflect.field(callback, "c").getClass()
+                                                                == saveController;
                                         if (nativeSave) {
                                             android.os.Bundle snapshot = saving.complete();
                                             android.os.Bundle widgets = savingWidgets.complete();
@@ -597,16 +640,14 @@ public final class DressroomModule extends XposedModule {
     }
 
     private void preflightLegacySave(ClassLoader loader) throws ReflectiveOperationException {
-        Class<?> save =
-                Class.forName("com.samsung.android.lockscreen.editor.component.H$e", false, loader);
+        Class<?> save = Class.forName(OneUi85Editor.SAVE_COMPONENT, false, loader);
         NativeContract.field(save, "b", int.class);
         NativeContract.method(save, "invokeSuspend", Object.class, Object.class);
         Class.forName("kotlin.Unit", false, loader).getField("INSTANCE");
     }
 
     private void installLegacySave(ClassLoader loader) throws ReflectiveOperationException {
-        Class<?> save =
-                Class.forName("com.samsung.android.lockscreen.editor.component.H$e", false, loader);
+        Class<?> save = Class.forName(OneUi85Editor.SAVE_COMPONENT, false, loader);
         java.lang.reflect.Field label = NativeContract.field(save, "b", int.class);
         Method resume = NativeContract.method(save, "invokeSuspend", Object.class, Object.class);
         Object unit = Class.forName("kotlin.Unit", false, loader).getField("INSTANCE").get(null);
@@ -941,7 +982,15 @@ public final class DressroomModule extends XposedModule {
                                                         chain.getThisObject(), data, value);
                                             }
                                             restoreManualData(data, saved);
-                                            if (restoredSelections.add(selectionKey(type, font))) {
+                                            String restoreKey = selectionKey(type, font);
+                                            boolean firstRestore =
+                                                    restoredSelections.add(restoreKey);
+                                            // Native refreshes (widget grid, clock position)
+                                            // rebuild ClockData with default shadow/blur. Keep
+                                            // re-applying the staged draft so Apply does not
+                                            // save those defaults over Advanced settings.
+                                            boolean staged = editorDrafts.containsKey(restoreKey);
+                                            if (firstRestore || staged) {
                                                 restoreShadowData(data, saved);
                                                 if (!editorBinding.legacy
                                                         && saved != null
@@ -951,7 +1000,8 @@ public final class DressroomModule extends XposedModule {
                                                             Reflect.call(data, "getClockTypeData"),
                                                             "setSupportTextBlur",
                                                             true);
-                                                    Reflect.call(data, "setBlurEnabled", true);
+                                                    if (firstRestore)
+                                                        Reflect.call(data, "setBlurEnabled", true);
                                                 }
                                             }
                                         }
@@ -1177,15 +1227,21 @@ public final class DressroomModule extends XposedModule {
                                                                 .intValue();
                                                 query.putInt("type", selectedType);
                                                 query.putInt("font", selectedFont);
+                                                // Preset fonts report a null path; String.valueOf
+                                                // would turn it into "null" and miss the staged
+                                                // draft whenever native code rebinds the clock
+                                                // (for example after widget grid edits).
+                                                Object rawPath =
+                                                        Reflect.call(
+                                                                chain.getArg(0), "getFontPath");
                                                 android.os.Bundle saved =
                                                         editorSettings(
                                                                 view.getContext(),
                                                                 selectedType,
                                                                 selectedFont,
-                                                                String.valueOf(
-                                                                        Reflect.call(
-                                                                                chain.getArg(0),
-                                                                                "getFontPath")));
+                                                                rawPath instanceof String path
+                                                                        ? path
+                                                                        : "");
                                                 enabled =
                                                         saved != null
                                                                 && FontAxisSettings.nativeStretch(
@@ -1518,8 +1574,8 @@ public final class DressroomModule extends XposedModule {
                 OneUi9FoldProfiles.install(this, param.getClassLoader());
             if (runtimeHooks == null) {
                 runtimeHooks = new RuntimeClockHooks(this);
-                runtimeHooks.install(param.getClassLoader());
             }
+            runtimeHooks.install(param.getClassLoader());
             if ("com.android.systemui".equals(param.getPackageName())
                     && processName.equals("com.android.systemui")
                     && android.os.Build.VERSION.SDK_INT >= 36) {
@@ -1590,7 +1646,7 @@ public final class DressroomModule extends XposedModule {
                 deoptimize(open);
                 transaction.commit();
                 installed.add(loader);
-                if (editorBinding.legacy || editorBinding.editor3001) {
+                if (editorBinding.legacy) {
                     try {
                         DepthBinding.validateEditor(loader);
                         // Reference installs tracking through EditorWidgets. Dressroom 3.0.01.20 installs it
@@ -1598,7 +1654,9 @@ public final class DressroomModule extends XposedModule {
                         DepthEffects.watchEditorWallpaper(this, loader, editorBinding.legacy);
                         legacyDepthReady = true;
                     } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
-                        report("Core editor depth source unavailable", error);
+                        legacyDepthReady = false;
+                        legacyDepthFailure = DepthBinding.failureReason(error);
+                        report("8.5 depth source unavailable", error);
                     }
                 }
                 if (editorBinding.legacy) {
@@ -1616,7 +1674,7 @@ public final class DressroomModule extends XposedModule {
                         "Editor adapter installed: "
                                 + (editorBinding.legacy
                                         ? "Dressroom 2.9.60.50/51 (core controls)"
-                                        : editorBinding.editor3001 ? "Dressroom 3.0.01.20" : "Dressroom 3.0.10.38"));
+                                        : "Dressroom signature shim"));
             } catch (ReflectiveOperationException | LinkageError | RuntimeException e) {
                 report("Unsupported Dressroom; clock panel injection rolled back", e);
             } finally {
@@ -1752,8 +1810,9 @@ public final class DressroomModule extends XposedModule {
                             "com.samsung.android.clockpack.plugins.clock.extension.ClockBlurExtension",
                             false,
                             loader);
-            Class<?> helper = Class.forName("ah.g", false, loader);
-            Method enable = helper.getDeclaredMethod("m", clockView, boolean.class);
+            Class<?> helper = OneUi9Editor.blurHelper(loader, clockView);
+            Method enable =
+                    NativeContract.findMethod(helper, "m", void.class, clockView, boolean.class);
             record(
                     hook(enable)
                             .setId("dressroom-advanced.blur-helper")
@@ -1774,7 +1833,7 @@ public final class DressroomModule extends XposedModule {
                                         }
                                         return chain.proceed();
                                     }));
-            Method text = helper.getDeclaredMethod("o", clockView);
+            Method text = NativeContract.findMethod(helper, "o", void.class, clockView);
             record(
                     hook(text)
                             .setId("dressroom-advanced.text-blur-helper")

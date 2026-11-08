@@ -31,6 +31,9 @@ public final class ScreenProfileProbe {
                                     if (operation.getName().startsWith("put")) {
                                         staged.put((String) values[0], values[1]); return e;
                                     }
+                                    if (operation.getName().equals("remove")) {
+                                        staged.put((String) values[0], null); return e;
+                                    }
                                     if (operation.getName().equals("commit")) { data.putAll(staged); return true; }
                                     throw new AssertionError(operation.getName());
                                 });
@@ -123,5 +126,29 @@ public final class ScreenProfileProbe {
                 "A later wallpaper change inherited a stale cover mask");
         equal(original, LayoutOrientation.readWallpaper(preferences, newBase, oldBase, scope),
                 "Returning to the original wallpaper lost its own saved layout");
+
+        policyMigration();
+    }
+
+    private static void policyMigration() throws Exception {
+        Map<String, Object> policyData = new HashMap<>();
+        SharedPreferences policies = prefs(policyData);
+        Bundle cover = new Bundle();
+        cover.putInt(ScreenIdentity.FIELD, ScreenIdentity.SUB);
+        cover.putInt(LayoutOrientation.FIELD, 1);
+        cover.putInt("wallpaperId", 92);
+        cover.putInt("legacyWallpaperId", 90);
+        policyData.put(LayoutOrientation.key("wallpaper_90_main", cover), "{}");
+        policyData.put(ScreenIdentity.key("wallpaper_90_main", cover) + "_depth_policy",
+                "{\"depth\":1,\"depthLayouts\":1}");
+        Bundle inherited = WidgetPreferences.store(policies, "readWidgets", cover, () -> {});
+        equal(1, inherited.getInt("depthLayouts"), "Legacy depth policy was not imported");
+        inherited.putInt("wallpaperId", 92);
+        inherited.putInt("depthLayouts", 0);
+        WidgetPreferences.store(policies, "commitWidgets", inherited, () -> {});
+        Bundle separated = WidgetPreferences.store(policies, "readWidgets", cover, () -> {});
+        equal(0, separated.getInt("depthLayouts"), "Explicit per-orientation policy was reimported");
+        equal(true, policyData.containsKey(ScreenIdentity.key("wallpaper_90_main", cover) + "_depth_policy"),
+                "Legacy rollback policy was deleted");
     }
 }

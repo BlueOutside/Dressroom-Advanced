@@ -221,9 +221,10 @@ public final class SettingsProvider extends ContentProvider {
                 saved = prefs.getString(legacy, null);
                 if (saved != null && extras.getInt("wallpaperId", -1) >= 0) {
                     if (!prefs.edit()
-                            .putString(key(extras), saved)
-                            .putBoolean(migrated, true)
-                            .commit())
+                            .putString(SettingsScope.oriented(baseKey(extras), extras.getInt(LayoutOrientation.FIELD)), saved)
+                            .commit()) throw new IllegalStateException("Could not stage legacy clock settings");
+                    saved = LayoutOrientation.read(prefs, baseKey(extras), extras);
+                    if (!prefs.edit().putBoolean(migrated, true).commit())
                         throw new IllegalStateException("Could not migrate clock settings");
                 }
             }

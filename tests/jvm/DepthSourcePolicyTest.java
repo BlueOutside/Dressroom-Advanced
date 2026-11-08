@@ -24,6 +24,27 @@ public final class DepthSourcePolicyTest {
         check(
                 DepthSourcePolicy.image(402, 401),
                 "Weather/frame wrapping changed source eligibility");
+        check(
+                DepthSourcePolicy.invalidProfile(true, true, false, "new", "old"),
+                "Old wallpaper profile accepted");
+        check(
+                !DepthSourcePolicy.invalidProfile(true, true, true, "new", "new"),
+                "Fresh current-image profile rejected by the earlier reset");
+        check(
+                DepthSourcePolicy.invalidProfile(true, true, true, "new", ""),
+                "Unstamped legacy matte accepted after replacement");
+        check(
+                DepthSourcePolicy.invalidProfile(true, false, false, "new", "new"),
+                "A matching key bypassed unsupported wallpaper protection");
+        check(
+                !DepthSourcePolicy.invalidProfile(false, false, false, "", "old"),
+                "Unknown source treated as a confirmed replacement");
+        check(
+                DepthSourcePolicy.invalidProfile(true, true, true, "new", "old"),
+                "Reading a stale profile cleared replacement protection");
+        check(
+                !DepthSourcePolicy.invalidProfile(true, true, true, "new", "new"),
+                "Reading a stale profile poisoned the next current profile");
         System.out.println("Depth source policy: " + checks + " checks passed");
     }
 }

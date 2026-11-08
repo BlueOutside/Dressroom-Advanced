@@ -14,15 +14,30 @@ final class EditorBinding {
         SLIDER
     }
 
-    static final long DRESSROOM_3001 = 300120000L;
+    record Names(
+            boolean legacy,
+            String controller,
+            String useCase,
+            String helperType,
+            String rootField,
+            String dataUseCaseField,
+            String helperField,
+            String clockField,
+            String modelField,
+            String createMethod,
+            String bindMethod,
+            String weatherType,
+            String managerWrapperClass,
+            String managerWrapperField,
+            String managerGetterMethod) {}
+
     static final long REFERENCE = 301038000L, ONE_UI_85 = 296051000L, ONE_UI_85_TABLET = 296050000L;
     final boolean legacy;
-    final boolean editor3001;
     final Class<?> controller;
     final Method open, create, weather, bind;
     private final Method weatherCapability, managerGetter;
     private final Field managerWrapper;
-    private final Field root, dataUseCase, helper, clock, model;
+    private final Field root, dataUseCase, helper, clock, model, activityField;
 
     String rowTag(Row row) {
         return switch (row) {
@@ -38,9 +53,20 @@ final class EditorBinding {
                 @Override
                 protected EditorBinding computeValue(Class<?> owner) {
                     try {
-                        return new EditorBinding(
-                                owner.getClassLoader(), owner.getName().equals("Pa.w0"),
-                                owner.getName().equals("so.x"));
+                        ClassLoader loader = owner.getClassLoader();
+                        Class<?> clockView = Class.forName(
+                                "com.samsung.android.clockpack.plugins.clock.ClockView", false, loader);
+                        // Weather capability moved independently of the editor ABI. Inspect the
+                        // helper's bind operation instead of treating its absence as an 8.5 signal.
+                        boolean modern = false;
+                        for (Field field : owner.getDeclaredFields()) {
+                            Class<?> helper = field.getType();
+                            if (NativeContract.hasField(helper, clockView)
+                                    && NativeContract.hasMethod(helper, void.class, clockView)) modern = true;
+                        }
+                        boolean isLegacy = !modern;
+                        Names names = isLegacy ? OneUi85Editor.names() : OneUi9Editor.names();
+                        return new EditorBinding(loader, owner, names);
                     } catch (ReflectiveOperationException error) {
                         throw new IllegalStateException("Unsupported editor ABI", error);
                     }
@@ -53,25 +79,33 @@ final class EditorBinding {
 
     static EditorBinding resolve(ClassLoader loader, long version)
             throws ReflectiveOperationException {
-        if (version != REFERENCE && version != ONE_UI_85 && version != ONE_UI_85_TABLET && version != DRESSROOM_3001) {
-            if (ScreenIdentity.supported()) {
-                for (String candidate : new String[] {"so.x", "vo.x"}) {
-                    try { return bindings.get(Class.forName(candidate, false, loader)); }
-                    catch (ClassNotFoundException | IllegalStateException ignored) { }
-                }
-            }
-            throw new ClassNotFoundException(
-                    "Dressroom version " + version + " has no inspected editor binding");
-        }
-        return bindings.get(Class.forName(version == DRESSROOM_3001 ? "so.x" : version == REFERENCE ? "vo.x" : "Pa.w0", false, loader));
+        boolean preferLegacy =
+                version == ONE_UI_85
+                        || version == ONE_UI_85_TABLET
+                        || (version > 0 && version < 300000000L);
+        Names primary = preferLegacy ? OneUi85Editor.names() : OneUi9Editor.names();
+        Names fallback = preferLegacy ? OneUi9Editor.names() : OneUi85Editor.names();
+        Class<?> data =
+                Class.forName(
+                        "com.samsung.android.lockscreen.editor.item.domain.entity.item.clock.ClockData",
+                        false,
+                        loader);
+        Class<?> owner =
+                NativeContract.findClass(
+                        loader,
+                        cls ->
+                                NativeContract.hasMethod(cls, void.class, ViewGroup.class, data)
+                                        && NativeContract.hasMethod(cls, boolean.class),
+                        primary.controller,
+                        fallback.controller, "so.x");
+        return bindings.get(owner);
     }
 
-    private EditorBinding(ClassLoader loader, boolean legacy, boolean editor3001) throws ReflectiveOperationException {
-        this.legacy = legacy;
-        this.editor3001 = editor3001;
+    private EditorBinding(ClassLoader loader, Class<?> resolvedController, Names names)
+            throws ReflectiveOperationException {
+        this.legacy = names.legacy;
         NativeTabs.forType(
                 Class.forName("com.google.android.material.tabs.TabLayout", false, loader));
-        controller = Class.forName(legacy ? "Pa.w0" : editor3001 ? "so.x" : "vo.x", false, loader);
         Class<?> data =
                 Class.forName(
                         "com.samsung.android.lockscreen.editor.item.domain.entity.item.clock.ClockData",
@@ -80,49 +114,114 @@ final class EditorBinding {
         Class<?> clockView =
                 Class.forName(
                         "com.samsung.android.clockpack.plugins.clock.ClockView", false, loader);
-        Class<?> useCase = Class.forName(legacy ? "b7.Z" : editor3001 ? "mf.l0" : "mf.o0", false, loader);
-        Class<?> helperType =
-                Class.forName(
-                        legacy ? "com.samsung.android.lockscreen.editor.item.core.util.b" : "oc.a",
-                        false,
-                        loader);
-        open = NativeContract.method(controller, "a", boolean.class);
-        root = NativeContract.assignableField(controller, legacy ? "h0" : "Y", View.class);
-        dataUseCase = NativeContract.field(controller, legacy ? "c" : "b", useCase);
-        helper = NativeContract.field(controller, legacy ? "z" : "w", helperType);
-        clock = NativeContract.field(helperType, legacy ? "b" : "a", clockView);
-        model = controller.getDeclaredField(legacy ? "e" : "d");
-        model.setAccessible(true);
-        model.getType().getMethod("get");
+        controller =
+                resolvedController != null
+                        ? resolvedController
+                        : NativeContract.findClass(
+                                loader,
+                                cls ->
+                                        NativeContract.hasMethod(
+                                                        cls, void.class, ViewGroup.class, data)
+                                                && NativeContract.hasMethod(cls, boolean.class),
+                                names.controller);
+        Class<?> helperType = null;
+        try {
+            Class<?> candidate = Class.forName(names.helperType, false, loader);
+            if (NativeContract.hasField(candidate, clockView)) helperType = candidate;
+        } catch (ClassNotFoundException ignored) {
+        }
+        if (helperType == null) {
+            for (Field f : controller.getDeclaredFields()) {
+                if (NativeContract.hasField(f.getType(), clockView)) {
+                    helperType = f.getType();
+                    break;
+                }
+            }
+        }
+        if (helperType == null)
+            throw new ClassNotFoundException("Clock helper type not found in " + controller);
+
+        Class<?> useCase = null;
+        try {
+            useCase = Class.forName(names.useCase, false, loader);
+        } catch (ClassNotFoundException ignored) {
+            Field f = controller.getDeclaredField(names.dataUseCaseField);
+            useCase = f.getType();
+        }
+        if (!NativeContract.hasField(controller, useCase)) {
+            // The observable use case is constructor-injected; its declared getter
+            // returns the same stable ObservableData contract on both modern editors.
+            Field injected = controller.getDeclaredField(names.dataUseCaseField);
+            Class<?> observable = Class.forName(
+                    "com.samsung.android.lockscreen.editor.item.domain.entity.common.ObservableData", false, loader);
+            NativeContract.findMethod(injected.getType(), "a", observable);
+            useCase = injected.getType();
+        }
+        open = NativeContract.findMethod(controller, "a", boolean.class);
+        root = NativeContract.findField(controller, names.rootField, View.class);
+        dataUseCase = NativeContract.findField(controller, names.dataUseCaseField, useCase);
+        helper = NativeContract.findField(controller, names.helperField, helperType);
+        clock = NativeContract.findField(helperType, names.clockField, clockView);
+        activityField =
+                NativeContract.findField(
+                        controller, legacy ? "p0" : "f0", java.lang.ref.WeakReference.class);
+        Field modelField = null;
+        try {
+            modelField = controller.getDeclaredField(names.modelField);
+            modelField.getType().getMethod("get");
+        } catch (ReflectiveOperationException ignored) {
+            for (Field f : controller.getDeclaredFields()) {
+                try {
+                    f.getType().getMethod("get");
+                    modelField = f;
+                    break;
+                } catch (NoSuchMethodException ignored2) {
+                }
+            }
+        }
+        if (modelField == null)
+            throw new NoSuchFieldException("Model field not found in " + controller.getName());
+        modelField.setAccessible(true);
+        model = modelField;
         create =
-                NativeContract.method(
-                        controller, legacy ? "s1" : "e", void.class, ViewGroup.class, data);
+                NativeContract.findMethod(
+                        controller, names.createMethod, void.class, ViewGroup.class, data);
         bind =
-                NativeContract.method(
-                        helperType,
-                        legacy ? "w" : "e",
-                        void.class,
-                        legacy ? View.class : clockView);
-        Class<?> weatherType = Class.forName(legacy ? "b7.J" : editor3001 ? "mf.f0" : "mf.i0", false, loader);
+                NativeContract.findMethod(
+                        helperType, names.bindMethod, void.class, legacy ? View.class : clockView);
+        Class<?> weatherType =
+                NativeContract.findClass(
+                        loader,
+                        cls ->
+                                legacy
+                                        ? NativeContract.hasMethod(cls, void.class, boolean.class)
+                                        : NativeContract.hasMethod(
+                                                cls, void.class, boolean.class, boolean.class),
+                        names.weatherType, "mf.f0");
         weather =
                 legacy
-                        ? NativeContract.method(weatherType, "a", void.class, boolean.class)
-                        : NativeContract.method(
+                        ? NativeContract.findMethod(weatherType, "a", void.class, boolean.class)
+                        : NativeContract.findMethod(
                                 weatherType, "a", void.class, boolean.class, boolean.class);
         Class<?> typeData =
                 Class.forName(
                         "com.samsung.android.lockscreen.editor.item.domain.entity.item.clock.ClockTypeData",
                         false,
                         loader);
-        if (legacy || editor3001) {
+        if (!java.util.Arrays.stream(typeData.getDeclaredMethods()).anyMatch(m -> m.getName().equals("isSupportWeatherInfo") && m.getReturnType() == boolean.class && m.getParameterCount() == 0)) {
             Class<?> manager =
                     Class.forName(
                             "com.samsung.android.clockpack.plugins.clock.ClockManager",
                             false,
                             loader);
-            Class<?> wrapper = Class.forName(editor3001 ? "pc.b" : "O5.a", false, loader);
-            managerWrapper = NativeContract.field(controller, editor3001 ? "g" : "j", wrapper);
-            managerGetter = NativeContract.method(wrapper, editor3001 ? "d" : "i", manager);
+            Class<?> wrapper =
+                    NativeContract.findClass(
+                            loader,
+                            cls -> NativeContract.hasMethod(cls, manager),
+                            names.managerWrapperClass, "pc.b");
+            managerWrapper =
+                    NativeContract.findField(controller, names.managerWrapperField == null ? "g" : names.managerWrapperField, wrapper);
+            managerGetter = NativeContract.findMethod(wrapper, names.managerGetterMethod, manager);
             weatherCapability =
                     NativeContract.method(
                             manager,
@@ -143,7 +242,7 @@ final class EditorBinding {
 
     boolean supportsWeather(Object owner, Object data) throws ReflectiveOperationException {
         Object type = Reflect.call(data, "getClockTypeData");
-        if (!legacy && !editor3001) return Boolean.TRUE.equals(weatherCapability.invoke(type));
+        if (managerWrapper == null) return Boolean.TRUE.equals(weatherCapability.invoke(type));
         if (!Boolean.TRUE.equals(Reflect.call(data, "getEnable"))) return false;
         Object manager = managerGetter.invoke(managerWrapper.get(owner));
         return Boolean.TRUE.equals(
@@ -174,7 +273,7 @@ final class EditorBinding {
     }
 
     Object activity(Object owner) throws ReflectiveOperationException {
-        return ((java.lang.ref.WeakReference<?>) Reflect.field(owner, legacy ? "p0" : "f0")).get();
+        return ((java.lang.ref.WeakReference<?>) activityField.get(owner)).get();
     }
 
     Object focusedScene(Object owner) throws ReflectiveOperationException {
@@ -243,8 +342,18 @@ final class EditorBinding {
         else Reflect.call(position, legacy ? "h" : "f", draft, screen, dx, dy, assist, device);
         Reflect.call(position, legacy ? "a" : "l", draft, preview, screen);
         if (legacy) Reflect.call(position, "f", draft, screen, device, false);
-        else if (editor3001) Reflect.call(position, "d", draft, screen, device, false);
-        else Reflect.call(position, "d", draft, device, screen, false);
+        else {
+            Method placement;
+            try {
+                placement = NativeContract.method(position.getClass(), "d", void.class,
+                        draft.getClass(), device.getClass(), screen.getClass(), boolean.class);
+                placement.invoke(position, draft, device, screen, false);
+            } catch (NoSuchMethodException reordered) {
+                placement = NativeContract.findMethod(position.getClass(), "d", void.class,
+                        draft.getClass(), screen.getClass(), device.getClass(), boolean.class);
+                placement.invoke(position, draft, screen, device, false);
+            }
+        }
         Reflect.call(position, legacy ? "m" : "o", draft, screen, assist, device);
     }
 }

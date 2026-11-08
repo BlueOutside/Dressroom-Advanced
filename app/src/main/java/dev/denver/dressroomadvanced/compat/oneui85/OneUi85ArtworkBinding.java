@@ -12,7 +12,23 @@ final class OneUi85ArtworkBinding {
         ClockBinding clock = ClockBinding.of(base);
         if (!clock.legacy) throw new NoSuchMethodException("Expected 8.5 artwork binding");
         ClassLoader loader = base.getClassLoader();
-        Class<?> holder = Class.forName(clock.clockStyle ? "aod.TK" : "aod.YR", false, loader);
+        Class<?> page =
+                Class.forName(
+                        "com.samsung.android.app.facewidget.pages.music.FaceWidgetMusicPage",
+                        false,
+                        loader);
+        Class<?> model =
+                Class.forName(
+                        "com.samsung.android.app.facewidget.pages.music.FaceWidgetMusicViewModel",
+                        false,
+                        loader);
+        Class<?> holder =
+                NativeContract.findClass(
+                        loader,
+                        type ->
+                                NativeContract.hasField(type, page)
+                                        && NativeContract.hasField(type, model),
+                        clock.clockStyle ? "aod.TK" : "aod.YR");
         Constructor<?> found = null;
         for (Constructor<?> candidate : holder.getDeclaredConstructors()) {
             Class<?>[] args = candidate.getParameterTypes();

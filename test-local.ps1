@@ -39,7 +39,7 @@ if($Suite -eq 'Jvm'){
     $probe=Join-Path $testRoot 'probe.jar';$dex=Join-Path $testRoot 'dex'
     New-Item -ItemType Directory -Force -Path $dex | Out-Null
     Invoke-ProjectTool 'jar' @('--create','--file',$probe,'-C',$classes,'.')
-    Invoke-ProjectTool (Join-Path $tools 'd8.bat') @('--lib',$androidJar,'--classpath',$apiJar,'--min-api',"$($config.minSdk)",'--output',$dex,$probe,$moduleJar)
+    Invoke-ProjectTool (Join-Path $tools 'd8.bat') @('--lib',$androidJar,'--min-api',"$($config.minSdk)",'--output',$dex,$probe,$moduleJar,$apiJar)
     $deviceJar=Join-Path $testRoot 'device.jar'
     Invoke-ProjectTool 'jar' @('--create','--file',$deviceJar,'-C',$dex,'classes.dex')
     $remote='/data/local/tmp/dressroom-advanced-contracts.jar'

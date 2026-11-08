@@ -57,7 +57,7 @@ final class NowBarStackBinding {
         ClockBinding provider = ClockBinding.of(clock);
         return new NowBarStackBinding(
                 clock.getClassLoader(),
-                provider.aod8957 ? OneUi9Aod8957Stack.names() : provider.legacy
+                provider.legacy
                         ? (provider.clockStyle ? OneUi85Stack.names() : OneUi85AodStack.names())
                         : (provider.clockStyle
                                 ? OneUi9ClockStyleStack.names()
@@ -70,58 +70,93 @@ final class NowBarStackBinding {
                         "com.samsung.android.app.facewidget.utils.NowBarCardStackView",
                         false,
                         loader);
-        card = Class.forName("com.samsung.android.app.facewidget.presentation.a", false, loader);
         Class<?> itemType =
                 Class.forName(
                         "com.android.systemui.plugins.keyguardstatusview.NowBarItem",
                         false,
                         loader);
-        model = Class.forName(names.model, false, loader);
-        Class<?> manager = Class.forName(names.manager, false, loader);
-        items = NativeContract.field(stack, names.items, ArrayList.class);
+        card =
+                NativeContract.findClass(
+                        loader,
+                        cls ->
+                                NativeContract.hasMethod(cls, ViewGroup.class)
+                                        && NativeContract.hasMethod(cls, itemType),
+                        "com.samsung.android.app.facewidget.presentation.a");
+        model =
+                NativeContract.findClass(
+                        loader,
+                        cls ->
+                                NativeContract.hasField(cls, Animator.class)
+                                        && NativeContract.hasMethod(card, cls),
+                        names.model, "aod.kx4");
+        Class<?> manager =
+                NativeContract.findClass(
+                        loader,
+                        cls ->
+                                NativeContract.hasField(stack, cls)
+                                        && (NativeContract.hasMethod(
+                                                        cls,
+                                                        void.class,
+                                                        View.class,
+                                                        model,
+                                                        int.class)
+                                                || NativeContract.hasMethod(
+                                                        cls, void.class, View.class, model)),
+                        names.manager, "aod.cy6");
+        items = NativeContract.findField(stack, names.items, ArrayList.class);
         restricted = NativeContract.field(stack, names.restricted, boolean.class);
-        mode = NativeContract.assignableField(stack, names.mode, Enum.class);
+        mode = NativeContract.findField(stack, names.mode, Enum.class);
         screenOn = NativeContract.field(stack, names.screenOn, boolean.class);
         dragging = NativeContract.field(stack, names.dragging, boolean.class);
         reordering = NativeContract.field(stack, names.reordering, boolean.class);
         dismissing = NativeContract.field(stack, names.dismissing, boolean.class);
         expanding = NativeContract.field(stack, names.expanding, boolean.class);
-        animationManager = NativeContract.field(stack, names.animationManager, manager);
-        animationsEnabled = NativeContract.field(manager, names.animationsEnabled, boolean.class);
-        state = NativeContract.field(model, "a", Class.forName(names.states, false, loader));
-        animator = NativeContract.field(model, "f", Animator.class);
-        refresh = NativeContract.method(stack, "q", void.class, CopyOnWriteArrayList.class);
+        animationManager = NativeContract.findField(stack, names.animationManager, manager);
+        animationsEnabled =
+                NativeContract.findField(manager, names.animationsEnabled, boolean.class);
+        state = NativeContract.findField(model, "a", Enum.class);
+        animator = NativeContract.findField(model, "f", Animator.class);
+        refresh =
+                NativeContract.findMethod(stack, "q", void.class, CopyOnWriteArrayList.class);
         animate =
                 names.countedAnimate
-                        ? NativeContract.method(
+                        ? NativeContract.findMethod(
                                 manager, names.animate, void.class, View.class, model, int.class)
-                        : NativeContract.method(
+                        : NativeContract.findMethod(
                                 manager, names.animate, void.class, View.class, model);
-        expanded = NativeContract.method(stack, "k", boolean.class);
-        content = NativeContract.method(card, "getNormalContentRootView", ViewGroup.class);
-        data = NativeContract.method(card, "getShowHideAnimationData", model);
-        item = NativeContract.method(card, "getNowbarItem", itemType);
-        blur = NativeContract.method(card, "getBlurContainer", View.class);
-        bindItem = NativeContract.method(card, names.bindItem, void.class, itemType, Integer.class);
+        expanded = NativeContract.findMethod(stack, "k", boolean.class);
+        content = NativeContract.findMethod(card, "getNormalContentRootView", ViewGroup.class);
+        data = NativeContract.findMethod(card, "getShowHideAnimationData", model);
+        item = NativeContract.findMethod(card, "getNowbarItem", itemType);
+        blur = NativeContract.findMethod(card, "getBlurContainer", View.class);
+        bindItem =
+                NativeContract.findMethod(card, names.bindItem, void.class, itemType, Integer.class);
         hideContents =
-                NativeContract.method(
+                NativeContract.findMethod(
                         card, names.hideContents, void.class, int.class, boolean.class);
-        key = Class.forName(names.keys, false, loader).getDeclaredMethod(names.key, itemType);
-        key.setAccessible(true);
-        stackSize =
-                Class.forName(names.stackSize, false, loader)
-                        .getDeclaredConstructor(stack, int.class);
+        Class<?> keysClass =
+                NativeContract.findClass(
+                        loader,
+                        cls -> NativeContract.hasStaticMethod(cls, String.class, itemType),
+                        names.keys, "aod.ng3");
+        key = NativeContract.findStaticMethod(keysClass, names.key, String.class, itemType);
+        Class<?> stackSizeClass =
+                NativeContract.findClass(
+                        loader,
+                        cls -> NativeContract.hasConstructor(cls, stack, int.class),
+                        names.stackSize, "aod.px4");
+        stackSize = stackSizeClass.getDeclaredConstructor(stack, int.class);
         stackSize.setAccessible(true);
-        wave =
-                names.wave == null
-                        ? null
-                        : NativeContract.method(
-                                Class.forName(
-                                        "com.samsung.android.app.facewidget.presentation.NowBarMediaCardView",
-                                        false,
-                                        loader),
-                                names.wave,
-                                void.class);
+        Method mediaWave = null;
+        if (names.wave != null) {
+            Class<?> media = Class.forName(
+                    "com.samsung.android.app.facewidget.presentation.NowBarMediaCardView", false, loader);
+            try { mediaWave = NativeContract.method(media, names.wave, void.class); }
+            catch (NoSuchMethodException renamed) {
+                mediaWave = NativeContract.findMethod(media, "w0", void.class);
+            }
+        }
+        wave = mediaWave;
         resources = names.resources;
     }
 }

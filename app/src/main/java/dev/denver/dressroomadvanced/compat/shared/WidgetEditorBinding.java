@@ -15,19 +15,22 @@ final class WidgetEditorBinding {
     private final Class<?> menuItem;
 
     WidgetEditorBinding(ClassLoader loader) throws ReflectiveOperationException {
-        Class<?> preview = Class.forName("ib.l0", false, loader);
-        create = NativeContract.method(preview, "d", View.class);
+        Class<?> widgetData = entity(loader, "item.widget.WidgetData");
+        Class<?> preview =
+                NativeContract.findClass(
+                        loader,
+                        cls ->
+                                NativeContract.hasField(cls, widgetData)
+                                        && NativeContract.hasMethod(cls, View.class),
+                        OneUi85WidgetEditor.PREVIEW);
+        create = NativeContract.findMethod(preview, "d", View.class);
+        NativeContract.findField(preview, "I", widgetData);
+        NativeContract.findField(preview, "J", ViewGroup.class);
+        NativeContract.findField(preview, "N", View.class);
         NativeContract.field(
-                preview,
-                "I",
-                Class.forName(
-                        "com.samsung.android.lockscreen.editor.item.domain.entity.item.widget.WidgetData",
-                        false,
-                        loader));
-        NativeContract.assignableField(preview, "J", ViewGroup.class);
-        NativeContract.assignableField(preview, "N", View.class);
-        NativeContract.field(
-                Class.forName("X6.i", false, loader), "a", Class.forName("S6.e", false, loader));
+                Class.forName(OneUi85WidgetEditor.ROTATION_HOST, false, loader),
+                "a",
+                Class.forName(OneUi85WidgetEditor.ROTATION_TARGET, false, loader));
         NativeContract.method(
                 Class.forName(
                         "com.samsung.android.app.dressroom.presentation.preview.activity.EditMainActivity",
@@ -36,61 +39,112 @@ final class WidgetEditorBinding {
                 "dispatchTouchEvent",
                 boolean.class,
                 android.view.MotionEvent.class);
-        Class.forName("lb.c", false, loader)
-                .getDeclaredMethod(
-                        "r",
-                        View.class,
-                        int.class,
-                        int.class,
-                        float.class,
-                        int.class,
-                        int.class,
-                        boolean.class);
+        Class<?> adapter = OneUi85WidgetEditor.adapter(loader);
+        NativeContract.findStaticMethod(
+                adapter,
+                OneUi85WidgetEditor.ADAPTER_METHOD,
+                void.class,
+                View.class,
+                int.class,
+                int.class,
+                float.class,
+                int.class,
+                int.class,
+                boolean.class);
         Class.forName("androidx.databinding.ViewDataBinding", false, loader)
                 .getDeclaredMethod("getBinding", View.class);
-        toolbar = NativeContract.method(Class.forName("V3.v", false, loader), "H", void.class);
-        menuItem = Class.forName("T2.H", false, loader);
+        Class<?> toolbarClass =
+                NativeContract.findClass(
+                        loader,
+                        cls -> NativeContract.hasMethod(cls, void.class),
+                        OneUi85WidgetEditor.TOOLBAR);
+        toolbar =
+                NativeContract.findMethod(
+                        toolbarClass, OneUi85WidgetEditor.TOOLBAR_METHOD, void.class);
+        menuItem =
+                NativeContract.findClass(
+                        loader,
+                        cls ->
+                                NativeContract.hasConstructor(
+                                        cls, String.class, int.class, Runnable.class, String.class),
+                        OneUi85WidgetEditor.MENU_ITEM);
         menuItem.getDeclaredConstructor(String.class, int.class, Runnable.class, String.class);
+        Class<?> uiController =
+                Class.forName(
+                        "com.samsung.android.clockpack.plugins.appwidget.IWidgetUIController",
+                        false,
+                        loader);
+        Class<?> gridController =
+                NativeContract.findClass(
+                        loader,
+                        cls -> !cls.isInterface() && NativeContract.hasMethod(cls, uiController),
+                        OneUi85WidgetEditor.GRID_CONTROLLER);
         getGrid =
-                NativeContract.method(
-                        Class.forName("O5.i", false, loader),
-                        "r",
-                        Class.forName(
-                                "com.samsung.android.clockpack.plugins.appwidget.IWidgetUIController",
-                                false,
-                                loader));
+                NativeContract.findMethod(
+                        gridController, OneUi85WidgetEditor.GRID_METHOD, uiController);
+        Class<?> gridType = entity(loader, "item.widget.WidgetGridData");
+        Class<?> sizeType = entity(loader, "item.widget.WidgetSizeData");
+        Class<?> previewScale = entity(loader, "system.PreviewScale");
+        Class<?> widgetAssist = entity(loader, "item.widget.WidgetAssistData");
+        Class<?> screenSize = entity(loader, "system.ScreenSize");
+        Class<?> deviceType = entity(loader, "system.DeviceType");
+        Class<?> uiMode = entity(loader, "preview.UIMode");
+        Class<?> moduleRect = entity(loader, "item.common.ModuleRectInfo");
+        Class<?> clockAssist = entity(loader, "item.clock.ClockAssistData");
+
+        Class<?> metricsClass =
+                NativeContract.findClass(
+                        loader,
+                        cls ->
+                                !cls.isInterface()
+                                        && NativeContract.hasMethodPrefix(
+                                                cls, void.class, gridType, sizeType),
+                        REPOSITORIES + "K");
         metrics =
-                NativeContract.method(
-                        Class.forName(REPOSITORIES + "K", false, loader),
+                NativeContract.findMethod(
+                        metricsClass,
                         "a",
                         void.class,
-                        entity(loader, "item.widget.WidgetGridData"),
-                        entity(loader, "item.widget.WidgetSizeData"),
+                        gridType,
+                        sizeType,
                         boolean.class,
-                        entity(loader, "system.PreviewScale"),
+                        previewScale,
                         boolean.class,
-                        entity(loader, "item.widget.WidgetAssistData"),
+                        widgetAssist,
                         boolean.class,
-                        entity(loader, "system.ScreenSize"),
-                        entity(loader, "system.DeviceType"),
+                        screenSize,
+                        deviceType,
                         boolean.class,
-                        entity(loader, "preview.UIMode"),
-                        entity(loader, "item.common.ModuleRectInfo"));
-        NativeContract.field(
+                        uiMode,
+                        moduleRect);
+        NativeContract.findField(
                 metrics.getDeclaringClass(), "d", Class.forName("kotlin.Lazy", false, loader));
+
+        Class<?> positionClass =
+                NativeContract.findClass(
+                        loader,
+                        cls ->
+                                !cls.isInterface()
+                                        && NativeContract.hasMethodPrefix(
+                                                cls,
+                                                void.class,
+                                                widgetData,
+                                                widgetAssist,
+                                                clockAssist),
+                        REPOSITORIES + "z");
         position =
-                NativeContract.method(
-                        Class.forName(REPOSITORIES + "z", false, loader),
+                NativeContract.findMethod(
+                        positionClass,
                         "b",
                         void.class,
-                        entity(loader, "item.widget.WidgetData"),
-                        entity(loader, "item.widget.WidgetAssistData"),
-                        entity(loader, "item.clock.ClockAssistData"),
-                        entity(loader, "preview.UIMode"),
+                        widgetData,
+                        widgetAssist,
+                        clockAssist,
+                        uiMode,
                         boolean.class,
-                        entity(loader, "system.ScreenSize"),
+                        screenSize,
                         boolean.class,
-                        entity(loader, "item.common.ModuleRectInfo"));
+                        moduleRect);
     }
 
     private static Class<?> entity(ClassLoader loader, String suffix)
@@ -143,11 +197,13 @@ final class WidgetEditorBinding {
                         .getIdentifier(
                                 "preview_menu_icon_effect", "drawable", context.getPackageName());
         if (icon == 0) icon = android.R.drawable.ic_menu_manage;
+        Class<?> itemType = current.getClass().getComponentType();
+        if (itemType == null) itemType = menuItem;
         items.add(
-                menuItem.getDeclaredConstructor(
+                itemType.getDeclaredConstructor(
                                 String.class, int.class, Runnable.class, String.class)
                         .newInstance("Advanced", icon, open, tag));
-        Object updated = Array.newInstance(menuItem, items.size());
+        Object updated = Array.newInstance(itemType, items.size());
         for (int i = 0; i < items.size(); i++) Array.set(updated, i, items.get(i));
         Reflect.set(owner, "f", updated);
     }

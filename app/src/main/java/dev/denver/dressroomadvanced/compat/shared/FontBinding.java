@@ -23,6 +23,7 @@ final class FontBinding {
                         base = base.getSuperclass();
                     if (base == null) throw new IllegalStateException("Unknown clock font owner");
                     try {
+                        if (owner != base) return bindings.get(base);
                         ClockBinding clock = ClockBinding.of(base);
                         return resolve(base, clock);
                     } catch (ReflectiveOperationException error) {
@@ -38,23 +39,19 @@ final class FontBinding {
     private static FontBinding resolve(Class<?> base, ClockBinding clock)
             throws ReflectiveOperationException {
         if (!clock.legacy) {
-            return clock.clockStyle
-                    ? OneUi9ClockStyleFonts.bind(base)
-                    : OneUi9Fonts.bind(base);
+            return clock.clockStyle ? OneUi9ClockStyleFonts.bind(base) : OneUi9Fonts.bind(base);
         }
-        return clock.clockStyle
-                ? OneUi85ClockStyleFonts.bind(base)
-                : OneUi85AodFonts.bind(base);
+        return clock.clockStyle ? OneUi85ClockStyleFonts.bind(base) : OneUi85AodFonts.bind(base);
     }
 
     FontBinding(Class<?> base, String fixedName, String variableName)
             throws ReflectiveOperationException {
         clock = ClockBinding.of(base);
         fixed =
-                NativeContract.method(
+                NativeContract.findMethod(
                         base, fixedName, void.class, Typeface.class, TextView[].class);
         variable =
-                NativeContract.method(
+                NativeContract.findMethod(
                         base, variableName, void.class, int.class, String.class, TextView[].class);
         Class<?> data = clock.render.getParameterTypes()[0];
         copy =

@@ -6,8 +6,8 @@ android {
         applicationId = "dev.denver.dressroomadvanced"
         minSdk = 36
         targetSdk = 36
-        versionCode = 1013
-        versionName = "1.0.13-oneui9-fold-test"
+        versionCode = 1014
+        versionName = "1.0.14-oneui9-fold-shim-test"
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     buildTypes { release { isMinifyEnabled = false } }

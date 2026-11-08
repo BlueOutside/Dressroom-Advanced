@@ -33,6 +33,11 @@ final class OneUi9FoldProfiles {
     private final Set<String> reportedReads = java.util.concurrent.ConcurrentHashMap.newKeySet();
     private final ThreadLocal<Boolean> raw = ThreadLocal.withInitial(() -> false);
     private final ClassLoader loader;
+    private FoldProfileBinding binding;
+    private FoldProfileBinding binding() throws ReflectiveOperationException {
+        if (binding == null) binding = new FoldProfileBinding(loader);
+        return binding;
+    }
     private final Set<String> confirmed = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     OneUi9FoldProfiles(ClassLoader loader) { this.loader = loader; }
@@ -62,24 +67,10 @@ final class OneUi9FoldProfiles {
 
     static void validate(ClassLoader loader) throws ReflectiveOperationException {
         OneUi9FoldProfiles adapter = new OneUi9FoldProfiles(loader);
-        Class<?> mediator = adapter.type("com.samsung.android.app.aodservice.datamanager.data.item.a");
-        Class<?> bundle = adapter.type(ENTITY + "LockProfileBundle");
-        Class<?> policy = adapter.type("aod.dl5");
+        FoldProfileBinding binding = adapter.binding();
         Class<?> profile = adapter.type(ENTITY + "LockProfileV3");
+        Class<?> bundle = adapter.type(ENTITY + "LockProfileBundle");
         Class<?> function = adapter.type("kotlin.jvm.functions.Function1");
-        NativeContract.method(mediator, "f", bundle, String.class);
-        NativeContract.method(mediator, "l", void.class, String.class, bundle);
-        NativeContract.method(mediator, "e", policy);
-        NativeContract.method(mediator, "j", boolean.class);
-        Class<?> dao = adapter.type("aod.qi5");
-        NativeContract.method(mediator, "h", dao);
-        NativeContract.field(mediator, "o", adapter.type("aod.oe3"));
-        NativeContract.field(adapter.type("aod.oe3"), "a", Object.class);
-        NativeContract.field(dao, "o", Object.class);
-        adapter.type("aod.ce0").getConstructor(int.class, long.class);
-        adapter.type("aod.pe4").getMethod("v", adapter.type("aod.u86"), boolean.class, boolean.class, function);
-        NativeContract.method(adapter.type(DB + "LockProfileMappingIdEntity"), "getId", Long.class);
-        profile.getConstructor(String.class, adapter.type(DB + "ProfileState"), bundle, policy);
         NativeContract.method(profile, "copyBundle", bundle, function);
         NativeContract.method(profile, "getEnabledWidgetsIdList", String.class);
         NativeContract.method(profile, "getWidgetAlignType", Integer.class);
@@ -123,10 +114,7 @@ final class OneUi9FoldProfiles {
             Object state = type(DB + "ProfileState")
                     .getConstructor(type(DB + "ProfileScreen"), type(DB + "ProfileOrientation"))
                     .newInstance(screen, choice("ProfileOrientation", "Portrait"));
-            Object profile = type(ENTITY + "LockProfileV3")
-                    .getConstructor(String.class, type(DB + "ProfileState"),
-                            type(ENTITY + "LockProfileBundle"), type("aod.dl5"))
-                    .newInstance("0", state, bundle, policy);
+            Object profile = binding().profile.newInstance("0", state, bundle, policy);
             bundle = profile.getClass().getMethod("copyBundle", function).invoke(profile, action);
         }
         return bundle;
@@ -181,16 +169,15 @@ final class OneUi9FoldProfiles {
     }
 
     synchronized Object migrate(Object mediator, String id, Object original) throws Exception {
-        Context context = (Context) Reflect.field(Reflect.field(mediator, "o"), "a");
+        FoldProfileBinding nativeApi = binding();
+        Context context = (Context) nativeApi.contextValue.invoke(nativeApi.contextProvider.get(mediator));
         if (!AOD.equals(context.getPackageName()))
             return original;
-        if (!Boolean.TRUE.equals(get(mediator, "j"))) return original;
+        if (!Boolean.TRUE.equals(nativeApi.active.invoke(mediator))) return original;
         String canonical = profileId(id);
-        Object query = type("aod.ce0").getConstructor(int.class, long.class)
-                .newInstance(4, Long.parseLong(canonical));
-        Object mapping = type("aod.pe4").getMethod("v", type("aod.u86"), boolean.class,
-                        boolean.class, type("kotlin.jvm.functions.Function1"))
-                .invoke(null, Reflect.field(get(mediator, "h"), "o"), true, false, query);
+        Object query = nativeApi.query.newInstance(4, Long.parseLong(canonical));
+        Object mapping = nativeApi.queryMapping.invoke(null,
+                nativeApi.database.get(nativeApi.getDao.invoke(mediator)), true, false, query);
         if (mapping == null) { ready.remove(canonical); return original; }
         String rowId = String.valueOf(get(mapping, "getId"));
         if (rowId.equals(ready.get(canonical))) return original;
@@ -207,7 +194,7 @@ final class OneUi9FoldProfiles {
             catch (java.io.FileNotFoundException missing) { status = new JSONObject(); }
             raw.set(true);
             try {
-                Object current = Reflect.call(mediator, "f", id);
+                Object current = nativeApi.load.invoke(mediator, id);
                 String before = fingerprint(current);
                 int recovery = recovery(status, before);
                 if (recovery == 2) {
@@ -224,12 +211,12 @@ final class OneUi9FoldProfiles {
                 }
                 if (recovery < 0)
                     throw new IllegalStateException("Native profile changed during interrupted migration");
-                Object seeded = seed(current, get(mediator, "e"));
+                Object seeded = seed(current, nativeApi.getPolicy.invoke(mediator));
                 String after = fingerprint(seeded);
                 status.put("before", before).put("after", after).put("ready", false);
                 journal(file, status);
-                Reflect.call(mediator, "l", id, seeded);
-                Object saved = Reflect.call(mediator, "f", id);
+                nativeApi.save.invoke(mediator, id, seeded);
+                Object saved = nativeApi.load.invoke(mediator, id);
                 if (!after.equals(fingerprint(saved)))
                     throw new IllegalStateException("Native screen seed was not persisted");
                 status.put("ready", true);
@@ -262,11 +249,10 @@ final class OneUi9FoldProfiles {
         try {
             validate(loader);
             OneUi9FoldProfiles adapter = new OneUi9FoldProfiles(loader);
-            Class<?> mediator = adapter.type("com.samsung.android.app.aodservice.datamanager.data.item.a");
-            Method load = NativeContract.method(mediator, "f", adapter.type(ENTITY + "LockProfileBundle"), String.class);
-            Method read = NativeContract.method(adapter.type("aod.dl5"), "c", Object.class,
-                    adapter.type(ENTITY + "LockProfileV3"), adapter.type("aod.lp3"));
-            Method delete = NativeContract.method(adapter.type("aod.v01"), "e", void.class, ArrayList.class);
+            FoldProfileBinding nativeApi = adapter.binding();
+            Method load = nativeApi.load;
+            Method read = nativeApi.read;
+            Method delete = nativeApi.delete;
             try (HookTransaction hooks = new HookTransaction()) {
                 Class<?> nativeProfile = adapter.type(ENTITY + "LockProfileV3");
                 for (String getter : new String[] {"getEnabledWidgetsIdList", "getWidgetAlignType"}) {
@@ -297,15 +283,14 @@ final class OneUi9FoldProfiles {
                     Object value = screenValue(profile, chain.getArg(1));
                     return value == null ? chain.proceed() : value;
                 })::unhook);
-                Method global = adapter.type("com.samsung.android.app.aodservice.common.data.AODDataManager")
-                        .getDeclaredMethod("r", String.class);
+                Method global = nativeApi.global;
                 hooks.add(module.hook(global).setId("dressroom-advanced.fold-preserve-native-item").intercept(chain -> {
                     // Legacy global selection must not overwrite a display-scoped SDK item.
                     return adapter.confirmed("0") ? null : chain.proceed();
                 })::unhook);
                 module.deoptimize(global);
                 hooks.add(module.hook(delete).setId("dressroom-advanced.preserve-sibling-widget-ids").intercept(chain -> {
-                    Context context = (Context) Reflect.field(chain.getThisObject(), "c");
+                    Context context = (Context) nativeApi.deleteContext.get(chain.getThisObject());
                     return chain.proceed(new Object[] {deletions(context, (ArrayList<?>) chain.getArg(0))});
                 })::unhook);
                 module.deoptimize(load);
@@ -314,7 +299,7 @@ final class OneUi9FoldProfiles {
                 Class<?> profile = adapter.type(ENTITY + "LockProfileV3");
                 module.deoptimize(profile.getDeclaredMethod("getEnabledWidgetsIdList"));
                 module.deoptimize(profile.getDeclaredMethod("getWidgetAlignType"));
-                module.deoptimize(profile.getDeclaredMethod("get", adapter.type("aod.lp3")));
+                module.deoptimize(profile.getDeclaredMethod("get", nativeApi.property));
                 hooks.commit();
             }
             installed.add(loader);
