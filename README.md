@@ -23,10 +23,10 @@ Imported fonts use their own variable axes. Samsung's dynamic per-digit stretchi
 | One UI | Apps | Status |
 | --- | --- | --- |
 | 9.0 | AOD + Dressroom | Tested on SM-S948B |
+| 9.0 | Clock Style + Dressroom | Supported |
 | 9.0, foldable | AOD + Dressroom | Experimental; tested on SM-F971B, cover and inner screens |
 | 8.5 | Clock Style + Dressroom | Tested on SM-P613 with a custom ROM |
 | 8.5 | AOD + Dressroom | Experimental; widget issues remain on some app versions |
-| 9.0 | Clock Style + Dressroom | Unsupported |
 | 8.0 | Any combination | Unsupported |
 | 7.0 | Any combination | Unsupported |
 
