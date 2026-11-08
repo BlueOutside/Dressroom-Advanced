@@ -9,7 +9,7 @@ An LSPosed (API 102) module that adds clock, widget and Now Bar controls to Sams
 - Clock size, position, manual stretching, shadows and blur.
 - Import TTF, OTF and TTC fonts. Adjust the axes the font provides, including weight, width, optical size, italic and custom axes.
 - Hide the date while keeping weather visible.
-- Wallpaper depth with Samsung Object Capture, automatic subject detection and crop/zoom tracking.
+- Wallpaper depth with Samsung Object Capture, automatic subject detection and crop/zoom tracking.*
 - Widget scaling, custom grids, free placement and independent depth controls.
 - Separate portrait and landscape layouts on supported large screens.
 - Independent clock, widget and Extras settings for cover and inner screens on supported One UI 9 foldables.
@@ -35,6 +35,8 @@ Requires Android 16 or 17 and an LSPosed-compatible framework with API 102 suppo
 The One UI 9 foldable port has been tested with Dressroom 3.0.01.20 and AOD 8.9.57.1 on SM-F971B. Clock saving, depth and separate widget selections work on the tested cover and inner screens. Other foldable models and some media and animation cases still need testing. Z Flip cover screens are not supported.
 
 See [foldable support](docs/compatibility/ONE_UI_9_FOLDABLES.md) and [device validation](docs/compatibility/FOLDABLE_PARITY.md) for details.
+
+*Depth is NOT supported on A1X A2X A3X series and equivalent M & F series phones (lacking libraries or libraries not good enough for depth capture, a custom rom from a higher end phone may work)
 
 ## Setup
 
