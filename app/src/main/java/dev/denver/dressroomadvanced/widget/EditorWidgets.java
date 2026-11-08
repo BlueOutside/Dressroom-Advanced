@@ -20,7 +20,7 @@ final class EditorWidgets {
     private Bundle draft, clock;
     private String scene;
     private boolean dirty;
-    private int depthLayouts = -1, sharedDepth;
+    private final WidgetDepthPolicies depthPolicies = new WidgetDepthPolicies();
     private final java.util.Map<String, Bundle> layoutDrafts = new java.util.HashMap<>();
     private final java.util.Set<String> dirtyLayouts = new java.util.HashSet<>();
     private final ThreadLocal<Boolean> nativePreview = ThreadLocal.withInitial(() -> false);
@@ -35,12 +35,24 @@ final class EditorWidgets {
     private WidgetEditorBinding legacyBinding;
     private boolean legacyScaleReady, legacyGridReady, legacyLayoutReady;
     private OneUi85WidgetLayout legacyLayout;
+    private final WidgetRotationGuide rotationGuide;
+    private Boolean nativeRotationCapability;
 
     boolean customGridAvailable() {
         return !legacy() || legacyGridReady;
     }
 
+    private static Object optionalDeviceRole(Object device, String role)
+            throws ReflectiveOperationException {
+        try {
+            return Reflect.call(device, role);
+        } catch (NoSuchMethodException unavailable) {
+            return Boolean.FALSE;
+        }
+    }
+
     boolean nativeRotationAvailable() {
+        if (nativeRotationCapability != null) return nativeRotationCapability;
         Context context = host.get();
         return context != null
                 && context.getResources().getConfiguration().smallestScreenWidthDp >= 600;
@@ -52,6 +64,7 @@ final class EditorWidgets {
 
     EditorWidgets(DressroomModule module) {
         this.module = module;
+        rotationGuide = new WidgetRotationGuide(() -> !nativeRotationAvailable());
     }
 
     boolean legacy() {
@@ -89,19 +102,19 @@ final class EditorWidgets {
         return module.depthImageAvailable();
     }
 
-    void clearDepth() {
-        for (Bundle value : layoutDrafts.values()) {
+    void clearDepth(int screen) {
+        java.util.function.Consumer<Bundle> clear = value -> {
             DepthSafety.clearMask(value);
             if (value.getInt("depth") == 1) value.putInt("depth", 2);
+        };
+        EditorDepthSources.forScreen(layoutDrafts.values(), screen, clear);
+        if (draft != null && ScreenIdentity.value(draft) == screen) clear.accept(draft);
+        depthPolicies.clearDepth(screen);
+        if (draft != null && ScreenIdentity.value(draft) == screen) {
+            clock = null;
+            applyPolicy();
+            applyEffects();
         }
-        if (draft != null) {
-            DepthSafety.clearMask(draft);
-            if (draft.getInt("depth") == 1) draft.putInt("depth", 2);
-        }
-        if (sharedDepth == 1) sharedDepth = 2;
-        clock = null;
-        applyPolicy();
-        applyEffects();
     }
 
     String rowTag(EditorBinding.Row row) {
@@ -109,6 +122,8 @@ final class EditorWidgets {
     }
 
     void reset() {
+        rotationGuide.clear();
+        nativeRotationCapability = null;
         cancelScalePreview();
         previewLayoutWatch.clear();
         owner.clear();
@@ -119,8 +134,7 @@ final class EditorWidgets {
         dirty = false;
         layoutDrafts.clear();
         dirtyLayouts.clear();
-        depthLayouts = -1;
-        sharedDepth = 0;
+        depthPolicies.clear();
         dragStart = null;
         dragging = false;
         legacyScaleReady = false;
@@ -142,8 +156,7 @@ final class EditorWidgets {
                 || !current.equals(scene)
                 || draft.getInt(LayoutOrientation.FIELD) != orientation
                 || ScreenIdentity.value(draft) != screen) {
-            if (!current.equals(scene) || draft == null || ScreenIdentity.value(draft) != screen)
-                depthLayouts = -1;
+            if (!current.equals(scene)) depthPolicies.clear();
             String key = current + ":" + orientation + ":" + screen;
             Bundle previous = layoutDrafts.get(key);
             draft =
@@ -157,7 +170,7 @@ final class EditorWidgets {
             }
             dirty = dirtyLayouts.contains(key);
             clock = null;
-            if (depthLayouts < 0) adoptDepthPolicy(draft);
+            if (!depthPolicies.contains(screen)) adoptDepthPolicy(draft);
             overlayDepthPolicy(draft);
             applyPolicy();
         }
@@ -196,19 +209,17 @@ final class EditorWidgets {
     }
 
     private void adoptDepthPolicy(Bundle value) {
-        depthLayouts = value.getInt("depthLayouts");
-        sharedDepth = value.getInt("depth");
+        depthPolicies.adopt(value);
     }
 
     private void overlayDepthPolicy(Bundle value) {
-        if (depthLayouts < 0 || (draft != null && ScreenIdentity.value(value) != ScreenIdentity.value(draft))) return;
-        value.putInt("depthLayouts", depthLayouts);
-        if (depthLayouts != 0) value.putInt("depth", sharedDepth);
+        depthPolicies.overlay(value);
     }
 
     Bundle freeze() {
         cancelScalePreview();
         if (draft == null) return null;
+        DepthEffects.requireSaveReady(draft);
         try {
             if (dirty && owner.get() != null) {
                 if ((Boolean) Reflect.call(data(), "getWidgetAlignChanging"))
@@ -221,6 +232,7 @@ final class EditorWidgets {
             throw new IllegalStateException("Could not finalize Samsung widget positions", e);
         }
         Bundle b = DepthEffects.freezeMask(WidgetPreferences.clean(draft));
+        DepthEffects.requireSaveReady(b);
         b.putString("scene", module.scene());
         layoutDrafts.put(scene + ":" + ScreenIdentity.draft(b), b);
         java.util.ArrayList<Bundle> layouts = new java.util.ArrayList<>();
@@ -478,6 +490,8 @@ final class EditorWidgets {
         if (item == null || draft == null) return;
         try {
             if (legacy()) {
+                if (Reflect.field(item, "N") instanceof View root)
+                    rotationGuide.update(root.getRootView());
                 if (depthAvailable() && Reflect.field(item, "N") instanceof View root) {
                     DepthEffects.applyEditorWidgets(
                             root,
@@ -804,6 +818,14 @@ final class EditorWidgets {
                                                         try {
                                                             module.widgetEngine.refreshChecked(
                                                                     grid());
+                                                            if (legacyGridReady
+                                                                    && draft != null
+                                                                    && draft.getBoolean("layout")
+                                                                    && module.widgetEngine
+                                                                            .repairPositions(
+                                                                                    grid()))
+                                                                legacyBinding.finalizeList(
+                                                                        owner.get());
                                                             recalculate();
                                                             applyEffects();
                                                         } catch (Exception error) {
@@ -823,6 +845,21 @@ final class EditorWidgets {
                             .setId("dressroom-advanced.85-widget-metrics")
                             .intercept(
                                     chain -> {
+                                        if (Boolean.TRUE.equals(
+                                                Reflect.call(chain.getArg(10), "isLockScreen"))) {
+                                            Object device = chain.getArg(8);
+                                            nativeRotationCapability =
+                                                    Boolean.TRUE.equals(
+                                                                    Reflect.call(
+                                                                            device, "isTablet"))
+                                                            || Boolean.TRUE.equals(
+                                                                    Reflect.call(
+                                                                            device, "isFoldMain"))
+                                                            || Boolean.TRUE.equals(
+                                                                    optionalDeviceRole(
+                                                                            device,
+                                                                            "isMultiFoldMain"));
+                                        }
                                         Object result = chain.proceed();
                                         if (owner.get() != null
                                                 && draft != null
@@ -852,7 +889,8 @@ final class EditorWidgets {
                                         Object result = chain.proceed();
                                         if (owner.get() == null
                                                 || draft == null
-                                                || draft.getInt("anchor") == 0
+                                                || (!(legacyGridReady && draft.getBoolean("layout"))
+                                                        && draft.getInt("anchor") == 0)
                                                 || !Boolean.TRUE.equals(
                                                         Reflect.call(
                                                                 chain.getArg(3), "isLockScreen")))
@@ -917,6 +955,38 @@ final class EditorWidgets {
     private void installLegacyLayout(ClassLoader loader, Class<?> preview, HookTransaction hooks)
             throws ReflectiveOperationException {
         legacyLayout = new OneUi85WidgetLayout(loader, preview);
+        var dimensions =
+                module.hook(legacyLayout.gridMetrics)
+                        .setId("dressroom-advanced.85-grid-dimensions")
+                        .intercept(
+                                chain -> {
+                                    Object result = chain.proceed();
+                                    if (legacyGridReady
+                                            && owner.get() != null
+                                            && draft != null
+                                            && draft.getBoolean("layout")
+                                            && chain.getArg(0)
+                                                    == Reflect.call(data(), "getWidgetGridData")) {
+                                        boolean vertical =
+                                                Boolean.TRUE.equals(
+                                                        Reflect.call(
+                                                                chain.getArg(1), "isVertical"));
+                                        int[] size =
+                                                WidgetLayout.dimensions(
+                                                        draft.getInt("columns"),
+                                                        draft.getInt("rows"),
+                                                        draft.getBoolean("vertical"),
+                                                        vertical);
+                                        // The provider already reports oriented dimensions. Native
+                                        // 8.5 transposes
+                                        // them again when editable rotation is enabled.
+                                        Reflect.call(chain.getArg(0), "setCol", size[0]);
+                                        Reflect.call(chain.getArg(0), "setRow", size[1]);
+                                    }
+                                    return result;
+                                });
+        hooks.add(dimensions::unhook);
+        module.deoptimize(legacyLayout.gridMetrics);
         var restored =
                 module.hook(legacyLayout.restore)
                         .setId("dressroom-advanced.85-grid-restore")
@@ -1050,8 +1120,28 @@ final class EditorWidgets {
         Rect clockRect = (Rect) Reflect.call(assist, "getClockPositionRect");
         float width = ((Number) Reflect.call(model, "getWidth")).floatValue();
         float height = ((Number) Reflect.call(model, "getHeight")).floatValue();
+        if (legacyGridReady && draft.getBoolean("layout")) {
+            Object size = Reflect.call(model, "getWidgetSizeData");
+            width = ((Number) Reflect.call(size, "getContainerWidth")).floatValue();
+            height = ((Number) Reflect.call(size, "getContainerHeight")).floatValue();
+            Reflect.call(model, "setWidth", Math.round(width));
+            Reflect.call(model, "setHeight", Math.round(height));
+        }
         float sw = ((Number) Reflect.call(screen, "getWidth")).floatValue();
         float sh = ((Number) Reflect.call(screen, "getHeight")).floatValue();
+        if (draft.getInt("anchor") == 0) {
+            int x = ((Number) Reflect.call(model, "getX")).intValue();
+            int y = ((Number) Reflect.call(model, "getY")).intValue();
+            x = Math.max(0, Math.min(Math.max(0, Math.round(sw - width)), x));
+            y = Math.max(0, Math.min(Math.max(0, Math.round(sh - height)), y));
+            Reflect.call(model, "setX", x);
+            Reflect.call(model, "setY", y);
+            Reflect.call(
+                    model,
+                    "setWidgetPositionRect",
+                    new Rect(x, y, x + Math.round(width), y + Math.round(height)));
+            return;
+        }
         Context context = host.get();
         if (context == null) return;
         float density =

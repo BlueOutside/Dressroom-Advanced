@@ -123,6 +123,39 @@ public final class DepthSafetyProbe {
         check(
                 restored.getString("depthImageKey").equals("identity"),
                 "Source identity lost in persistence");
+        Bundle pending = new Bundle();
+        pending.putBoolean("depthEnabled", true);
+        pending.putByteArray("depthMask", new byte[] {1});
+        DepthEffects.pendingSource(true);
+        try {
+            DepthEffects.requireSaveReady(pending);
+            throw new AssertionError("Pending detection was accepted for Apply");
+        } catch (IllegalStateException expected) {
+            check(
+                    pending.getBoolean("depthEnabled") && pending.getByteArray("depthMask") != null,
+                    "Rejected Apply changed the draft");
+        }
+        DepthEffects.pendingSource(false);
+        DepthEffects.requireSaveReady(pending);
+        check(pending.getBoolean("depthEnabled"), "Ready depth was rejected");
+        pending.remove("depthMask");
+        try {
+            DepthEffects.requireSaveReady(pending);
+            throw new AssertionError("Enabled depth without a mask was accepted");
+        } catch (IllegalStateException expected) {
+            check(pending.getBoolean("depthEnabled"), "Missing mask silently disabled depth");
+        }
+        pending.putBoolean("depthEnabled", false);
+        pending.putInt("depth", 1);
+        try {
+            DepthEffects.requireSaveReady(pending);
+            throw new AssertionError("Explicit widget depth without a mask was accepted");
+        } catch (IllegalStateException expected) {
+            check(pending.getInt("depth") == 1, "Missing mask changed widget policy");
+        }
+        pending.putInt("depth", 2);
+        DepthEffects.requireSaveReady(pending);
+        check(pending.getInt("depth") == 2, "Disabled depth blocked unrelated widget edits");
         Bitmap mask = Bitmap.createBitmap(8, 8, Bitmap.Config.ARGB_8888);
         mask.eraseColor(-1);
         byte[] png = MaskAlpha.encode(mask);

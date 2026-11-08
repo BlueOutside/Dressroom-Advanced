@@ -149,3 +149,53 @@ the helper's ClockView bind signature selects the ABI. Weather support can
 still be queried through its native manager wrapper. Widget preview fields
 resolve by role and type. The optional rotation guide is never found by an
 unconstrained no-argument scan, which also matches unrelated editor bindings.
+
+### Apply and unlock clipping
+
+Apply rejects an enabled depth profile while its subject is pending or missing. The draft stays in the editor for retry instead of saving an empty matte. Clock, widget and Extras commits report failures separately, so a clock upload failure cannot silently skip the grid commit. Widget profiles are stamped with the saved wallpaper source just like clock profiles.
+
+Depth's temporary canvas layer uses the incoming clip rather than the view's measured rectangle. Samsung can keep a one-row widget host while children extend into a custom grid during unlock; constraining that layer to the host cuts off the lower rows, even though their separate blur backgrounds remain visible.
+
+A temporary source-read error suspends the editor matte without resetting profile choices. The runtime widget draw watcher invalidates cached content only when the host geometry or subject changes, so unlock translations cannot carry a stationary wallpaper cut along with the moving widgets. It does not install a content outline or rebuild the native blur on every frame.
+
+### Shared detector lifetime and final wallpaper completion
+
+ArcSoft and SRIB keep a static initialized flag and class lock, despite exposing multiple detector instances. The module registers successful init calls as live owners and only runs native release after the last owner leaves. Capture rechecks init while holding that same SDK lock. This also repairs native callers initialized before the hooks loaded. No JNI success is fabricated.
+
+On the 9.0 reference editor, the clock component can finish at 3/4 while wallpaper saving is still pending. Module settings now commit at the mediator's final component completion, when the new wallpaper ID is available. Apply readiness is checked before starting the component batch; a failed preparation must not drop a component callback and strand the save spinner. The final-completion binding is discovered from DEX method bodies, not obfuscated identifiers. It matches the save-start/validation and component-count/final-completion string pairs, then resolves the fields read before the final-completion branch by type and declaring role. Start and completion must share the same component list. Missing or ambiguous matches abort editor hook installation; there is no name-based or early-component fallback.
+
+Both the 8.5 and 9.0 save pipelines hook only the discovered batch entry and final completion. It no longer depends on the clock component's request name, synthetic callback class, discriminator or callback field names. The SDK lifecycle hooks use Samsung's public SDK class/method names and its named static lock, which are separate from obfuscated editor symbols.
+
+On 8.5, validation is a separate helper and the final callback uses synthetic accessors for private mediator fields. The resolver follows those exact typed calls; it does not depend on their names. Read-only binding checks cover Dressroom 2.9.60.42, 2.9.60.50 and the 9.0 reference editor.
+
+The DEX reader runs once during binding and keeps only matched method/field metadata. It handles instruction widths and switch/array payloads rather than searching arbitrary bytes for string IDs. Local checks resolve the reference APK and a D8-built fixture with different class, method and field names; the fixture also checks 3/4 versus final completion, editor identity and ambiguous matches. `tests/integration/SaveSignatureProbe.java` checks the installed editor contract without changing its settings.
+
+### 8.5 custom grid and rotation
+
+The editor's native grid-size use case receives an already-oriented provider size, then transposes it again for editable vertical layouts. The 8.5 port now resolves that use case by its exact WidgetGridData/WidgetAlignType/boolean/boolean contract, restricted to the main widget repository. It reapplies the selected grid dimensions to the active model before cell metrics run. The new binding has no obfuscated-name hint.
+
+Native 8.5 position-rectangle updates can also swap the model width and height. Custom grids now take their physical bounds from WidgetSizeData after that update, matching the 9.0 correction. Existing valid native widget coordinates are retained. Saved overlaps, unplaced cells or out-of-bounds coordinates request Samsung's native reflow.
+
+Runtime refresh compares custom-grid enablement, columns, rows, orientation and scale instead of scale alone. Legacy AOD/Clock Style custom layouts use the saved orientation even when a phone's native capability gate reports Default. Stock layouts keep Samsung's normal refresh path.
+
+Phone rotation guides are identified by the public assist-guide resource IDs and their shared parent structure. The guide is hidden on layout updates, without disabling rotation eligibility or changing the widget picker. Tablet and fold-main roles come from Samsung's DeviceType; these keep their native control. The guide observer is removed on editor reset. A read-only probe checks both affected Dressroom 2.9.60.42 and the tablet's editor bindings and guide restoration; full AOD-combination rendering still requires an affected-device test.
+
+At 100% scale, 8.5 custom grids also refresh each widget host viewport and its rounded background after restoring the grid. The previous neutral-scale shortcut could retain the stock host size. This forced refresh is restricted to legacy providers with a custom layout; 9.0 and stock layouts keep their existing behavior.
+
+### Startup signatures on older 8.5 builds
+
+Dressroom 2.9.50.90 has both a preview helper and an editor controller with the same create/open method shapes. Controller discovery also requires the weak Activity reference. When the weather use-case class moves, its native EnableWeatherInfoUseCase tag and boolean method identify it instead of a process-wide boolean-setter scan.
+
+AOD 8.9.28.18 has multiple unrelated List-to-List utilities and two blur-clip helpers. Unknown legacy height bindings follow the call from AbsClockView.isStretchable(List); the blur fallback follows the native strategy's render method. These call-site checks run during binding, not rendering, and add no obfuscated-name aliases. Known provider bindings retain their existing paths.
+
+The supplied startup log was searched only for module failures and their adjacent stack traces. A read-only startup probe covers the supplied editor/provider pair; binding success does not replace an on-device visual test of every feature.
+
+On AOD 8.9.36.23, the native grid controller can leave widgetAlignType null until an explicit alignment is supplied. The 8.5 runtime restore previously called getClass() on that value and aborted before grid refresh, widget depth policy and placement. Saved custom alignment is now resolved from the checked public WidgetAlignType declaration and applied through Samsung's changeAlignType method. Stock layouts and the 9.0 runtime path are unchanged. The affected-device LSPosed export confirms the null dereference; the visual result still needs verification there.
+
+### Dependency and call-site signatures
+
+Widget toolbar discovery verifies the native menu-item array and Activity/View constructor. Its renderer must read the array and rebuild native child views. Metrics/position discovery checks full argument lists and excludes sublauncher. The obsolete rotation-host check was unused and is removed; OneUi85WidgetLayout still validates the real rotation use case.
+
+The older 8.5 size-spec getter is only used for legacy providers. The 9.0 static sizing fallback is unchanged. Media deoptimization follows actual callers of setMediaExpanded rather than selecting a generic observer. Artwork discovery includes its constructor. Unknown stack key builders must read all three native identity components; count callbacks require their zero-argument result operation. DEX scans happen during binding, never in a draw hook.
+
+The supplied older pair and three reference combinations are recorded in [the compatibility matrix](Dressroom-2.9.50.90-AOD-8.9.28.18.md). The remaining older-editor rotation failure is an absent API and stays unavailable rather than guessing a replacement.

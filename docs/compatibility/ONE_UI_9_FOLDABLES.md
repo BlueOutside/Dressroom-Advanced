@@ -106,3 +106,38 @@ callback. The user then confirmed Advanced opens on cover and inner screens,
 widget selections remain separate and the reapplied cover clock stretch/depth
 change survives on the lockscreen. Other devices and every media/fold-animation
 timing remain unverified.
+
+## Review fixes: 1.0.15
+
+Merged upstream 30fda90, retaining its DEX-discovered final wallpaper-save
+completion hooks, Apply readiness checks, detector lifetime handling and newer
+provider compatibility. The foldable batch now stamps each clock/widget
+profile from its own screen's source state. Unknown or temporarily unreadable
+sources retain the frozen identity instead of taking the active screen's key.
+
+Source-known/image/reset/revision state is independent per screen. A confirmed
+replacement invalidates only that screen's clock and widget drafts, including
+depth-owned stretch; a sibling's masks and settings remain available for Apply.
+The latest shared widget depth policy is also cached per screen and normalized
+across all frozen orientations before committing, even after folding away.
+Cover-first upgrades seed policies under the legacy wallpaper identity before
+importing its alias, retaining unsuffixed rollback data and explicit zero scope
+choices. Fold listener subscription failures leave registration retryable; the
+next read samples current posture and subscribes again.
+
+ScreenDepthIsolationProbe covers distinct inner/cover images, replacements,
+retained sibling stretch and masks, mixed-screen Apply identity, unavailable
+sources, newer orientation policies and direct widget draft invalidation.
+FoldStateMonitorTest covers registration failure/retry, event delivery without
+duplicate subscriptions and a synchronous callback during registration.
+ScreenProfileProbe additionally checks cover-first unsuffixed policy migration
+and a subsequent separate-per-orientation commit. The installed-APK integration
+probe now resolves EditorSaveCompletion too, verifying that final-save hooks
+are available on the inspected editor instead of reverting to an early callback.
+
+Validation: Java/D8 build, 311 JVM checks, 624 configured Android checks and
+34 synthetic native-profile checks passed. The installed-APK probe resolves
+the final-save contract and the editor/provider bindings. VersionCode 1015
+was installed in place and scoped processes reloaded with app data retained.
+The new cross-screen invalidation behavior is regression-tested; live visual
+confirmation of this build is still pending.

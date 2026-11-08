@@ -131,6 +131,24 @@ public final class ScreenProfileProbe {
     }
 
     private static void policyMigration() throws Exception {
+        Map<String, Object> unsuffixed = new HashMap<>();
+        SharedPreferences upgrade = prefs(unsuffixed);
+        Bundle firstCover = new Bundle();
+        firstCover.putInt(ScreenIdentity.FIELD, ScreenIdentity.SUB);
+        firstCover.putInt(LayoutOrientation.FIELD, 1);
+        firstCover.putInt("wallpaperId", 120);
+        firstCover.putInt("legacyWallpaperId", 110);
+        unsuffixed.put("wallpaper_110_main_portrait", "{}");
+        unsuffixed.put("wallpaper_110_main_depth_policy", "{\"depth\":1,\"depthLayouts\":3}");
+        Bundle first = WidgetPreferences.store(upgrade, "readWidgets", firstCover, () -> {});
+        equal(3, first.getInt("depthLayouts"), "Cover-first upgrade dropped unsuffixed legacy policy");
+        equal(1, first.getInt("depth"), "Cover-first upgrade dropped shared depth mode");
+        equal(true, unsuffixed.containsKey("wallpaper_110_main_depth_policy"), "Upgrade deleted rollback policy");
+        equal(true, unsuffixed.containsKey("wallpaper_110_main_fold_main_depth_policy"), "Upgrade did not seed inner policy");
+        first.putInt("depthLayouts", 0); first.putInt("wallpaperId", 120);
+        WidgetPreferences.store(upgrade, "commitWidgets", first, () -> {});
+        equal(0, WidgetPreferences.store(upgrade, "readWidgets", firstCover, () -> {}).getInt("depthLayouts"),
+                "Legacy fallback undid an explicit separate-orientation commit");
         Map<String, Object> policyData = new HashMap<>();
         SharedPreferences policies = prefs(policyData);
         Bundle cover = new Bundle();

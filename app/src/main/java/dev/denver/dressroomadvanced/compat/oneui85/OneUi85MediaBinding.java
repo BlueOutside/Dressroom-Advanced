@@ -19,26 +19,26 @@ final class OneUi85MediaBinding {
         if (!clock.legacy) throw new NoSuchMethodException("Expected 8.5 media binding");
         ClassLoader loader = base.getClassLoader();
         expanded = NativeContract.method(base, "setMediaExpanded", void.class, boolean.class);
-        NativeContract.field(base, "W0", boolean.class);
         page =
                 Class.forName(
                         "com.samsung.android.app.facewidget.pages.clock.FaceWidgetClockPage",
                         false,
                         loader);
         returnAnimation =
-                NativeContract.findField(
-                        page, clock.clockStyle ? "K0" : "L0", ValueAnimator.class);
-        Class<?> observer =
-                NativeContract.findClass(
-                        loader,
-                        type -> NativeContract.hasMethod(type, void.class, Object.class),
-                        clock.clockStyle ? "aod.WJ" : "aod.ZQ",
-                        clock.clockStyle ? "aod.ZQ" : "aod.WJ");
-        callers =
-                List.of(
-                        NativeContract.findMethod(observer, "onChanged", void.class, Object.class),
-                        NativeContract.findMethod(page, "d", View.class, (Class<?>) null),
-                        NativeContract.findMethod(page, "g", void.class, View.class));
+                NativeContract.findField(page, clock.clockStyle ? "K0" : "L0", ValueAnimator.class);
+        // These are deoptimized, never hooked or invoked. Follow actual callers of
+        // the public setter instead of selecting one of many Object observers.
+        var resolved = new java.util.LinkedHashSet<Method>();
+        try {
+            for (DexSignatures.Body body : DexSignatures.callers(expanded))
+                resolved.add(body.method(loader));
+        } catch (java.io.IOException invalidDex) {
+            throw new ReflectiveOperationException(
+                    "Could not read media expansion callers", invalidDex);
+        }
+        if (resolved.isEmpty())
+            throw new NoSuchMethodException("Native media expansion callers missing");
+        callers = List.copyOf(resolved);
     }
 
     Animator animation(View clock) {

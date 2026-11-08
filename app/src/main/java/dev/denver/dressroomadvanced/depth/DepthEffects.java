@@ -92,8 +92,9 @@ final class DepthEffects {
                                     || drawingClock.get()
                                     || mediaSuspended(view)) return chain.proceed();
                             Canvas canvas = (Canvas) chain.getArg(0);
-                            int save =
-                                    canvas.saveLayer(0, 0, view.getWidth(), view.getHeight(), null);
+                            // Grid children can extend beyond the native one-row host during
+                            // unlock. Keep the incoming canvas clip, not the host's old bounds.
+                            int save = canvas.saveLayer(null, null);
                             boolean previous = drawingClock.get();
                             drawingClock.set(true);
                             try {
@@ -119,8 +120,7 @@ final class DepthEffects {
                                     || drawingClock.get()
                                     || mediaSuspended(view)) return chain.proceed();
                             Canvas canvas = (Canvas) chain.getArg(0);
-                            int save =
-                                    canvas.saveLayer(0, 0, view.getWidth(), view.getHeight(), null);
+                            int save = canvas.saveLayer(null, null);
                             boolean previous = drawingClock.get();
                             drawingClock.set(true);
                             try {
@@ -149,8 +149,7 @@ final class DepthEffects {
                                     || drawingClock.get()
                                     || mediaSuspended(view)) return chain.proceed();
                             Canvas canvas = (Canvas) chain.getArg(0);
-                            int save =
-                                    canvas.saveLayer(0, 0, view.getWidth(), view.getHeight(), null);
+                            int save = canvas.saveLayer(null, null);
                             try {
                                 Object result = chain.proceed();
                                 drawMask(canvas, view, entry);
@@ -565,6 +564,7 @@ final class DepthEffects {
             WidgetContentClip.apply(widgets, false);
             WidgetDepthBlur.watch(widgets, false);
         }
+        WidgetDepthDraw.watch(widgets, entry != null && enabled);
     }
 
     static void applyDigits(View clock, boolean enabled, byte[] png) {
@@ -1035,6 +1035,22 @@ final class DepthEffects {
                     largest = found;
             }
         return largest;
+    }
+
+    static void requireSaveReady(Bundle profile) {
+        if (profile == null
+                || (!profile.getBoolean("depthEnabled") && profile.getInt("depth") != 1)) return;
+        byte[] mask = profile.getByteArray("depthMask");
+        boolean missing =
+                (mask == null || mask.length == 0)
+                        && profile.getString("depthMaskRef", "").isEmpty();
+        boolean stale =
+                activeSubject != null
+                        && activeSubject.matches(mask)
+                        && activeSubject.global() == null;
+        if (sourcePending || missing || stale)
+            throw new IllegalStateException(
+                    "Depth is not ready. Wait for subject detection, then tap Apply again.");
     }
 
     static android.os.Bundle freezeMask(android.os.Bundle draft) {

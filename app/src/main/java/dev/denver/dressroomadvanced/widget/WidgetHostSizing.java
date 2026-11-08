@@ -80,7 +80,12 @@ final class WidgetHostSizing {
         try {
             NativeContract.method(manager, "calculateWidgetSizeSpec", spec, int.class, int.class);
         } catch (NoSuchMethodException reference) {
-            OneUi9AodBlur.widgetSizing(loader, spec);
+            try {
+                if (!legacyProvider(loader)) throw reference;
+                NativeContract.method(manager, "getWidgetSizeSpec", spec, int.class, int.class);
+            } catch (NoSuchMethodException oldestMissing) {
+                OneUi9AodBlur.widgetSizing(loader, spec);
+            }
         }
         Class<?> type = Class.forName(CONTAINER, false, loader);
         NativeContract.field(
@@ -116,7 +121,20 @@ final class WidgetHostSizing {
 
     static void refresh(AppWidgetHostView host, int columns, int rows, Object manager, float zoom)
             throws ReflectiveOperationException {
-        if (zoom == 1 && !appliedZoom.containsKey(host)) return;
+        refresh(host, columns, rows, manager, zoom, false);
+    }
+
+    static void refresh(
+            AppWidgetHostView host,
+            int columns,
+            int rows,
+            Object manager,
+            float zoom,
+            boolean force)
+            throws ReflectiveOperationException {
+        // A saved custom grid can arrive after 8.5 created the host with stock metrics.
+        // Its viewport must be refreshed even when the user's zoom is exactly 100%.
+        if (!force && zoom == 1 && !appliedZoom.containsKey(host)) return;
         float scaled = ((Number) Reflect.field(manager, "_scaleFactor")).floatValue();
         Object spec;
         try {
@@ -124,23 +142,33 @@ final class WidgetHostSizing {
             try {
                 spec = Reflect.call(manager, "calculateWidgetSizeSpec", columns, rows);
             } catch (NoSuchMethodException reference) {
-                ClassLoader loader = manager.getClass().getClassLoader();
-                Class<?> specType =
-                        Class.forName(
-                                "com.samsung.android.app.facewidget.complication.WidgetSizeSpec",
-                                false,
-                                loader);
-                var method = OneUi9AodBlur.widgetSizing(loader, specType);
-                method.setAccessible(true);
-                spec =
-                        method.invoke(
-                                null,
-                                host.getContext(),
-                                columns,
-                                rows,
-                                Reflect.call(manager, "unitSize", columns),
-                                Reflect.call(manager, "unitSize", rows),
-                                false);
+                try {
+                    // Older 8.5 providers calculate the viewport directly in this getter.
+                    // The modern getter is conditional, so it must retain the static fallback.
+                    if (!legacyProvider(manager.getClass().getClassLoader())) throw reference;
+                    spec = Reflect.call(manager, "getWidgetSizeSpec", columns, rows);
+                } catch (NoSuchMethodException oldestMissing) {
+                    ClassLoader loader = manager.getClass().getClassLoader();
+                    Class<?> specType =
+                            Class.forName(
+                                    "com.samsung.android.app.facewidget.complication.WidgetSizeSpec",
+                                    false,
+                                    loader);
+                    var method = OneUi9AodBlur.widgetSizing(loader, specType);
+                    method.setAccessible(true);
+                    spec =
+                            method.invoke(
+                                    null,
+                                    host.getContext(),
+                                    columns,
+                                    rows,
+                                    Reflect.call(manager, "unitSize", columns),
+                                    Reflect.call(manager, "unitSize", rows),
+                                    false);
+                }
+                if (spec == null)
+                    throw new ReflectiveOperationException(
+                            "Native widget size spec is unavailable");
             }
         } finally {
             Reflect.set(manager, "_scaleFactor", scaled);
@@ -187,6 +215,15 @@ final class WidgetHostSizing {
             if (view.getBackground() instanceof GradientDrawable shape)
                 shape.setCornerRadius(((Number) Reflect.field(container, "radius")).floatValue());
         }
+    }
+
+    private static boolean legacyProvider(ClassLoader loader) throws ClassNotFoundException {
+        return ClockBinding.of(
+                        Class.forName(
+                                "com.samsung.android.uniform.widget.clock.AbsClockView",
+                                false,
+                                loader))
+                .legacy;
     }
 
     private static boolean hasNativeResize(View host, Object spec) {

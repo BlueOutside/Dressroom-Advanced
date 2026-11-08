@@ -7,7 +7,7 @@ import java.lang.reflect.Method;
 
 final class OneUi85WidgetLayout {
     final Field rotationOwner;
-    final Method rotate, restore, editable, alignValue, picker, tablet;
+    final Method rotate, restore, editable, alignValue, picker, tablet, gridMetrics;
 
     OneUi85WidgetLayout(ClassLoader loader, Class<?> preview) throws ReflectiveOperationException {
         Class<?> align =
@@ -26,7 +26,34 @@ final class OneUi85WidgetLayout {
         if (found == null) throw new NoSuchFieldException("Widget rotation use case missing");
         found.setAccessible(true);
         rotationOwner = found;
-        rotate = NativeContract.findMethod(found.getType(), "c", boolean.class, align);
+        rotate = NativeContract.findMethod(found.getType(), null, boolean.class, align);
+        Class<?> gridData =
+                Class.forName(
+                        "com.samsung.android.lockscreen.editor.item.domain.entity.item.widget.WidgetGridData",
+                        false,
+                        loader);
+        Class<?> gridRules =
+                NativeContract.findClassInPackage(
+                        loader,
+                        WidgetEditorBinding.REPOSITORIES,
+                        type ->
+                                !type.isInterface()
+                                        && !java.lang.reflect.Modifier.isAbstract(
+                                                type.getModifiers())
+                                        && !type.getName()
+                                                .startsWith(
+                                                        WidgetEditorBinding.REPOSITORIES
+                                                                + "sublauncher.")
+                                        && NativeContract.hasMethod(
+                                                type,
+                                                void.class,
+                                                gridData,
+                                                align,
+                                                boolean.class,
+                                                boolean.class));
+        gridMetrics =
+                NativeContract.findMethod(
+                        gridRules, null, void.class, gridData, align, boolean.class, boolean.class);
         Class<?> model =
                 Class.forName(
                         "com.samsung.android.lockscreen.editor.item.domain.entity.item.widget.WidgetData",

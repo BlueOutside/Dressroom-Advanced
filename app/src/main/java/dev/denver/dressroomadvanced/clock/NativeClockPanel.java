@@ -1335,6 +1335,7 @@ final class NativeClockPanel {
     }
 
     void clearDepth(String message) {
+        if (ready && expectedScreen != ScreenIdentity.current()) return;
         releaseDepthStretch();
         depthEnabled = false;
         depthMask = null;
@@ -1353,6 +1354,8 @@ final class NativeClockPanel {
 
     void adoptDepth(android.os.Bundle settings, String message) throws Exception {
         if (!ready
+                || expectedScreen != ScreenIdentity.current()
+                || ScreenIdentity.value(settings) != expectedScreen
                 || settings.getInt("type", -1) != expectedType
                 || settings.getInt("font", -1) != expectedFont
                 || !expectedScene.equals(module.scene())) return;

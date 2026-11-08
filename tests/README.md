@@ -67,3 +67,10 @@ profile storage. The optional rotation guide is not a required capability.
 `ScreenProfileProbe` now has 35 checks, including an imported widget depth
 policy followed by an explicit per-orientation commit and reopen. The legacy
 policy remains available for rollback without overriding the new selection.
+
+Review regressions in 1.0.15: `ScreenDepthIsolationProbe` exercises per-screen
+source/reset and draft ownership, mixed-screen Apply metadata, shared widget
+policies and widget invalidation. `FoldStateMonitorTest` verifies retries after
+a failed subscription and subsequent fold events. `ScreenProfileProbe` has 40
+checks, including a cover-first migration from unsuffixed legacy depth policy.
+The APK binding probe also checks the upstream DEX final-save completion roles.

@@ -7,10 +7,7 @@ import java.lang.reflect.Method;
 final class ScreenIdentity {
     static final String FIELD = "layoutScreen";
     static final int MAIN = 1, SUB = 2;
-    private static Method folded;
-    private static Object manager;
-    private static Object listener;
-    private static volatile int screen;
+    private static FoldStateMonitor monitor;
     private static Boolean foldable;
     private static final java.util.List<Runnable> observers = new java.util.concurrent.CopyOnWriteArrayList<>();
 
@@ -39,32 +36,38 @@ final class ScreenIdentity {
     static synchronized int current() {
         if (!supported()) return 0;
         try {
-            if (folded == null) {
-                Class<?> type = Class.forName("com.samsung.android.view.SemWindowManager");
-                manager = type.getMethod("getInstance").invoke(null);
-                folded = type.getMethod("isFolded");
-                screen = Boolean.TRUE.equals(folded.invoke(manager)) ? SUB : MAIN;
-                Class<?> callback = Class.forName("com.samsung.android.view.SemWindowManager$FoldStateListener");
-                listener = java.lang.reflect.Proxy.newProxyInstance(callback.getClassLoader(),
+            if (monitor == null) monitor = createMonitor();
+            return monitor.current();
+        } catch (Exception error) {
+            throw new IllegalStateException("Fold screen identity unavailable", error);
+        }
+    }
+
+    private static FoldStateMonitor createMonitor() throws ReflectiveOperationException {
+        Class<?> type = Class.forName("com.samsung.android.view.SemWindowManager");
+        Object manager = type.getMethod("getInstance").invoke(null);
+        Method folded = type.getMethod("isFolded");
+        Class<?> callback = Class.forName("com.samsung.android.view.SemWindowManager$FoldStateListener");
+        Method register = type.getMethod("registerFoldStateListener", callback, android.os.Handler.class);
+        return new FoldStateMonitor(new FoldStateMonitor.Backend() {
+            // Retain the successful listener for the lifetime of this process.
+            private Object listener;
+            public boolean folded() throws ReflectiveOperationException {
+                return Boolean.TRUE.equals(folded.invoke(manager));
+            }
+            public void register(java.util.function.Consumer<Boolean> changed) throws ReflectiveOperationException {
+                Object candidate = java.lang.reflect.Proxy.newProxyInstance(callback.getClassLoader(),
                         new Class<?>[] {callback}, (p, method, args) -> {
-                            if (method.getName().equals("onFoldStateChanged")) {
-                                int next = Boolean.TRUE.equals(args[0]) ? SUB : MAIN;
-                                if (screen != next) {
-                                    screen = next;
-                                    for (Runnable observer : observers) observer.run();
-                                }
-                            } else if (method.getName().equals("hashCode")) return System.identityHashCode(p);
+                            if (method.getName().equals("onFoldStateChanged")) changed.accept(Boolean.TRUE.equals(args[0]));
+                            else if (method.getName().equals("hashCode")) return System.identityHashCode(p);
                             else if (method.getName().equals("equals")) return p == args[0];
                             else if (method.getName().equals("toString")) return "DressroomFoldListener";
                             return null;
                         });
-                type.getMethod("registerFoldStateListener", callback, android.os.Handler.class)
-                        .invoke(manager, listener, new android.os.Handler(android.os.Looper.getMainLooper()));
+                register.invoke(manager, candidate, new android.os.Handler(android.os.Looper.getMainLooper()));
+                listener = candidate;
             }
-            return screen;
-        } catch (ReflectiveOperationException | RuntimeException error) {
-            throw new IllegalStateException("Fold screen identity unavailable", error);
-        }
+        }, () -> { for (Runnable observer : observers) observer.run(); });
     }
 
     static void observe(Runnable observer) {

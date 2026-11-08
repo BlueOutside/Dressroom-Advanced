@@ -11,6 +11,7 @@ public final class Fold8BindingProbe {
         EditorBinding binding = EditorBinding.resolve(editor, 300120000L);
         if (binding.legacy) throw new AssertionError("Modern editor misclassified by weather capability");
         new WallpaperSourceBinding(editor, false);
+        new EditorSaveCompletion(editor);
         DepthBinding.validateEditor(editor);
         OneUi9WidgetEditor.toolbar(editor);
         OneUi9WidgetEditor.create(editor);

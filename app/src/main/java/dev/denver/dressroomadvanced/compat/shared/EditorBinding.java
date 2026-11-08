@@ -93,12 +93,18 @@ final class EditorBinding {
         Class<?> owner =
                 NativeContract.findClass(
                         loader,
-                        cls ->
-                                NativeContract.hasMethod(cls, void.class, ViewGroup.class, data)
-                                        && NativeContract.hasMethod(cls, boolean.class),
+                        cls -> controllerShape(cls, data),
                         primary.controller,
                         fallback.controller, "so.x");
         return bindings.get(owner);
+    }
+
+    private static boolean controllerShape(Class<?> type, Class<?> data) {
+        // The preview helper also creates clock views. Only the editor controller owns
+        // the weak Activity reference used by the panel lifecycle.
+        return NativeContract.hasMethod(type, void.class, ViewGroup.class, data)
+                && NativeContract.hasMethod(type, boolean.class)
+                && NativeContract.hasField(type, java.lang.ref.WeakReference.class);
     }
 
     private EditorBinding(ClassLoader loader, Class<?> resolvedController, Names names)
@@ -118,12 +124,7 @@ final class EditorBinding {
                 resolvedController != null
                         ? resolvedController
                         : NativeContract.findClass(
-                                loader,
-                                cls ->
-                                        NativeContract.hasMethod(
-                                                        cls, void.class, ViewGroup.class, data)
-                                                && NativeContract.hasMethod(cls, boolean.class),
-                                names.controller);
+                                loader, cls -> controllerShape(cls, data), names.controller);
         Class<?> helperType = null;
         try {
             Class<?> candidate = Class.forName(names.helperType, false, loader);
@@ -189,15 +190,36 @@ final class EditorBinding {
         bind =
                 NativeContract.findMethod(
                         helperType, names.bindMethod, void.class, legacy ? View.class : clockView);
-        Class<?> weatherType =
-                NativeContract.findClass(
-                        loader,
-                        cls ->
-                                legacy
-                                        ? NativeContract.hasMethod(cls, void.class, boolean.class)
-                                        : NativeContract.hasMethod(
-                                                cls, void.class, boolean.class, boolean.class),
-                        names.weatherType, "mf.f0");
+        java.util.function.Predicate<Class<?>> weatherShape =
+                cls ->
+                        legacy
+                                ? NativeContract.hasMethod(cls, void.class, boolean.class)
+                                : NativeContract.hasMethod(
+                                        cls, void.class, boolean.class, boolean.class);
+        Class<?> weatherType = NativeContract.knownClass(loader, weatherShape, names.weatherType, "mf.f0");
+        if (weatherType == null) {
+            // A boolean setter is far too common to identify this use case by type alone.
+            java.util.Set<Class<?>> matches = new java.util.LinkedHashSet<>();
+            try {
+                for (DexSignatures.Body body :
+                        DexSignatures.find(loader, java.util.Set.of("EnableWeatherInfoUseCase"))) {
+                    Class<?> candidate =
+                            Class.forName(
+                                    body.owner()
+                                            .substring(1, body.owner().length() - 1)
+                                            .replace('/', '.'),
+                                    false,
+                                    loader);
+                    if (weatherShape.test(candidate)) matches.add(candidate);
+                }
+            } catch (java.io.IOException invalidDex) {
+                throw new ReflectiveOperationException(
+                        "Could not read weather use-case signature", invalidDex);
+            }
+            if (matches.size() != 1)
+                throw new ClassNotFoundException("Ambiguous weather use case: " + matches.size());
+            weatherType = matches.iterator().next();
+        }
         weather =
                 legacy
                         ? NativeContract.findMethod(weatherType, "a", void.class, boolean.class)

@@ -20,6 +20,26 @@ public final class WidgetLayoutTest {
         check(!WidgetLayout.fits(8, 8, new int[0][2]), "Oversized grid accepted");
         check(!WidgetLayout.fits(4, 2, new int[][] {{0, 1}}), "Malformed provider span accepted");
         check(items[0][0] == 1 && items[2][0] == 2, "Fit check changed provider ordering");
+        check(
+                WidgetLayout.positionsValid(
+                        4, 2, new int[][] {{0, 0, 2, 1}, {2, 0, 2, 2}, {0, 1, 2, 1}}),
+                "Valid mixed-size grid was marked for repair");
+        check(
+                !WidgetLayout.positionsValid(4, 2, new int[][] {{0, 0, 2, 1}, {0, 0, 2, 2}}),
+                "Overlapping widgets were accepted");
+        check(
+                !WidgetLayout.positionsValid(2, 4, new int[][] {{0, 0, 2, 2}, {1, 2, 2, 1}}),
+                "A horizontal coordinate survived outside the vertical grid");
+        check(
+                WidgetLayout.positionsValid(
+                        2, 4, new int[][] {{0, 0, 2, 2}, {0, 2, 2, 1}, {0, 3, 2, 1}}),
+                "Valid vertical secondary positions were rejected");
+        check(
+                !WidgetLayout.positionsValid(4, 2, new int[][] {{-1, 0, 1, 1}}),
+                "An unplaced widget was accepted");
+        check(
+                !WidgetLayout.positionsValid(4, 2, new int[][] {{Integer.MAX_VALUE, 0, 2, 1}}),
+                "Overflowed coordinates bypassed grid bounds");
         int[] projected = WidgetLayout.dimensions(4, 2, false, true);
         check(
                 projected[0] == 2 && projected[1] == 4,
