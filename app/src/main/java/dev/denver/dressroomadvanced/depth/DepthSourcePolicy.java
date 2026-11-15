@@ -5,6 +5,11 @@ final class DepthSourcePolicy {
         return interactive || aodWallpaper;
     }
 
+    static boolean suppressedOnAod(
+            boolean interactive, boolean hideOnAod, boolean aodView, boolean dozing) {
+        return hideOnAod && (aodView || dozing || !interactive);
+    }
+
     private String key;
 
     boolean observe(String next) {

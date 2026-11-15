@@ -12,6 +12,16 @@ public final class DepthSourcePolicyTest {
         check(DepthSourcePolicy.visible(true, false), "Awake wallpaper requires the AOD switch");
         check(DepthSourcePolicy.visible(false, true), "Full-screen AOD loses its subject");
         check(!DepthSourcePolicy.visible(false, false), "Black AOD keeps a subject cut");
+        check(!DepthSourcePolicy.suppressedOnAod(false, false, true, true),
+                "AOD suppression applied when opt-out toggle is disabled");
+        check(!DepthSourcePolicy.suppressedOnAod(true, true, false, false),
+                "Awake lockscreen suppressed AOD depth");
+        check(DepthSourcePolicy.suppressedOnAod(false, true, false, false),
+                "Full-screen AOD ignored AOD depth opt-out");
+        check(DepthSourcePolicy.suppressedOnAod(true, true, true, false),
+                "AOD view kept depth when disabled on AOD");
+        check(DepthSourcePolicy.suppressedOnAod(true, true, false, true),
+                "Dozing view kept depth when disabled on AOD");
         DepthSourcePolicy state = new DepthSourcePolicy();
         check(!state.observe("photo-a"), "Initial source treated as replacement");
         check(!state.observe("photo-a"), "Same image reset depth");

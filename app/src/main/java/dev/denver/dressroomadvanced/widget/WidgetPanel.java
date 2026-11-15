@@ -362,13 +362,20 @@ final class WidgetPanel {
             section("Appearance");
             boolean hardwareAvailable = editor.depthHardwareAvailable();
             boolean imageAvailable = hardwareAvailable && editor.depthImageAvailable();
+            int mode = b.getInt("depth");
             choice(
                     "Subject depth",
                     new String[] {"Follow clock", "On", "Off"},
-                    b.getInt("depth"),
+                    mode,
                     (next, index) -> next.putInt("depth", index),
                     false,
                     imageAvailable);
+            toggle(
+                    "Disable depth on AOD",
+                    b.getBoolean("depthOffAod"),
+                    imageAvailable && mode != 2,
+                    next -> next.putBoolean("depthOffAod", !next.getBoolean("depthOffAod")),
+                    false);
             choice(
                     "Depth applies to",
                     new String[] {
@@ -677,9 +684,16 @@ final class WidgetPanel {
 
     private void toggle(String name, boolean checked, Edit edit, boolean structural)
             throws Exception {
+        toggle(name, checked, true, edit, structural);
+    }
+
+    private void toggle(
+            String name, boolean checked, boolean enabled, Edit edit, boolean structural)
+            throws Exception {
         CompoundButton toggle = (CompoundButton) nativeView(EditorBinding.Row.TOGGLE);
         toggle.setText(name);
         toggle.setChecked(checked);
+        toggle.setEnabled(enabled);
         add(toggle);
         toggle.setOnCheckedChangeListener((v, value) -> change(edit, structural, true));
     }

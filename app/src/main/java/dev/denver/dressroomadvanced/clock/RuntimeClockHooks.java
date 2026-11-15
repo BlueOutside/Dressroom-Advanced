@@ -245,10 +245,13 @@ final class RuntimeClockHooks {
                                             if (fontProfile != null
                                                     && DepthBinding.provider(
                                                             (View) chain.getThisObject())) {
+                                                View clock = (View) chain.getThisObject();
                                                 DepthEffects.apply(
-                                                        (View) chain.getThisObject(),
+                                                        clock,
                                                         fontProfile.getBoolean("depthEnabled"),
-                                                        fontProfile.getByteArray("depthMask"));
+                                                        fontProfile.getByteArray("depthMask"),
+                                                        fontProfile.getBoolean("depthOffAod"),
+                                                        aodCategory(clock));
                                             }
                                             Object result =
                                                     requestedFont == chain.getArg(0)
@@ -337,6 +340,8 @@ final class RuntimeClockHooks {
                                     chain -> {
                                         Object result = chain.proceed();
                                         View clock = (View) chain.getThisObject();
+                                        DepthEffects.setDozing(
+                                                clock, Boolean.TRUE.equals(chain.getArg(0)));
                                         clock.post(
                                                 () -> {
                                                     apply(clock);
@@ -636,8 +641,7 @@ final class RuntimeClockHooks {
             if (settings == null) {
                 profiles.remove(view);
                 if (effects.remove(view)) ShadowEffects.apply(view, false, 0, 0, 0, 0);
-                DepthEffects.apply(view, false, null);
-                DepthEffects.applyDigits(view, false, null);
+                applyDepth(view, null);
                 int attempt = settingsRetries.getOrDefault(view, 0);
                 if (attempt < 4 && view.isAttachedToWindow()) {
                     settingsRetries.put(view, attempt + 1);
@@ -690,16 +694,7 @@ final class RuntimeClockHooks {
                     settings.getFloat("dx") / scale,
                     settings.getFloat("dy") / scale,
                     settings.getInt("color"));
-            if (DepthBinding.provider(view)) {
-                DepthEffects.apply(
-                        view,
-                        settings.getBoolean("depthEnabled"),
-                        settings.getByteArray("depthMask"));
-                DepthEffects.applyDigits(
-                        view,
-                        settings.getBoolean("depthEnabled"),
-                        settings.getByteArray("depthMask"));
-            }
+            if (DepthBinding.provider(view)) applyDepth(view, settings);
             effects.add(view);
             ClockBinding.of(view).refreshAppearance(view);
             if (VariableFonts.needsRefresh(view, settings)) {
@@ -743,12 +738,7 @@ final class RuntimeClockHooks {
                         DateEffects.apply(clock);
                         profile = profiles.get(clock);
                     }
-                    if (profile != null && DepthBinding.provider(clock)) {
-                        boolean depthOn = profile.getBoolean("depthEnabled");
-                        byte[] mask = profile.getByteArray("depthMask");
-                        DepthEffects.apply(clock, depthOn, mask);
-                        DepthEffects.applyDigits(clock, depthOn, mask);
-                    }
+                    if (profile != null && DepthBinding.provider(clock)) applyDepth(clock, profile);
                 });
         if (!observing.compareAndSet(false, true)) return;
         view.getContext()
@@ -771,5 +761,22 @@ final class RuntimeClockHooks {
                                 }
                             }
                         });
+    }
+
+    private static boolean aodCategory(View view) {
+        try {
+            return "AOD".equals(String.valueOf(Reflect.call(view, "getCategory")));
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    private static void applyDepth(View view, Bundle profile) {
+        boolean enabled = profile != null && profile.getBoolean("depthEnabled");
+        byte[] mask = profile == null ? null : profile.getByteArray("depthMask");
+        boolean hideOnAod = profile != null && profile.getBoolean("depthOffAod");
+        boolean aodView = aodCategory(view);
+        DepthEffects.apply(view, enabled, mask, hideOnAod, aodView);
+        DepthEffects.applyDigits(view, enabled, mask, hideOnAod, aodView);
     }
 }

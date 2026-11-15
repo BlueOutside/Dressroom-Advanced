@@ -104,6 +104,10 @@ final class WallpaperMotion implements Choreographer.FrameCallback {
                 screen == ScreenIdentity.SUB ? instance.showSub : instance.showMain);
     }
 
+    static boolean interactive() {
+        return instance == null || instance.interactive;
+    }
+
     static void start(android.view.View view, int wallpaper) {
         if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) {
             view.post(() -> start(view, wallpaper));

@@ -6,21 +6,30 @@ import java.util.Map;
 
 /** Latest shared policy for each screen; orientation drafts can be older than the policy. */
 final class WidgetDepthPolicies {
-    private record Policy(int layouts, int depth) {}
+    private record Policy(int layouts, int depth, boolean offAod) {}
     private final Map<Integer, Policy> screens = new HashMap<>();
     void clear() { screens.clear(); }
     boolean contains(int screen) { return screens.containsKey(screen); }
     void adopt(Bundle profile) {
-        screens.put(ScreenIdentity.value(profile), new Policy(profile.getInt("depthLayouts"), profile.getInt("depth")));
+        screens.put(
+                ScreenIdentity.value(profile),
+                new Policy(
+                        profile.getInt("depthLayouts"),
+                        profile.getInt("depth"),
+                        profile.getBoolean("depthOffAod")));
     }
     void overlay(Bundle profile) {
         Policy policy = screens.get(ScreenIdentity.value(profile));
         if (policy == null) return;
         profile.putInt("depthLayouts", policy.layouts);
-        if (policy.layouts != 0) profile.putInt("depth", policy.depth);
+        if (policy.layouts != 0) {
+            profile.putInt("depth", policy.depth);
+            profile.putBoolean("depthOffAod", policy.offAod);
+        }
     }
     void clearDepth(int screen) {
         Policy policy = screens.get(screen);
-        if (policy != null && policy.depth == 1) screens.put(screen, new Policy(policy.layouts, 2));
+        if (policy != null && policy.depth == 1)
+            screens.put(screen, new Policy(policy.layouts, 2, policy.offAod));
     }
 }

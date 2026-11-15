@@ -83,6 +83,7 @@ final class NativeClockPanel {
     private float blurVisibility = -1f;
     private float initialBlurVisibility = -1f;
     private boolean depthEnabled, initialDepthEnabled;
+    private boolean depthOffAod, initialDepthOffAod;
     private boolean depthOwnsManual, initialDepthOwnsManual;
     private byte[] depthMask, initialDepthMask;
     private android.os.Bundle depthSource = new android.os.Bundle();
@@ -274,6 +275,7 @@ final class NativeClockPanel {
                     blurVisibility = saved.getFloat("blurVisibility", -1f);
                     initialBlurVisibility = blurVisibility;
                     depthEnabled = initialDepthEnabled = saved.getBoolean("depthEnabled");
+                    depthOffAod = initialDepthOffAod = saved.getBoolean("depthOffAod");
                     depthOwnsManual = initialDepthOwnsManual = saved.getBoolean("depthOwnsManual");
                     depthMask = initialDepthMask = saved.getByteArray("depthMask");
                     font = Reflect.call(data, "getClockFontData");
@@ -298,6 +300,7 @@ final class NativeClockPanel {
                     blurRadius = initialBlurRadius = 200;
                     blurVisibility = initialBlurVisibility = -1f;
                     depthEnabled = initialDepthEnabled = false;
+                    depthOffAod = initialDepthOffAod = false;
                     depthOwnsManual = initialDepthOwnsManual = false;
                     depthMask = initialDepthMask = null;
                     manualProgress = null;
@@ -461,6 +464,14 @@ final class NativeClockPanel {
                             updateDepthPreview(data());
                             stage(data());
                             refresh();
+                        });
+                toggle(
+                        "Disable depth on AOD",
+                        depthOffAod,
+                        depthEnabled && imageAvailable,
+                        off -> {
+                            depthOffAod = off;
+                            stage(data());
                         });
                 TextView detectSubject = action("Detect wallpaper subject again", "");
                 detectSubject.setEnabled(imageAvailable);
@@ -643,6 +654,7 @@ final class NativeClockPanel {
                             blurRadius = initialBlurRadius;
                             blurVisibility = initialBlurVisibility;
                             depthEnabled = initialDepthEnabled;
+                            depthOffAod = initialDepthOffAod;
                             depthOwnsManual = initialDepthOwnsManual;
                             depthMask = initialDepthMask;
                             fontFile = initialFontFile;
@@ -1343,6 +1355,7 @@ final class NativeClockPanel {
         settings.putInt("blurRadius", blurRadius);
         settings.putFloat("blurVisibility", blurVisibility);
         settings.putBoolean("depthEnabled", depthEnabled);
+        settings.putBoolean("depthOffAod", depthOffAod);
         settings.putBoolean("depthOwnsManual", depthOwnsManual);
         if (depthMask != null) settings.putByteArray("depthMask", depthMask);
         settings.putFloat("radius", number(value, "getShadowRadius").floatValue());
@@ -1385,6 +1398,7 @@ final class NativeClockPanel {
         depthMask = settings.getByteArray("depthMask");
         depthSource = new android.os.Bundle(settings);
         depthEnabled = settings.getBoolean("depthEnabled");
+        if (settings.containsKey("depthOffAod")) depthOffAod = settings.getBoolean("depthOffAod");
         if (initialDepthEnabled) initialDepthMask = depthMask;
         updateDepthPreview(data());
         refresh();

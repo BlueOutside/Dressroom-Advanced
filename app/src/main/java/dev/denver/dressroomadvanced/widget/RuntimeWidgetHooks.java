@@ -39,6 +39,7 @@ final class RuntimeWidgetHooks {
         final RootLayoutWatch layoutWatch = new RootLayoutWatch();
         int type = -1, font = -1, orientation = -1, screen = -1;
         boolean loaded;
+        boolean dozing, aodRequested;
         Bundle depthProfile;
         Boolean depthEnabled, maskReady;
         String layout = "";
@@ -65,15 +66,21 @@ final class RuntimeWidgetHooks {
         Method release = NativeContract.method(type, "release", void.class);
         try (HookTransaction hooks = new HookTransaction()) {
             for (Method method : updates) {
+                String name = method.getName();
+                boolean hasArg = method.getParameterCount() > 0;
                 var update =
                         module.hook(method)
-                                .setId("dressroom-advanced.85-widget-runtime-" + method.getName())
+                                .setId("dressroom-advanced.85-widget-runtime-" + name)
                                 .intercept(
                                         chain -> {
                                             Object result = chain.proceed();
+                                            trackAodState(
+                                                    chain.getThisObject(),
+                                                    name,
+                                                    hasArg ? chain.getArg(0) : null);
                                             schedule(
                                                     chain.getThisObject(),
-                                                    !method.getName().equals("setDarkAmount"));
+                                                    !name.equals("setDarkAmount"));
                                             return result;
                                         });
                 hooks.add(update::unhook);
@@ -195,12 +202,17 @@ final class RuntimeWidgetHooks {
                         || name.equals("updateWidgetLayout")
                         || name.equals("onCompleteUpdate"))) continue;
                 boolean force = !name.equals("setDarkAmount");
+                boolean hasArg = method.getParameterCount() > 0;
                 hooks.add(
                         module.hook(method)
                                 .setId("dressroom-advanced.widget-owner-" + name)
                                 .intercept(
                                         chain -> {
                                             Object result = chain.proceed();
+                                            trackAodState(
+                                                    chain.getThisObject(),
+                                                    name,
+                                                    hasArg ? chain.getArg(0) : null);
                                             refresh(chain.getThisObject(), force);
                                             return result;
                                         })
@@ -373,6 +385,31 @@ final class RuntimeWidgetHooks {
         }
     }
 
+    private void trackAodState(Object controller, String method, Object arg) {
+        if (controller == null) return;
+        State state = controllers.computeIfAbsent(controller, ignored -> new State());
+        boolean changed = false;
+        if (method.equals("setDozing") && arg instanceof Boolean value) {
+            changed = state.dozing != value;
+            state.dozing = value;
+        } else if (method.equals("requestAODState") && arg instanceof Boolean value) {
+            changed = state.aodRequested != value;
+            state.aodRequested = value;
+        } else if (method.equals("onFinishedWakingUp")) {
+            changed = state.dozing || state.aodRequested;
+            state.dozing = false;
+            state.aodRequested = false;
+        }
+        if (changed) {
+            ViewGroup root = state.root.get();
+            if (root != null) {
+                boolean aod = state.dozing || state.aodRequested;
+                if (Looper.myLooper() == Looper.getMainLooper()) DepthEffects.setDozing(root, aod);
+                else main.post(() -> DepthEffects.setDozing(root, aod));
+            }
+        }
+    }
+
     private void clear(Object controller) {
         if (Looper.myLooper() != Looper.getMainLooper()) {
             main.post(() -> clear(controller));
@@ -383,6 +420,7 @@ final class RuntimeWidgetHooks {
         if (state != null) state.layoutWatch.clear();
         ViewGroup root = state == null ? null : state.root.get();
         if (root != null) {
+            DepthEffects.setDozing(root, false);
             if (legacyControllers.contains(controller.getClass())) {
                 DepthEffects.applyWidgetRoot(root, false, null);
                 WidgetPlacement.clear(root);
@@ -429,6 +467,7 @@ final class RuntimeWidgetHooks {
             if (state.root.get() != root) {
                 ViewGroup previous = state.root.get();
                 if (previous != null) {
+                    DepthEffects.setDozing(previous, false);
                     WidgetMediaOcclusion.forget(previous);
                     DepthEffects.applyWidgetRoot(previous, false, null);
                     WidgetDepthBlur.blur(previous, false);
@@ -499,7 +538,10 @@ final class RuntimeWidgetHooks {
             state.font = font;
             state.loaded = true;
             boolean enabled = WidgetPreferences.depth(widgets, saved);
-            DepthEffects.applyWidgetRoot(root, enabled, WidgetPreferences.mask(widgets, saved));
+            boolean hideOnAod = WidgetPreferences.depthOffAod(widgets, saved);
+            DepthEffects.applyWidgetRoot(
+                    root, enabled, WidgetPreferences.mask(widgets, saved), hideOnAod);
+            DepthEffects.setDozing(root, state.dozing || state.aodRequested);
             WidgetDepthBlur.blur(root, widgets.getBoolean("blurOff"));
             WidgetPlacement.apply(root, widgets, provider);
         } catch (Exception error) {
@@ -527,6 +569,7 @@ final class RuntimeWidgetHooks {
         if (state.root.get() != root) {
             View previous = state.root.get();
             if (previous != null) {
+                DepthEffects.setDozing(previous, false);
                 DepthEffects.applyWidgetRoot(previous, false, null);
                 WidgetPlacement.clear(previous);
             }
@@ -594,8 +637,10 @@ final class RuntimeWidgetHooks {
                     state.font = font;
                 }
                 boolean enabled = WidgetPreferences.depth(settings, state.depthProfile);
+                boolean hideOnAod = WidgetPreferences.depthOffAod(settings, state.depthProfile);
                 byte[] mask = WidgetPreferences.mask(settings, state.depthProfile);
-                DepthEffects.applyWidgetRoot(root, enabled, mask);
+                DepthEffects.applyWidgetRoot(root, enabled, mask, hideOnAod);
+                DepthEffects.setDozing(root, state.dozing || state.aodRequested);
                 boolean ready = mask != null;
                 if (!Boolean.valueOf(enabled).equals(state.depthEnabled)
                         || !Boolean.valueOf(ready).equals(state.maskReady)) {

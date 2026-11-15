@@ -212,6 +212,25 @@ public final class OrientationProfileProbe {
         check(
                 l.getInt("depthLayouts") == 0 && !WidgetPreferences.depth(l, null),
                 "Removed shared policy reappeared from an old layout record");
+        values.put(widgetBase + "_portrait", "{\"depth\":2,\"depthOffAod\":true,\"scale\":1.5}");
+        values.put(widgetBase + "_landscape", "{\"depth\":1,\"depthOffAod\":false,\"scale\":0.75}");
+        p = WidgetPreferences.store(store, "readWidgets", portrait);
+        l = WidgetPreferences.store(store, "readWidgets", landscape);
+        check(
+                p.getBoolean("depthOffAod") && !l.getBoolean("depthOffAod"),
+                "Per-orientation AOD opt-out mixed across layouts");
+        Bundle sharedAod = WidgetPreferences.clean(l);
+        sharedAod.putInt("wallpaperId", 77);
+        sharedAod.putInt("depthLayouts", 3);
+        sharedAod.putInt("depth", 1);
+        sharedAod.putBoolean("depthOffAod", true);
+        LayoutOrientation.copy(landscape, sharedAod);
+        WidgetPreferences.store(store, "commitWidgets", sharedAod);
+        p = WidgetPreferences.store(store, "readWidgets", portrait);
+        l = WidgetPreferences.store(store, "readWidgets", landscape);
+        check(
+                p.getBoolean("depthOffAod") && l.getBoolean("depthOffAod"),
+                "Shared policy did not persist widget AOD opt-out across layouts");
         System.out.println("Orientation profile isolation: " + checks + " checks passed");
     }
 }

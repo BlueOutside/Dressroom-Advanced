@@ -146,6 +146,7 @@ public final class SettingsProvider extends ContentProvider {
                 json.put("blurRadius", extras.getInt("blurRadius", 200));
                 json.put("blurVisibility", extras.getFloat("blurVisibility", -1f));
                 json.put("depthEnabled", extras.getBoolean("depthEnabled"));
+                json.put("depthOffAod", extras.getBoolean("depthOffAod"));
                 json.put("depthOwnsManual", extras.getBoolean("depthOwnsManual"));
                 DepthMetadata.write(json, extras);
                 float[] heights = extras.getFloatArray("manualHeights");
@@ -261,6 +262,7 @@ public final class SettingsProvider extends ContentProvider {
             result.putInt("blurRadius", json.optInt("blurRadius", 200));
             result.putFloat("blurVisibility", (float) json.optDouble("blurVisibility", -1));
             result.putBoolean("depthEnabled", json.optBoolean("depthEnabled"));
+            result.putBoolean("depthOffAod", json.optBoolean("depthOffAod"));
             result.putBoolean("depthOwnsManual", json.optBoolean("depthOwnsManual"));
             DepthMetadata.read(json, result);
             JSONArray values = json.optJSONArray("manualHeights");

@@ -63,6 +63,8 @@ final class DepthEffects {
             Collections.newSetFromMap(new WeakHashMap<>());
     private static final java.util.Set<View> mediaClocks =
             Collections.newSetFromMap(new WeakHashMap<>());
+    private static final java.util.Set<View> dozingViews =
+            Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
     private static java.lang.ref.WeakReference<View> editorWallpaper =
             new java.lang.ref.WeakReference<>(null);
     private static boolean installed;
@@ -196,6 +198,11 @@ final class DepthEffects {
     }
 
     static void apply(View view, boolean enabled, byte[] png) {
+        apply(view, enabled, png, false, false);
+    }
+
+    static void apply(
+            View view, boolean enabled, byte[] png, boolean hideOnAod, boolean aodView) {
         if (!enabled || png == null || png.length == 0) {
             ClockContentClip.watch(view, false);
             DepthViewMotion.watch(view, false);
@@ -246,12 +253,16 @@ final class DepthEffects {
             }
             WallpaperMotion.start(view, entry.wallpaperId);
         }
+        boolean aodChanged = entry.hideOnAod != hideOnAod || entry.aodView != aodView;
         entry.enabled = true;
         entry.wholeDraw = isClockView(view);
         entry.nodeClip = false;
+        entry.hideOnAod = hideOnAod;
+        entry.aodView = aodView;
+        if (aodChanged) entry.identity = new Object();
         ClockContentClip.watch(view, false);
         if (entry.runtimeMotion && entry.wholeDraw) DepthViewMotion.watch(view, true);
-        if (changed) {
+        if (changed || aodChanged) {
             view.invalidate();
             refreshNativeBlur(view);
         }
@@ -312,12 +323,33 @@ final class DepthEffects {
         return inheritedSubject(view) != null;
     }
 
+    static void setDozing(View view, boolean dozing) {
+        if (view == null) return;
+        boolean changed = dozing ? dozingViews.add(view) : dozingViews.remove(view);
+        if (!changed) return;
+        refreshAodState(view);
+    }
+
+    private static boolean viewDozing(View view) {
+        if (dozingViews.isEmpty()) return false;
+        for (View current = view;
+                current != null;
+                current = current.getParent() instanceof View parent ? parent : null)
+            if (dozingViews.contains(current)) return true;
+        return false;
+    }
+
+    private static boolean aodSuppressed(View view, Entry entry) {
+        return DepthSourcePolicy.suppressedOnAod(
+                WallpaperMotion.interactive(), entry.hideOnAod, entry.aodView, viewDozing(view));
+    }
+
     static boolean wallpaperHidden(View view) {
         Entry entry = inheritedSubject(view);
         return entry != null
                 && entry.runtimeMotion
                 && !entry.editor
-                && !WallpaperMotion.visible(entry.screen);
+                && (!WallpaperMotion.visible(entry.screen) || aodSuppressed(view, entry));
     }
 
     static boolean hasVisibleSubject(View view) {
@@ -327,7 +359,9 @@ final class DepthEffects {
 
     private static boolean subjectSuppressed(View view, Entry entry) {
         return mediaSuspended(view)
-                || entry.runtimeMotion && !entry.editor && !WallpaperMotion.visible(entry.screen);
+                || entry.runtimeMotion
+                        && !entry.editor
+                        && (!WallpaperMotion.visible(entry.screen) || aodSuppressed(view, entry));
     }
 
     static Object subjectIdentity(View view) {
@@ -464,12 +498,36 @@ final class DepthEffects {
                 if (!nested) roots.add(view);
             }
         }
-        for (View root : roots) {
-            if (!root.isAttachedToWindow()) continue;
-            invalidateTree(root);
-            WidgetDepthBlur.mediaChanged(root);
-            if (isClockView(root) && !mediaSuspended(root)) refreshNativeBlur(root);
+        for (View root : roots) notifyMotionRoot(root);
+    }
+
+    private static void refreshAodState(View root) {
+        synchronized (entries) {
+            for (var item : entries.entrySet()) {
+                Entry entry = item.getValue();
+                if (!entry.enabled || !entry.runtimeMotion || entry.editor) continue;
+                View view = item.getKey();
+                if (view == root || isDescendant(view, root)) entry.identity = new Object();
+            }
         }
+        notifyMotionRoot(root);
+    }
+
+    private static boolean isDescendant(View view, View root) {
+        for (android.view.ViewParent parent = view.getParent();
+                parent instanceof View up;
+                parent = up.getParent()) if (up == root) return true;
+        return false;
+    }
+
+    private static void notifyMotionRoot(View root) {
+        if (!root.isAttachedToWindow()) return;
+        invalidateTree(root);
+        Entry entry = entries.get(root);
+        if (entry != null && entry.nodeClip)
+            WidgetDepthBlur.clipWidgets(root, hasVisibleSubject(root));
+        WidgetDepthBlur.mediaChanged(root);
+        if (isClockView(root) && !mediaSuspended(root)) refreshNativeBlur(root);
     }
 
     static void resetEditor() {
@@ -638,15 +696,20 @@ final class DepthEffects {
     }
 
     static void applyWidgetRoot(View widgets, boolean enabled, byte[] png) {
+        applyWidgetRoot(widgets, enabled, png, false);
+    }
+
+    static void applyWidgetRoot(View widgets, boolean enabled, byte[] png, boolean hideOnAod) {
         if (widgets.getContext().getPackageName().equals("com.samsung.android.app.dressroom"))
             png = editorMask(png);
-        apply(widgets, enabled, png);
+        apply(widgets, enabled, png, hideOnAod, false);
         Entry entry = entries.get(widgets);
         if (ScreenIdentity.supported()) {
             boolean active = entry != null && entry.enabled;
             if (entry != null) entry.nodeClip = active && WidgetContentClip.supported();
-            WidgetDepthBlur.clipWidgets(widgets, active);
+            WidgetDepthBlur.clipWidgets(widgets, active && !subjectSuppressed(widgets, entry));
             WidgetDepthBlur.watch(widgets, active || WidgetMediaOcclusion.active(widgets));
+            WidgetDepthBlur.mediaChanged(widgets);
         } else {
             if (entry != null) entry.nodeClip = false;
             WidgetContentClip.apply(widgets, false);
@@ -656,7 +719,12 @@ final class DepthEffects {
     }
 
     static void applyDigits(View clock, boolean enabled, byte[] png) {
-        applyDigitChildren(clock, enabled, png, false);
+        applyDigits(clock, enabled, png, false, false);
+    }
+
+    static void applyDigits(
+            View clock, boolean enabled, byte[] png, boolean hideOnAod, boolean aodView) {
+        applyDigitChildren(clock, enabled, png, false, hideOnAod, aodView);
     }
 
     static void applyEditorDigits(View clock, boolean enabled, byte[] png) {
@@ -669,7 +737,18 @@ final class DepthEffects {
                 });
     }
 
-    private static void applyDigitChildren(View root, boolean enabled, byte[] png, boolean editor) {
+    private static void applyDigitChildren(
+            View root, boolean enabled, byte[] png, boolean editor) {
+        applyDigitChildren(root, enabled, png, editor, false, false);
+    }
+
+    private static void applyDigitChildren(
+            View root,
+            boolean enabled,
+            byte[] png,
+            boolean editor,
+            boolean hideOnAod,
+            boolean aodView) {
         if (root == null) return;
         if (root.getId() != View.NO_ID)
             try {
@@ -683,14 +762,14 @@ final class DepthEffects {
                         || name.equals("common_time_area")
                         || name.equals("common_stretch_time_area")) {
                     if (editor) applyEditor(root, enabled, png);
-                    else apply(root, enabled, png);
+                    else apply(root, enabled, png, hideOnAod, aodView);
                 }
             } catch (android.content.res.Resources.NotFoundException ignored) {
             }
         if (root instanceof ViewGroup) {
             ViewGroup group = (ViewGroup) root;
             for (int i = 0; i < group.getChildCount(); i++)
-                applyDigitChildren(group.getChildAt(i), enabled, png, editor);
+                applyDigitChildren(group.getChildAt(i), enabled, png, editor, hideOnAod, aodView);
         }
     }
 
@@ -1261,6 +1340,7 @@ final class DepthEffects {
         boolean wholeDraw;
         boolean nodeClip;
         boolean runtimeMotion;
+        boolean hideOnAod, aodView;
         int wallpaperId = -1, screen;
         float previewScale = 1f, previewOriginX, previewOriginY;
 

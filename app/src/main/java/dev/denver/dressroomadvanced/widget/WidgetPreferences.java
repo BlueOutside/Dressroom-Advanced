@@ -49,6 +49,7 @@ final class WidgetPreferences {
         b.putFloat("gap", WidgetLayout.finite(input.getFloat("gap", 8), 8, 0, 64));
         b.putFloat("dockOffset", WidgetLayout.finite(input.getFloat("dockOffset"), 0, -2000, 2000));
         b.putInt("depth", WidgetLayout.clamp(input.getInt("depth"), 0, 2)); // inherit / on / off
+        b.putBoolean("depthOffAod", input.getBoolean("depthOffAod"));
         b.putInt("depthLayouts", WidgetLayout.clamp(input.getInt("depthLayouts"), 0, 3));
         b.putBoolean("blurOff", input.getBoolean("blurOff"));
         b.putBoolean("vertical", input.getBoolean("vertical"));
@@ -148,6 +149,7 @@ final class WidgetPreferences {
                         policyKey,
                         new JSONObject()
                                 .put("depth", b.getInt("depth"))
+                                .put("depthOffAod", b.getBoolean("depthOffAod"))
                                 .put("depthLayouts", b.getInt("depthLayouts"))
                                 .toString());
             if (!edit.commit()) throw new IllegalStateException("Widget persistence failed");
@@ -175,15 +177,17 @@ final class WidgetPreferences {
         for (String field :
                 new String[] {"schema", "columns", "rows", "anchor", "depth", "depthLayouts"})
             b.putInt(field, json.optInt(field, b.getInt(field)));
+        for (String field : new String[] {"scale", "freeX", "freeY", "gap", "dockOffset"})
+            b.putFloat(field, (float) json.optDouble(field, b.getFloat(field)));
+        for (String field : new String[] {"layout", "vertical", "blurOff", "depthOffAod"})
+            b.putBoolean(field, json.optBoolean(field));
         if (policy != null) {
             JSONObject shared = new JSONObject(policy);
             b.putInt("depth", shared.getInt("depth"));
+            if (shared.has("depthOffAod"))
+                b.putBoolean("depthOffAod", shared.optBoolean("depthOffAod"));
             b.putInt("depthLayouts", shared.getInt("depthLayouts"));
         } else b.putInt("depthLayouts", 0);
-        for (String field : new String[] {"scale", "freeX", "freeY", "gap", "dockOffset"})
-            b.putFloat(field, (float) json.optDouble(field, b.getFloat(field)));
-        for (String field : new String[] {"layout", "vertical", "blurOff"})
-            b.putBoolean(field, json.optBoolean(field));
         b.putString("scene", json.optString("scene", ""));
         DepthMetadata.read(json, b);
         return clean(b);
@@ -193,6 +197,13 @@ final class WidgetPreferences {
         int mode = widgets.getInt("depth");
         return covers(widgets)
                 && (mode == 1 || (mode == 0 && clock != null && clock.getBoolean("depthEnabled")));
+    }
+
+    static boolean depthOffAod(Bundle widgets, Bundle clock) {
+        int mode = widgets.getInt("depth");
+        if (mode == 2) return false;
+        return widgets.getBoolean("depthOffAod")
+                || (mode == 0 && clock != null && clock.getBoolean("depthOffAod"));
     }
 
     static boolean covers(Bundle widgets) {
