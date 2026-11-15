@@ -3,6 +3,7 @@
 # Dressroom Advanced
 
 An LSPosed (API 102) module that adds clock, widget and Now Bar controls to Samsung's lockscreen editor, with live previews inside Dressroom.
+Give your lockscreen the renaissance it deserves!
 
 ## Features
 
@@ -29,8 +30,8 @@ Imported fonts use their own variable axes. Samsung's dynamic per-digit stretchi
 | 9.0 | Clock Style + Dressroom | Supported for clock, fonts, depth, widgets and Now Bar stack (ClockPack 8.9.65.92); clock blur and foldable profiles require AOD |
 | 8.5 | Clock Style + Dressroom | Tested on SM-P613 with a custom ROM |
 | 8.5 | AOD + Dressroom | Experimental; widget issues remain on some app versions |
-| 8.0 | Any combination | Unsupported |
-| 7.0 | Any combination | Unsupported |
+| 8.0 | Any combination | Unsupported (Support coming in a future update) |
+| 7.0 | Any combination | Unsupported (Support coming after 8.0 support update) |
 
 Requires Android 16 or 17 and an LSPosed-compatible framework with API 102 support. Features also depend on the installed Dressroom and clock-provider versions.
 
@@ -38,7 +39,7 @@ The One UI 9 foldable port has been tested with Dressroom 3.0.01.20 and AOD 8.9.
 
 See [foldable support](docs/compatibility/ONE_UI_9_FOLDABLES.md) and [device validation](docs/compatibility/FOLDABLE_PARITY.md) for details.
 
-*Depth is NOT supported on A0X A1X A2X and Pre-Awesome Intelligence A3X series? (and equivalent M & F?) series phones (lacking libraries, a custom rom from a higher end phone may work, or porting the libs and fixing them can too!)
+*Depth is NOT supported on A0X A1X A2X and Pre-Awesome Intelligence A3X series? (and equivalent M & F?) series phones (lacking libraries that I WILL NOT INTEGRATE, a custom rom from a higher end phone may work, or porting the libs and fixing them can too!)
 
 ## Setup
 
@@ -50,11 +51,7 @@ See [foldable support](docs/compatibility/ONE_UI_9_FOLDABLES.md) and [device val
 
 Reboot after module updates too, so all scoped processes load the new version.
 
-Opening the editor checks for a newer GitHub release. Checks are cached for 15 minutes.
-Choose Update to download the APK and open Android's installer; Android may first ask
-you to allow installs from Dressroom Advanced. The updater checks the APK's package,
-version and signing certificate before installation. Cancel or Back dismisses the
-update prompt; tapping outside does not.
+Opening the editor checks for a newer GitHub release. (Checks are cached for 15 minutes.)
 
 For depth tracking during full-screen AOD wallpaper animations, also enable the Samsung live wallpaper scope (`com.samsung.android.wallpaper.live`). If its renderer is not supported or scoped, depth keeps its saved mapping.
 
@@ -64,12 +61,13 @@ For a font file, open **Clock → Advanced → Layout → Typography → Choose 
 
 - Some editor panels still need spacing and layout fixes.
 - Media transitions and the fullscreen song-change effect still need visual polish.
-- Custom widgets can render incorrectly on some 8.5 AOD versions. Older Dressroom builds may lack the APIs needed for custom rotation.
 - Subject detection can miss fine details or fail to initialize on some devices, including reported MediaTek setups. Animated, video and gyro wallpapers are not supported for depth.
 - Dressroom's main preview can differ from the actual editor and lockscreen.
-- Device-wide blur forcing is not included.
 
 Check the [release notes](https://github.com/BlueOutside/Dressroom-Advanced/releases) for issues affecting a particular version.
+
+## About liquid glass
+![BLUR ISNT LIQUID GLASS BRUV](docs/assets/omds.png)
 
 ## Building and contributing
 
@@ -77,7 +75,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for build instructions and [docs/](docs/R
 
 ## Credits
 
-One UI 9 foldable support was contributed by [thatjoshguy67](https://github.com/thatjoshguy67) in [PR #3](https://github.com/BlueOutside/Dressroom-Advanced/pull/3).
+- One UI 9 foldable support was contributed by [thatjoshguy67](https://github.com/thatjoshguy67) in [PR #3](https://github.com/BlueOutside/Dressroom-Advanced/pull/3).
+- All of the testers on [Telegram](https://t.me/dressr0om) that helped shape 2.0.0 (and future releases) 
 
 ## License
 
