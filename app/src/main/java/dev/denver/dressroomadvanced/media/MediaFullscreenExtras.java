@@ -54,18 +54,7 @@ final class MediaFullscreenExtras {
         for (WeakReference<Backdrop> reference : new ArrayList<>(hosts.values())) {
             Backdrop backdrop = reference.get();
             if (backdrop == null) continue;
-            backdrop.restore();
-            backdrop.current = null;
-            backdrop.showing = false;
-            backdrop.returnBounds.setEmpty();
-            backdrop.returnExclusion.setEmpty();
-            ViewGroup root = backdrop.root.get();
-            if (root != null) {
-                MediaClockContrast.depth(root, false);
-                WidgetMediaOcclusion.publish(root, null);
-                MediaClockContrast.clear(root);
-            }
-            backdrop.invalidate();
+            backdrop.resetWindow();
         }
         for (Art state : new ArrayList<>(art.values())) {
             state.reveal.discard();
@@ -141,13 +130,6 @@ final class MediaFullscreenExtras {
             }
         }
         root.addView(host, position, new FrameLayout.LayoutParams(-1, -1));
-        Backdrop backdrop = host;
-        root.getViewTreeObserver()
-                .addOnPreDrawListener(
-                        () -> {
-                            backdrop.update();
-                            return true;
-                        });
         android.util.Log.i(
                 DressroomModule.TAG, "Artwork backdrop attached behind native clock/player");
         return host;
@@ -180,26 +162,32 @@ final class MediaFullscreenExtras {
         Drawable displayedDrawable;
         Bitmap displayedBitmap;
 
-        Art(View view, ImageView image, Object holder) throws ReflectiveOperationException {
+        Art(
+                View view,
+                ImageView image,
+                Object holder,
+                OneUi9MediaBinding.HolderContract contract) {
             target = new WeakReference<>(view);
             this.image = new WeakReference<>(image);
             this.holder = new WeakReference<>(holder);
-            bitmapField = holder.getClass().getDeclaredField("G0");
-            bitmapField.setAccessible(true);
+            bitmapField = contract.bitmap();
 
-            controls = new WeakReference<>((View) Reflect.field(holder, "t0"));
-            controlHost = new WeakReference<>((View) Reflect.field(holder, "o0"));
-            View mask = optionalView(holder, "Q"), lighting = optionalView(holder, "S");
-            View prior = optionalView(holder, "P");
+            controls = new WeakReference<>((View) OneUi9MediaBinding.read(contract.controls(), holder));
+            controlHost =
+                    new WeakReference<>(
+                            (View) OneUi9MediaBinding.read(contract.controlHost(), holder));
+            View mask = optionalView(holder, contract.mask()),
+                    lighting = optionalView(holder, contract.lighting());
+            View prior = optionalView(holder, contract.prevAlbumArt());
             reveal =
                     new NativeArtworkReveal(
                             mask, image, prior instanceof ImageView old ? old : null, lighting);
             if (mask != null) maskOwners.put(mask, this);
         }
 
-        private static View optionalView(Object holder, String field) {
+        private static View optionalView(Object holder, Field field) {
             try {
-                return (View) Reflect.field(holder, field);
+                return field.get(holder) instanceof View view ? view : null;
             } catch (Exception ignored) {
                 DressroomModule.note("Fullscreen optional holder field", ignored);
                 return null;
@@ -248,6 +236,11 @@ final class MediaFullscreenExtras {
 
     private static float clamp(float v) {
         return Float.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0;
+    }
+
+    static void returnBridgeBounds(RectF result, RectF pill, RectF movingArtwork) {
+        result.set(pill);
+        if (!result.intersect(movingArtwork)) result.setEmpty();
     }
 
     private static final class EmptyBackground extends Drawable {
@@ -319,10 +312,16 @@ final class MediaFullscreenExtras {
 
     private static final class Backdrop extends View {
         final WeakReference<ViewGroup> root;
+        private final android.view.ViewTreeObserver.OnPreDrawListener redraw = () -> {
+            update();
+            return true;
+        };
+        private android.view.ViewTreeObserver observer;
         final Map<View, Saved> hidden = new WeakHashMap<>();
         final Map<View, Boolean> shortcuts = new WeakHashMap<>(), revealHeld = new WeakHashMap<>();
         final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
         final RectF destination = new RectF(), cover = new RectF(), next = new RectF();
+        final RectF nativeArtBounds = new RectF();
         final RectF controlRect = new RectF();
         final Path nativeCover = new Path(), nativeLocal = new Path();
         final android.graphics.Outline nativeOutline = new android.graphics.Outline();
@@ -347,7 +346,7 @@ final class MediaFullscreenExtras {
         float controlsTop = -1, fadeTop, fadeBottom;
         float bandTopNorm = 0, bandSolidNorm = 1;
         final RectF blurBounds = new RectF();
-        float blurCorner = -1, expandedRadius = -1;
+        float blurCorner = -1;
         boolean blurDirty = true;
         final Matrix global = new Matrix(),
                 rootGlobal = new Matrix(),
@@ -371,7 +370,8 @@ final class MediaFullscreenExtras {
                             int save = canvas.save();
                             canvas.clipRect(returnBounds);
                             if (!returnExclusion.isEmpty()) canvas.clipOutRect(returnExclusion);
-                            Backdrop.this.onDraw(canvas);
+                            // Only the moving cover belongs above the pill, not the controls blur.
+                            Backdrop.this.drawArtwork(canvas);
                             canvas.restoreToCount(save);
                         }
                     };
@@ -379,7 +379,6 @@ final class MediaFullscreenExtras {
             returnLayer.setFocusable(false);
             returnLayer.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
             returnLayer.setVisibility(INVISIBLE);
-            root.getOverlay().add(returnLayer);
             float radius = 24 * getResources().getDisplayMetrics().density;
             blurredArt.setRenderEffect(
                     RenderEffect.createBlurEffect(radius, radius, Shader.TileMode.CLAMP));
@@ -388,6 +387,44 @@ final class MediaFullscreenExtras {
             setClickable(false);
             setFocusable(false);
             setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
+        }
+
+        @Override
+        protected void onAttachedToWindow() {
+            super.onAttachedToWindow();
+            ViewGroup parent = root.get();
+            if (parent == null) return;
+            parent.getOverlay().add(returnLayer);
+            observer = getViewTreeObserver();
+            observer.addOnPreDrawListener(redraw);
+        }
+
+        @Override
+        protected void onDetachedFromWindow() {
+            if (observer != null && observer.isAlive()) observer.removeOnPreDrawListener(redraw);
+            observer = null;
+            resetWindow();
+            ViewGroup parent = root.get();
+            if (parent != null) parent.getOverlay().remove(returnLayer);
+            super.onDetachedFromWindow();
+        }
+
+        void resetWindow() {
+            restore();
+            showing = regularPublished = false;
+            current = null;
+            bitmap = null;
+            clockMask.reset();
+            clockMaskDirty = true;
+            maskVisibility.clear();
+            maskSources = -1;
+            setVisibility(INVISIBLE);
+            blurredArt.discardDisplayList();
+            ViewGroup parent = root.get();
+            if (parent != null) {
+                MediaClockContrast.clear(parent);
+                WidgetMediaOcclusion.publish(parent, null);
+            }
         }
 
         void update() {
@@ -424,7 +461,6 @@ final class MediaFullscreenExtras {
                 if (showing) {
                     restore();
                     MediaClockContrast.clear(parent);
-                    MediaClockContrast.depth(parent, false);
                     WidgetMediaOcclusion.publish(parent, null);
                     showing = false;
                     bitmap = null;
@@ -502,25 +538,24 @@ final class MediaFullscreenExtras {
             } else moving.transformMatrixToGlobal(global);
             rootGlobal.reset();
             parent.transformMatrixToGlobal(rootGlobal);
-            if (!maskRoot.equals(rootGlobal)) {
-                maskRoot.set(rootGlobal);
-                clockMaskDirty = true;
-            }
+            boolean maskChanged = !maskRoot.equals(rootGlobal);
+            if (maskChanged) maskRoot.set(rootGlobal);
             if (maskSources != clockPaths.size()) {
                 maskSources = clockPaths.size();
                 maskVisibility.clear();
-                clockMaskDirty = true;
+                maskChanged = true;
             }
             for (View clock : clockPaths.keySet()) {
-                boolean visible =
-                        clock.isShown() && clock.getWindowToken() == parent.getWindowToken();
+                boolean visible = contributesClockMask(clock, parent);
                 Boolean old = maskVisibility.put(clock, visible);
-                if (old == null || old != visible) clockMaskDirty = true;
+                if (old == null || old != visible) maskChanged = true;
             }
+            if (maskChanged) clockMaskDirty = true;
             if (!rootGlobal.invert(inverse)) return;
             local.setConcat(inverse, global);
             next.set(0, 0, moving.getWidth(), moving.getHeight());
             local.mapRect(next);
+            nativeArtBounds.set(next);
             float p = best.progress();
             if (best.closing || best.small.get() != null) {
                 float reveal = compactReveal(p);
@@ -539,11 +574,8 @@ final class MediaFullscreenExtras {
                     next.top * (1 - p),
                     next.right + (parent.getWidth() - next.right) * p,
                     next.bottom + (parent.getHeight() - next.bottom) * p);
-            // Once the clock starts returning, clip its moving glyphs against the wallpaper.
-            // Waiting for the artwork layer to disappear leaves the whole return in front.
-            MediaClockContrast.depth(parent, !best.closing && best.small.get() == null);
             try {
-                if (best.small.get() != null) MediaClockContrast.clear(parent);
+                if (best.closing || best.small.get() != null) MediaClockContrast.clear(parent);
                 else MediaClockContrast.apply(parent, image, next);
             } catch (RuntimeException error) {
                 MediaClockContrast.clear(parent);
@@ -614,6 +646,8 @@ final class MediaFullscreenExtras {
                 local.mapRect(next);
                 if (best.returnHeight > 0)
                     next.top = Math.max(next.top, next.bottom - best.returnHeight);
+                // Fullscreen interpolation extends behind controls; the foreground bridge must not.
+                returnBridgeBounds(next, next, nativeArtBounds);
                 if (!returnBounds.equals(next)) {
                     returnBounds.set(next);
                     changed = true;
@@ -643,10 +677,14 @@ final class MediaFullscreenExtras {
             }
             if (getAlpha() != alpha) setAlpha(alpha);
             if (coverChanged) blurDirty = true;
-            if (changed) {
-                invalidate();
-                if (returnLayer.getVisibility() == VISIBLE) returnLayer.invalidate();
-            }
+            if (changed || maskChanged) invalidate();
+            if (changed && returnLayer.getVisibility() == VISIBLE) returnLayer.invalidate();
+        }
+
+        private static boolean contributesClockMask(View clock, ViewGroup parent) {
+            return clock.isShown() && clock.getAlpha() > 0f
+                    && clock.getWindowToken() == parent.getWindowToken()
+                    && !ClockBlurMotion.outgoing(clock);
         }
 
         void collect(View view) {
@@ -803,32 +841,8 @@ final class MediaFullscreenExtras {
         }
 
         float coverCorner() {
-            float shrunk =
-                    Math.min(destination.width(), destination.height())
-                            * .5f
-                            * (1 - current.progress());
-            if (expandedRadius < 0) expandedRadius = nativeExpandedRadius();
-            return Math.max(expandedRadius, shrunk);
-        }
-
-        private float nativeExpandedRadius() {
-            View view = current == null ? null : current.target.get();
-            android.content.res.Resources resources =
-                    view == null ? getResources() : view.getResources();
-            for (String owner :
-                    new String[] {
-                        "com.samsung.android.app.aodservice", getContext().getPackageName()
-                    }) {
-                int id =
-                        resources.getIdentifier(
-                                "now_bar_media_card_expand_bg_radius", "dimen", owner);
-                if (id != 0)
-                    try {
-                        return resources.getDimension(id);
-                    } catch (android.content.res.Resources.NotFoundException ignored) {
-                    }
-            }
-            return 24 * getResources().getDisplayMetrics().density;
+            return Math.min(destination.width(), destination.height())
+                    * .5f * (1 - current.progress());
         }
 
         @Override
@@ -843,7 +857,13 @@ final class MediaFullscreenExtras {
                 float end = destination.bottom;
                 float bandAlpha = compact ? clamp(current.progress()) : controlAlpha;
                 boolean band = blurBandReady && end > start && solid > start && bandAlpha > 0;
-                if (band || clockMaskDirty || !clockMask.isEmpty()) {
+                ViewGroup parent = root.get();
+                boolean aura =
+                        !compact
+                                && current != null
+                                && !current.closing
+                                && MediaClockContrast.hasAura(parent);
+                if (band || aura || clockMaskDirty || !clockMask.isEmpty()) {
                     float corner = coverCorner();
                     if (blurDirty
                             || blurredArt.getWidth() != getWidth()
@@ -863,7 +883,6 @@ final class MediaFullscreenExtras {
                     }
                     if (clockMaskDirty) {
                         clockMask.reset();
-                        ViewGroup parent = root.get();
                         maskParent.reset();
                         boolean mapped = false;
                         if (parent != null) {
@@ -873,9 +892,7 @@ final class MediaFullscreenExtras {
                         if (parent != null)
                             for (Map.Entry<View, ClockPath> entry : clockPaths.entrySet()) {
                                 View clock = entry.getKey();
-                                if (!clock.isShown()
-                                        || clock.getWindowToken() != parent.getWindowToken())
-                                    continue;
+                                if (!contributesClockMask(clock, parent)) continue;
                                 ClockPath shape = entry.getValue();
                                 maskScratch.set(shape.path);
                                 maskScratch.offset(shape.x, shape.y);
@@ -891,6 +908,15 @@ final class MediaFullscreenExtras {
                         canvas.clipPath(clockMask);
                         canvas.drawRenderNode(blurredArt);
                         canvas.restoreToCount(clip);
+                    }
+                    if (aura) {
+                        MediaClockContrast.drawAura(
+                                canvas,
+                                parent,
+                                blurredArt,
+                                destination,
+                                outline,
+                                current.progress());
                     }
                     if (!band) return;
                     if (fadeTop != start || fadeBottom != solid) {
@@ -922,8 +948,8 @@ final class MediaFullscreenExtras {
     static void install(DressroomModule owner, ClassLoader loader)
             throws ReflectiveOperationException {
         module = owner;
-        Class<?> holder = OneUi9MediaBinding.holder(loader);
-        for (java.lang.reflect.Constructor<?> constructor : holder.getDeclaredConstructors())
+        OneUi9MediaBinding.HolderContract contract = OneUi9MediaBinding.holderContract(loader);
+        for (java.lang.reflect.Constructor<?> constructor : contract.type().getDeclaredConstructors())
             owner.hook(constructor)
                     .setId("dressroom-advanced.media-art-owner")
                     .intercept(
@@ -931,10 +957,10 @@ final class MediaFullscreenExtras {
                                 Object result = chain.proceed();
                                 Object object = chain.getThisObject();
                                 try {
-                                    View view = (View) Reflect.field(object, "U");
-                                    ImageView image = (ImageView) Reflect.field(object, "O");
+                                    View view = (View) contract.albumArtParent().get(object);
+                                    ImageView image = (ImageView) contract.albumArtBg().get(object);
                                     if (view != null) {
-                                        art.put(view, new Art(view, image, object));
+                                        art.put(view, new Art(view, image, object, contract));
                                         try {
                                             MediaInteraction.bind(owner, object, view);
                                         } catch (Exception error) {
@@ -996,10 +1022,11 @@ final class MediaFullscreenExtras {
                         "com.samsung.android.uniform.nowbar.MediaMaskingFrameLayout",
                         false,
                         loader);
-        Class<?> coordinator = OneUi9MediaBinding.coordinator(loader);
+        OneUi9MediaBinding.CoordinatorContract coordinator =
+                OneUi9MediaBinding.coordinatorContract(loader);
         Method progress = masking.getDeclaredMethod("setAnimationProgress", float.class),
                 random = masking.getDeclaredMethod("setRandomOffset", float.class);
-        Method reveal = NativeContract.findMethod(coordinator, "d", void.class, Drawable.class),
+        Method reveal = coordinator.reveal(),
                 start = android.animation.AnimatorSet.class.getDeclaredMethod("start");
         try (HookTransaction hooks = new HookTransaction()) {
             hooks.add(
@@ -1051,9 +1078,11 @@ final class MediaFullscreenExtras {
                                                 try {
                                                     state =
                                                             maskOwners.get(
-                                                                    Reflect.field(
-                                                                            chain.getThisObject(),
-                                                                            "g"));
+                                                                    coordinator
+                                                                            .mask()
+                                                                            .get(
+                                                                                    chain
+                                                                                            .getThisObject()));
                                                 } catch (Exception ignored) {
                                                     DressroomModule.note(
                                                             "Fullscreen mask owner field", ignored);
@@ -1087,8 +1116,7 @@ final class MediaFullscreenExtras {
             owner.deoptimize(random);
             owner.deoptimize(reveal);
             owner.deoptimize(start);
-            owner.deoptimize(
-                    NativeContract.findMethod(coordinator, "e", void.class, Drawable.class));
+            owner.deoptimize(coordinator.lighting());
             owner.deoptimize(OneUi9MediaBinding.animatorUpdate(loader));
             hooks.commit();
         }
@@ -1108,18 +1136,15 @@ final class MediaFullscreenExtras {
 
     private static void installMotion(ClassLoader loader) {
         try {
-            Class<?> card =
-                    Class.forName(
-                            "com.samsung.android.app.facewidget.presentation.NowBarMediaCardView",
-                            false,
-                            loader);
+            OneUi9MediaBinding.CardContract cardContract = OneUi9MediaBinding.cardContract(loader);
+            Class<?> card = cardContract.cardType();
             if (!motionInstalled.add(card.getClassLoader())) return;
             try {
                 MediaInteraction.installStack(module, card.getClassLoader());
             } catch (Exception error) {
                 module.report("Pill touch bounds unavailable", error);
             }
-            Method invoke = OneUi9MediaBinding.expandInvoke(card.getClassLoader());
+            Method invoke = cardContract.expandInvoke();
             module.hook(invoke)
                     .setId("dressroom-advanced.media-expansion-overlay")
                     .intercept(
@@ -1130,10 +1155,15 @@ final class MediaFullscreenExtras {
                                 ViewParent before = null;
                                 try {
                                     if (lambda != null
-                                            && ((Number) Reflect.field(lambda, "o")).intValue()
-                                                    == 5) {
-                                        View page = (View) Reflect.field(lambda, "q"),
-                                                overlay = (View) Reflect.field(lambda, "r");
+                                            && ((Number) cardContract.expandCaseField().get(lambda))
+                                                            .intValue()
+                                                    == cardContract.expandCase()) {
+                                        View page = (View) cardContract.expandPage().get(lambda),
+                                                overlay =
+                                                        (View)
+                                                                cardContract
+                                                                        .expandOverlay()
+                                                                        .get(lambda);
                                         target =
                                                 find(
                                                         page,
@@ -1160,145 +1190,139 @@ final class MediaFullscreenExtras {
                                 return result;
                             });
             module.deoptimize(invoke);
-            for (Method method : card.getDeclaredMethods()) {
-                if (method.getName().equals("D")
-                        && method.getParameterCount() == 1
-                        && method.getParameterTypes()[0] == boolean.class) {
-                    module.hook(method)
-                            .setId("dressroom-advanced.media-native-reveal")
-                            .intercept(
-                                    chain -> {
-                                        try {
-                                            View page =
-                                                    (View)
-                                                            Reflect.field(
-                                                                    chain.getThisObject(), "I1");
-                                            Art state =
-                                                    art.get(
-                                                            find(
-                                                                    page,
-                                                                    "facewidget_album_art_vi_container_parent"));
-                                            if (state != null) {
-                                                state.closing =
-                                                        Boolean.FALSE.equals(chain.getArg(0));
-                                                if (state.closing) {
-                                                    state.normalContent =
-                                                            new WeakReference<>(
-                                                                    (View)
-                                                                            Reflect.call(
-                                                                                    chain
-                                                                                            .getThisObject(),
-                                                                                    "getNormalContentRootView"));
-                                                    for (WeakReference<Backdrop> reference :
-                                                            hosts.values()) {
-                                                        Backdrop host = reference.get();
-                                                        if (host != null) host.beginClosing(state);
-                                                    }
-                                                }
-                                            }
-                                        } catch (Exception error) {
-                                            module.report(
-                                                    "Media compact-content reveal unavailable",
-                                                    error);
-                                        }
-                                        return chain.proceed();
-                                    });
-                    module.deoptimize(method);
-                } else if (method.getName().equals("g0") && method.getParameterCount() == 9) {
-                    module.hook(method)
-                            .setId("dressroom-advanced.media-collapse-geometry")
-                            .intercept(
-                                    chain -> {
-                                        View big = (View) chain.getArg(2),
-                                                small = (View) chain.getArg(3);
-                                        ViewParent before = small.getParent();
-                                        Object result = chain.proceed();
-                                        Art state = art.get(big);
-                                        if (state != null && before != small.getParent()) {
-                                            state.closing = true;
-                                            state.small = new WeakReference<>(small);
-                                            state.collapseScale = small.getScaleX();
-                                            state.overlayHost =
-                                                    new WeakReference<>((View) chain.getArg(1));
-                                            state.overlayActive = true;
-                                            state.returningCard =
-                                                    new WeakReference<>((View) chain.getArg(0));
-                                            try {
-                                                state.normalContent =
-                                                        new WeakReference<>(
-                                                                (View)
-                                                                        Reflect.call(
-                                                                                chain.getArg(0),
-                                                                                "getNormalContentRootView"));
-                                            } catch (Exception ignored) {
-                                                DressroomModule.note(
-                                                        "Fullscreen normal content root", ignored);
-                                                state.normalContent.clear();
-                                            }
-                                            try {
-                                                state.returnHeight =
-                                                        ((Number)
-                                                                        Reflect.call(
-                                                                                chain.getArg(0),
-                                                                                "getNormalCardHeight"))
-                                                                .floatValue();
-                                            } catch (Exception ignored) {
-                                                DressroomModule.note(
-                                                        "Fullscreen normal card height", ignored);
-                                                state.returnHeight = small.getHeight() * 1.8f;
-                                            }
-                                            collapsing.put(small, state);
-                                            if (RuntimeExtras.enabled(
-                                                    big.getContext(), "fullscreenArt")) {
-                                                MediaBlurHost.hold(small);
-                                                state.thumbnailMuted = true;
+            Method stateChanged = cardContract.cardStateChanged();
+            module.hook(stateChanged)
+                    .setId("dressroom-advanced.media-native-reveal")
+                    .intercept(
+                            chain -> {
+                                try {
+                                    View page =
+                                            (View)
+                                                    cardContract
+                                                            .expandedMediaView()
+                                                            .get(chain.getThisObject());
+                                    Art state =
+                                            art.get(
+                                                    find(
+                                                            page,
+                                                            "facewidget_album_art_vi_container_parent"));
+                                    if (state != null) {
+                                        state.closing = Boolean.FALSE.equals(chain.getArg(0));
+                                        if (state.closing) {
+                                            state.normalContent =
+                                                    new WeakReference<>(
+                                                            (View)
+                                                                    Reflect.call(
+                                                                            chain.getThisObject(),
+                                                                            "getNormalContentRootView"));
+                                            for (WeakReference<Backdrop> reference :
+                                                    hosts.values()) {
+                                                Backdrop host = reference.get();
+                                                if (host != null) host.beginClosing(state);
                                             }
                                         }
-                                        return result;
-                                    });
-                    module.deoptimize(method);
-                } else if (method.getName().equals("v0") && method.getParameterCount() == 7) {
-                    module.hook(method)
-                            .setId("dressroom-advanced.media-collapse-cleanup")
-                            .intercept(
-                                    chain -> {
-                                        View small = (View) chain.getArg(1);
-                                        Art state = collapsing.remove(small);
-                                        Object result = chain.proceed();
-                                        if (state != null) {
-                                            if (state.thumbnailMuted) {
-                                                MediaBlurHost.release(small);
-                                                state.thumbnailMuted = false;
-                                            }
-                                            state.small.clear();
-                                            state.closing = false;
-                                            state.startScale = 1;
-                                            state.overlayActive = false;
-                                            state.overlayHost.clear();
-                                            state.returningCard.clear();
-                                            state.normalContent.clear();
-                                        }
-                                        return result;
-                                    });
-                    module.deoptimize(method);
-                } else if (method.getName().equals("x0") && method.getParameterCount() == 9) {
-                    module.hook(method)
-                            .setId("dressroom-advanced.media-expansion-cleanup")
-                            .intercept(
-                                    chain -> {
-                                        Art state = art.get((View) chain.getArg(1));
-                                        Object result = chain.proceed();
-                                        if (state != null) {
-                                            state.closing = false;
-                                            state.overlayActive = false;
-                                            state.overlayHost.clear();
-                                            state.startScale = 1;
-                                        }
-                                        return result;
-                                    });
-                    module.deoptimize(method);
-                }
-            }
+                                    }
+                                } catch (Exception error) {
+                                    module.report(
+                                            "Media compact-content reveal unavailable", error);
+                                }
+                                return chain.proceed();
+                            });
+            module.deoptimize(stateChanged);
+
+            Method collapseGeometry = cardContract.collapseGeometry();
+            module.hook(collapseGeometry)
+                    .setId("dressroom-advanced.media-collapse-geometry")
+                    .intercept(
+                            chain -> {
+                                View big = (View) chain.getArg(2),
+                                        small = (View) chain.getArg(3);
+                                ViewParent before = small.getParent();
+                                Object result = chain.proceed();
+                                Art state = art.get(big);
+                                if (state != null && before != small.getParent()) {
+                                    state.closing = true;
+                                    state.small = new WeakReference<>(small);
+                                    state.collapseScale = small.getScaleX();
+                                    state.overlayHost = new WeakReference<>((View) chain.getArg(1));
+                                    state.overlayActive = true;
+                                    state.returningCard =
+                                            new WeakReference<>((View) chain.getArg(0));
+                                    try {
+                                        state.normalContent =
+                                                new WeakReference<>(
+                                                        (View)
+                                                                Reflect.call(
+                                                                        chain.getArg(0),
+                                                                        "getNormalContentRootView"));
+                                    } catch (Exception ignored) {
+                                        DressroomModule.note(
+                                                "Fullscreen normal content root", ignored);
+                                        state.normalContent.clear();
+                                    }
+                                    try {
+                                        state.returnHeight =
+                                                ((Number)
+                                                                Reflect.call(
+                                                                        chain.getArg(0),
+                                                                        "getNormalCardHeight"))
+                                                        .floatValue();
+                                    } catch (Exception ignored) {
+                                        DressroomModule.note(
+                                                "Fullscreen normal card height", ignored);
+                                        state.returnHeight = small.getHeight() * 1.8f;
+                                    }
+                                    collapsing.put(small, state);
+                                    if (RuntimeExtras.enabled(big.getContext(), "fullscreenArt")) {
+                                        MediaBlurHost.hold(small);
+                                        state.thumbnailMuted = true;
+                                    }
+                                }
+                                return result;
+                            });
+            module.deoptimize(collapseGeometry);
+
+            Method collapseCleanup = cardContract.collapseCleanup();
+            module.hook(collapseCleanup)
+                    .setId("dressroom-advanced.media-collapse-cleanup")
+                    .intercept(
+                            chain -> {
+                                View small = (View) chain.getArg(1);
+                                Art state = collapsing.remove(small);
+                                Object result = chain.proceed();
+                                if (state != null) {
+                                    if (state.thumbnailMuted) {
+                                        MediaBlurHost.release(small);
+                                        state.thumbnailMuted = false;
+                                    }
+                                    state.small.clear();
+                                    state.closing = false;
+                                    state.startScale = 1;
+                                    state.overlayActive = false;
+                                    state.overlayHost.clear();
+                                    state.returningCard.clear();
+                                    state.normalContent.clear();
+                                }
+                                return result;
+                            });
+            module.deoptimize(collapseCleanup);
+
+            Method expansionCleanup = cardContract.expansionCleanup();
+            module.hook(expansionCleanup)
+                    .setId("dressroom-advanced.media-expansion-cleanup")
+                    .intercept(
+                            chain -> {
+                                Art state = art.get((View) chain.getArg(1));
+                                Object result = chain.proceed();
+                                if (state != null) {
+                                    state.closing = false;
+                                    state.overlayActive = false;
+                                    state.overlayHost.clear();
+                                    state.startScale = 1;
+                                }
+                                return result;
+                            });
+            module.deoptimize(expansionCleanup);
         } catch (Exception | LinkageError e) {
             module.report("Media motion binding unavailable", e);
         }

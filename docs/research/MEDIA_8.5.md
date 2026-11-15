@@ -15,7 +15,7 @@ not be transplanted as a shared implementation.
 
 The tablet user confirms that its compact thumbnail does not fly into the
 expanded artwork. Keep that native behavior while fixing the clock lifecycle.
-Fullscreen artwork is still not ported to 8.5.
+Fullscreen artwork uses the dedicated 8.5 fade backend described below.
 
 ## Clock depth bug
 
@@ -60,3 +60,30 @@ invalidate the window; source selection/restoration waits until pre-draw, after
 Samsung finishes replacing its views and animator. Reopening replaces the old
 listener, and disabling the setting releases the retained texture immediately.
 The actual wallpaper/provider settings are not changed.
+
+## Wallpaper blur over fullscreen artwork
+
+In AOD 8.9.32.95, MediaExpandStateObserver applies the wallpaper blur to the
+SecKeyguardStatusView host. The native opening callback also resubmits it during
+the fade. Because the fullscreen artwork is behind that host, window blur can
+blur the replacement artwork as well as the wallpaper. The controls use their
+own container and are not this surface.
+
+The artwork binding worker uses the media drawable, cropping/scaling it as
+needed, without applying a blur there. This distinguishes the inspected path
+from an already blurred source bitmap; it does not establish the affected
+user's exact provider build or backend.
+
+MediaWallpaperBlur records native SemBlurInfo requests only for the legacy
+status-host class. Once the fullscreen layer actually presents artwork, it
+suppresses that host's blur. Closing, disabling or detaching releases the hold
+using the latest native request, including a native clear. A restored blur
+drawable receives the current native fade alpha. Clock, widget and controls
+surfaces are not matched by this override.
+
+This integration runs only from the 8.5 artwork backend and uses stable framework
+and status-view contracts. The captured-blur callback through SystemUI is a
+separate backend; this patch does not intercept that callback. The affected
+user's settled fullscreen result still needs confirmation. State checks cover
+native updates while held, release, native clears and independent hosts; the
+existing media-return/fade probe checks the 8.5 layer lifecycle.

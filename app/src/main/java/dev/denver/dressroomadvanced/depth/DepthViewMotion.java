@@ -50,6 +50,21 @@ final class DepthViewMotion {
         invalidate(root);
     }
 
+    static void afterPlacement(View root) {
+        for (var entry : states.entrySet()) {
+            View current = entry.getKey();
+            while (current != null && current != root)
+                current = current.getParent() instanceof View parent ? parent : null;
+            if (current == null) continue;
+            State state = entry.getValue();
+            ViewTreeObserver observer = state.observer.get();
+            if (observer != null && observer.isAlive()) {
+                observer.removeOnPreDrawListener(state);
+                observer.addOnPreDrawListener(state);
+            }
+        }
+    }
+
     private static void invalidate(View view) {
         // Parent RenderNode movement does not rerecord the children's display lists.
         view.invalidate();

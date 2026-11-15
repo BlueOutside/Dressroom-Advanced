@@ -38,6 +38,8 @@ public final class ClockBlurSyncProbe {
         Context context = (Context) at.getMethod("getSystemContext").invoke(thread);
         Clock view = new Clock(context);
         Glyph glyph = new Glyph(context);
+        GlyphOutlineBinding glyphBinding = new GlyphOutlineBinding(
+                Glyph.class, Glyph.class.getDeclaredField("S"), Glyph.class.getDeclaredField("R"));
         view.addView(glyph);
         view.layout(0, 0, 100, 100);
         glyph.layout(0, 0, 80, 80);
@@ -129,29 +131,50 @@ public final class ClockBlurSyncProbe {
         check(!BlurEffects.discardStrategy(view.h1.p), "Missing strategy not handled");
         glyph.S = true;
         glyph.R = true;
-        check(!GlyphBlurReadiness.stale(glyph, Glyph.class), "Clean ready outline was rejected");
+        check(!GlyphBlurReadiness.stale(glyph, glyphBinding), "Clean ready outline was rejected");
         glyph.dirtyGlyph = true;
-        check(GlyphBlurReadiness.stale(glyph, Glyph.class), "Dirty ready outline was accepted");
+        check(GlyphBlurReadiness.stale(glyph, glyphBinding), "Dirty ready outline was accepted");
         check(
-                GlyphBlurReadiness.needsDraw(java.util.List.of(glyph), Glyph.class),
+                GlyphBlurReadiness.needsDraw(java.util.List.of(glyph), glyphBinding),
                 "Dirty collected glyph did not defer native submission");
         glyph.dirtyGlyph = false;
         glyph.layoutGlyph = true;
-        check(GlyphBlurReadiness.stale(glyph, Glyph.class), "Pending glyph layout was accepted");
+        check(GlyphBlurReadiness.stale(glyph, glyphBinding), "Pending glyph layout was accepted");
         glyph.layoutGlyph = false;
         glyph.R = false;
-        check(GlyphBlurReadiness.stale(glyph, Glyph.class), "Unready outline was accepted");
+        check(GlyphBlurReadiness.stale(glyph, glyphBinding), "Unready outline was accepted");
         glyph.S = false;
         check(
-                !GlyphBlurReadiness.stale(glyph, Glyph.class),
-                "Uncached text was treated as an onDraw cache");
+                GlyphBlurReadiness.stale(glyph, glyphBinding),
+                "Uncached text skipped its first required draw");
+        glyph.R = true;
+        glyph.dirtyGlyph = true;
         check(
-                !GlyphBlurReadiness.stale(new View(context), Glyph.class),
+                !GlyphBlurReadiness.stale(glyph, glyphBinding),
+                "Uncached current text was treated as a stale outline");
+        glyph.layoutGlyph = true;
+        check(
+                GlyphBlurReadiness.stale(glyph, glyphBinding),
+                "Uncached text accepted offsets from before layout");
+        glyph.layoutGlyph = false;
+        glyph.dirtyGlyph = false;
+        GlyphOutlineBinding liveGlyphBinding = new GlyphOutlineBinding(
+                Glyph.class, null, Glyph.class.getDeclaredField("R"));
+        glyph.R = false;
+        check(GlyphBlurReadiness.stale(glyph, liveGlyphBinding),
+                "Older live-path provider skipped first draw");
+        glyph.R = true;
+        glyph.dirtyGlyph = true;
+        check(!GlyphBlurReadiness.stale(glyph, liveGlyphBinding),
+                "Older live-path provider was treated as cached");
+        glyph.dirtyGlyph = false;
+        check(
+                !GlyphBlurReadiness.stale(new View(context), glyphBinding),
                 "Unrelated view was treated as a glyph");
         glyph.S = true;
         glyph.R = true;
         check(
-                !GlyphBlurReadiness.needsDraw(java.util.List.of(glyph), Glyph.class),
+                !GlyphBlurReadiness.needsDraw(java.util.List.of(glyph), glyphBinding),
                 "Ready collection deferred repeatedly");
         FrameLayout blurHost = new FrameLayout(context);
         android.graphics.drawable.ColorDrawable nativeBackground =
@@ -217,17 +240,63 @@ public final class ClockBlurSyncProbe {
         content.setAlpha(MediaBlurHost.nativeAlpha(content, 0));
         MediaBlurHost.release(content);
         check(content.getAlpha() == 0, "Screen-off hidden state was lost at reveal completion");
+        ClockBlurSync.cancel(view);
+        ClockBlurAlignment.watch(view, view.h1, Manager.class.getDeclaredMethod("readEnabled"));
+        view.getViewTreeObserver().dispatchOnPreDraw();
+        check(ClockBlurSync.pending(view), "First settled layout did not request fresh blur");
+        ClockBlurSync.drawn(view);
+        int aligned = view.blurRefreshes;
+        view.getViewTreeObserver().dispatchOnPreDraw();
+        check(!ClockBlurSync.pending(view), "Stationary clock keeps rebuilding blur");
+        TestAnimator nativeFade = new TestAnimator();
+        ClockBlurAlignment.awaitAnimator(view, nativeFade);
+        ClockBlurAlignment.awaitAnimator(view, nativeFade);
+        check(nativeFade.getListeners().size() == 1, "Repeated native skips added multiple listeners");
+        nativeFade.finish();
+        check(ClockBlurSync.pending(view), "Native fade completion did not retry the skipped alignment");
+        ClockBlurSync.drawn(view);
+        check(view.blurRefreshes == aligned + 1, "Settled clock wasn't rebuilt after native fade");
+        aligned = view.blurRefreshes;
+        view.setTranslationY(37);
+        view.getViewTreeObserver().dispatchOnPreDraw();
+        ClockBlurSync.drawn(view);
+        check(view.blurRefreshes == aligned + 1, "Custom translation leaves old blur coordinates");
+        view.h1.enabled = false;
+        view.setTranslationY(49);
+        view.getViewTreeObserver().dispatchOnPreDraw();
+        check(!ClockBlurSync.pending(view), "Alignment bypassed native blur blocker");
+        view.h1.enabled = true;
+        view.setTranslationY(61);
+        view.getViewTreeObserver().dispatchOnPreDraw();
+        view.h1.enabled = false;
+        ClockBlurSync.drawn(view);
+        check(view.blurRefreshes == aligned + 1, "Deferred alignment ignored a new native blocker");
+        TestAnimator cancelledFade = new TestAnimator();
+        ClockBlurAlignment.awaitAnimator(view, cancelledFade);
+        ClockBlurAlignment.forget(view);
+        check(cancelledFade.getListeners() == null || cancelledFade.getListeners().isEmpty(),
+                "Removed clock retained an animator completion listener");
+        view.h1.enabled = true;
+        view.setTranslationY(72);
+        view.getViewTreeObserver().dispatchOnPreDraw();
+        check(!ClockBlurSync.pending(view), "Removed alignment listener remained active");
         image.recycle();
         System.out.println("Clock blur/glyph-draw synchronization: " + checks + " checks passed");
     }
 
     static final class Clock extends FrameLayout {
         boolean attached, layoutPending;
+        int blurRefreshes;
         final Manager h1 = new Manager();
 
         Clock(Context context) {
             super(context);
         }
+
+        public void setClockTextBlur() { blurRefreshes++; }
+
+        @Override
+        public boolean isShown() { return true; }
 
         @Override
         public boolean isAttachedToWindow() {
@@ -246,10 +315,20 @@ public final class ClockBlurSyncProbe {
         }
     }
 
+    static final class TestAnimator extends android.animation.ValueAnimator {
+        boolean running = true;
+        @Override public boolean isRunning() { return running; }
+        void finish() {
+            running = false;
+            for (var listener : new java.util.ArrayList<>(getListeners())) listener.onAnimationEnd(this);
+        }
+    }
+
     static final class Manager {
         Strategy p = new Strategy();
         boolean enabled = true;
         int radius = 123;
+        public boolean readEnabled() { return enabled; }
     }
 
     static final class Strategy {

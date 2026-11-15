@@ -4,14 +4,17 @@ import android.view.View;
 import android.view.ViewTreeObserver;
 
 import java.lang.ref.WeakReference;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.WeakHashMap;
 
 /** Hide the phone's two rotation targets without changing native rotation eligibility. */
 final class WidgetRotationGuide {
     private final java.util.function.BooleanSupplier suppress;
-    private final Map<View, Integer> hidden = new WeakHashMap<>();
-    private final Map<android.content.res.Resources, int[]> ids = new WeakHashMap<>();
+    private final Map<View, Integer> hidden = Collections.synchronizedMap(new WeakHashMap<>());
+    private final Map<android.content.res.Resources, int[]> ids =
+            Collections.synchronizedMap(new WeakHashMap<>());
     private WeakReference<View> anchor = new WeakReference<>(null);
     private WeakReference<View> currentGuide = new WeakReference<>(null);
     private WeakReference<ViewTreeObserver> observer = new WeakReference<>(null);
@@ -34,8 +37,12 @@ final class WidgetRotationGuide {
         anchor.clear();
         observer.clear();
         currentGuide.clear();
-        hidden.forEach(View::setVisibility);
-        hidden.clear();
+        Map<View, Integer> restore;
+        synchronized (hidden) {
+            restore = new HashMap<>(hidden);
+            hidden.clear();
+        }
+        restore.forEach(View::setVisibility);
     }
 
     void update(View root) {

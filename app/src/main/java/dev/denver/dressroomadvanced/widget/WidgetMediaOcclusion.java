@@ -6,16 +6,21 @@ import android.view.View;
 import android.view.ViewGroup;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
 
 final class WidgetMediaOcclusion {
-    private static final Map<ViewGroup, Path> covers = new WeakHashMap<>();
-    private static final Map<View, Boolean> widgets = new WeakHashMap<>();
+    private static final Map<ViewGroup, Path> covers =
+            Collections.synchronizedMap(new WeakHashMap<>());
+    private static final Map<View, Boolean> widgets =
+            Collections.synchronizedMap(new WeakHashMap<>());
 
     private record Local(Path source, Matrix inverse, Path path) {}
 
-    private static final Map<View, Local> local = new WeakHashMap<>();
+    private static final Map<View, Local> local =
+            Collections.synchronizedMap(new WeakHashMap<>());
 
     static void register(View root) {
         widgets.put(root, true);
@@ -37,8 +42,10 @@ final class WidgetMediaOcclusion {
                 break;
             }
         if (!registered) return null;
-        for (Map.Entry<ViewGroup, Path> item : covers.entrySet())
-            if (item.getKey().getWindowToken() == view.getWindowToken()) return item.getValue();
+        synchronized (covers) {
+            for (Map.Entry<ViewGroup, Path> item : covers.entrySet())
+                if (item.getKey().getWindowToken() == view.getWindowToken()) return item.getValue();
+        }
         return null;
     }
 
@@ -70,7 +77,11 @@ final class WidgetMediaOcclusion {
             cover.transform(global, screen);
             covers.put(root, screen);
         }
-        for (View widget : new ArrayList<>(widgets.keySet()))
+        List<View> targets;
+        synchronized (widgets) {
+            targets = new ArrayList<>(widgets.keySet());
+        }
+        for (View widget : targets)
             if (widget != null
                     && widget.isAttachedToWindow()
                     && widget.getWindowToken() == root.getWindowToken()) {

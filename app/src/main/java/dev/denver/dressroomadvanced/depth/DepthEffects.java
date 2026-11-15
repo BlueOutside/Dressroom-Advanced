@@ -20,10 +20,13 @@ import android.widget.TextView;
 import io.github.libxposed.api.XposedModule;
 
 import java.io.ByteArrayOutputStream;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.WeakHashMap;
 
 final class DepthEffects {
@@ -39,6 +42,8 @@ final class DepthEffects {
             Collections.synchronizedMap(new WeakHashMap<>());
     private static final Map<View, android.view.ViewTreeObserver.OnGlobalLayoutListener>
             editorRoots = Collections.synchronizedMap(new WeakHashMap<>());
+    private static final Map<ClassLoader, XposedModule> watchedEditorLoaders =
+            Collections.synchronizedMap(new WeakHashMap<>());
     private static final ThreadLocal<Boolean> drawingClock = ThreadLocal.withInitial(() -> false);
     private static byte[] editorPng;
     private static boolean editorEnabled;
@@ -48,6 +53,7 @@ final class DepthEffects {
     private static byte[] cachedPng;
     private static Bitmap cachedMask;
     private static Path cachedSubject;
+    private static Rect cachedAlphaBounds;
     private static LiveSubject activeSubject;
 
     private record LocalPath(Path screen, Matrix matrix, Path path) {}
@@ -100,6 +106,8 @@ final class DepthEffects {
                                     || drawingClock.get()
                                     || subjectSuppressed(view, entry)) return chain.proceed();
                             Canvas canvas = (Canvas) chain.getArg(0);
+                            Matrix mask = visibleMask(canvas, view, entry);
+                            if (mask == null) return chain.proceed();
                             // Grid children can extend beyond the native one-row host during
                             // unlock. Keep the incoming canvas clip, not the host's old bounds.
                             int save = canvas.saveLayer(null, null);
@@ -107,7 +115,7 @@ final class DepthEffects {
                             drawingClock.set(true);
                             try {
                                 Object result = chain.proceed();
-                                drawMask(canvas, view, entry);
+                                canvas.drawBitmap(entry.mask, mask, erase);
                                 return result;
                             } finally {
                                 drawingClock.set(previous);
@@ -128,12 +136,14 @@ final class DepthEffects {
                                     || drawingClock.get()
                                     || subjectSuppressed(view, entry)) return chain.proceed();
                             Canvas canvas = (Canvas) chain.getArg(0);
+                            Matrix mask = visibleMask(canvas, view, entry);
+                            if (mask == null) return chain.proceed();
                             int save = canvas.saveLayer(null, null);
                             boolean previous = drawingClock.get();
                             drawingClock.set(true);
                             try {
                                 Object result = chain.proceed();
-                                drawMask(canvas, view, entry);
+                                canvas.drawBitmap(entry.mask, mask, erase);
                                 return result;
                             } finally {
                                 drawingClock.set(previous);
@@ -157,10 +167,12 @@ final class DepthEffects {
                                     || drawingClock.get()
                                     || subjectSuppressed(view, entry)) return chain.proceed();
                             Canvas canvas = (Canvas) chain.getArg(0);
+                            Matrix mask = visibleMask(canvas, view, entry);
+                            if (mask == null) return chain.proceed();
                             int save = canvas.saveLayer(null, null);
                             try {
                                 Object result = chain.proceed();
-                                drawMask(canvas, view, entry);
+                                canvas.drawBitmap(entry.mask, mask, erase);
                                 return result;
                             } finally {
                                 canvas.restoreToCount(save);
@@ -169,15 +181,18 @@ final class DepthEffects {
         installed = true;
     }
 
-    private static void drawMask(Canvas canvas, View view, Entry entry) {
+    private static Matrix visibleMask(Canvas canvas, View view, Entry entry) {
+        if (entry.alphaBounds.isEmpty()) return null;
         Matrix source = subjectTransform(view, entry, 0, 0);
-        if (source == null) return;
-        Matrix global = new Matrix(), inverse = new Matrix();
-        view.transformMatrixToGlobal(global);
-        if (!global.invert(inverse)) return;
-        Matrix local = new Matrix();
+        if (source == null) return null;
+        Matrix local = new Matrix(), inverse = new Matrix();
+        view.transformMatrixToGlobal(local);
+        if (!local.invert(inverse)) return null;
         local.setConcat(inverse, source);
-        canvas.drawBitmap(entry.mask, local, erase);
+        RectF bounds = new RectF(entry.alphaBounds);
+        local.mapRect(bounds);
+        // Check against the incoming canvas clip. Grid content can exceed the view bounds.
+        return canvas.quickReject(bounds) ? null : local;
     }
 
     static void apply(View view, boolean enabled, byte[] png) {
@@ -205,6 +220,7 @@ final class DepthEffects {
                 cachedPng = png;
                 cachedMask = mask;
                 cachedSubject = null;
+                cachedAlphaBounds = null;
             }
             if (mask == null) {
                 ClockContentClip.watch(view, false);
@@ -421,14 +437,18 @@ final class DepthEffects {
         return subject;
     }
 
-    static void wallpaperMotionChanged() {
-        localPaths.clear();
+    private static boolean onAffectedScreen(Entry entry, int screens) {
+        int screen = entry.screen == ScreenIdentity.SUB ? ScreenIdentity.SUB : ScreenIdentity.MAIN;
+        return entry.enabled && entry.runtimeMotion && !entry.editor && (screens & screen) != 0;
+    }
+
+    static void wallpaperMotionChanged(int screens) {
         java.util.ArrayList<View> roots = new java.util.ArrayList<>();
         synchronized (entries) {
             for (var item : entries.entrySet()) {
                 Entry entry = item.getValue();
-                if (entry.editor || !entry.runtimeMotion || !entry.enabled) continue;
-                entry.paths.clear();
+                if (!onAffectedScreen(entry, screens)) continue;
+                // Screen paths are already keyed by their transform and bounded by the cache.
                 entry.identity = new Object();
                 View view = item.getKey();
                 boolean nested = false;
@@ -436,7 +456,7 @@ final class DepthEffects {
                         parent instanceof View up;
                         parent = up.getParent()) {
                     Entry ancestor = entries.get(up);
-                    if (ancestor != null && ancestor.enabled && ancestor.runtimeMotion) {
+                    if (ancestor != null && onAffectedScreen(ancestor, screens)) {
                         nested = true;
                         break;
                     }
@@ -728,107 +748,105 @@ final class DepthEffects {
 
     static void watchEditorWallpaper(XposedModule module, ClassLoader loader, boolean legacy)
             throws ReflectiveOperationException {
-        Class<?> cropType =
-                Class.forName(
-                        "com.samsung.android.app.dressroom.presentation.preview.widget.CropImageView",
-                        false,
-                        loader);
-        java.lang.reflect.Method draw = cropType.getDeclaredMethod("onDraw", Canvas.class);
-        module.hook(draw)
-                .setId("dressroom-advanced.editor-wallpaper-source")
-                .intercept(
-                        chain -> {
-                            View view = (View) chain.getThisObject();
-                            if (view.isShown() && view.getWidth() > 0 && view.getHeight() > 0)
-                                editorWallpaper = new java.lang.ref.WeakReference<>(view);
-                            if (wallpaperListener != null && view.isShown())
-                                wallpaperListener.accept(view);
-                            if (activeSubject != null && activeSubject.image.get() == view)
-                                updateLiveMask();
-                            return chain.proceed();
-                        });
-        module.deoptimize(draw);
-        try {
-            Class<?> surfaceType =
+        synchronized (watchedEditorLoaders) {
+            if (watchedEditorLoaders.get(loader) == module) return;
+            Class<?> cropType =
                     Class.forName(
-                            "com.samsung.android.app.dressroom.editorcomponent.component.wallpaper.image.effects.weather.WeatherSurfaceView",
+                            "com.samsung.android.app.dressroom.presentation.preview.widget.CropImageView",
                             false,
                             loader);
-            // SurfaceView has its own lifecycle and can become ready after the controller's
-            // configuration callback. Bind there too, without relying on a short method name.
-            for (Method lifecycle :
-                    new Method[] {
-                        surfaceType.getDeclaredMethod(
-                                "surfaceCreated", android.view.SurfaceHolder.class),
-                        surfaceType.getDeclaredMethod(
-                                "surfaceChanged",
-                                android.view.SurfaceHolder.class,
-                                int.class,
-                                int.class,
-                                int.class)
-                    }) {
-                module.hook(lifecycle)
-                        .setId("dressroom-advanced.weather-surface-source")
-                        .intercept(
-                                chain -> {
-                                    Object result = chain.proceed();
-                                    View surface = (View) chain.getThisObject();
-                                    View crop = findCropView(surface.getRootView(), false);
-                                    if (crop != null) {
-                                        EditorWallpaperSource.bind(crop, surface);
-                                        if (wallpaperListener != null)
-                                            wallpaperListener.accept(crop);
-                                        updateLiveMask();
-                                    }
-                                    return result;
-                                });
-                module.deoptimize(lifecycle);
-            }
-            Class<?> weather =
-                    NativeContract.findClass(
-                            loader,
-                            type ->
-                                    NativeContract.hasField(type, cropType)
-                                            && NativeContract.hasField(type, surfaceType),
-                            legacy ? "l3.h" : "i7.g",
-                            legacy ? "i7.g" : "l3.h");
-            java.lang.reflect.Field cropField = NativeContract.findField(weather, "d", cropType);
-            java.lang.reflect.Field surfaceField =
-                    NativeContract.findField(weather, legacy ? "j" : "l", surfaceType);
-            for (Method method : weather.getDeclaredMethods())
-                if (method.getName().equals(legacy ? "u" : "e")
-                        && method.getParameterCount() == (legacy ? 1 : 0)) {
+            java.lang.reflect.Method draw = cropType.getDeclaredMethod("onDraw", Canvas.class);
+            module.hook(draw)
+                    .setId("dressroom-advanced.editor-wallpaper-source")
+                    .intercept(
+                            chain -> {
+                                View view = (View) chain.getThisObject();
+                                if (view.isShown()
+                                        && view.getWidth() > 0
+                                        && view.getHeight() > 0)
+                                    editorWallpaper = new java.lang.ref.WeakReference<>(view);
+                                if (wallpaperListener != null && view.isShown())
+                                    wallpaperListener.accept(view);
+                                if (activeSubject != null && activeSubject.image.get() == view)
+                                    updateLiveMask();
+                                return chain.proceed();
+                            });
+            module.deoptimize(draw);
+            watchedEditorLoaders.put(loader, module);
+            try {
+                Class<?> surfaceType =
+                        Class.forName(
+                                "com.samsung.android.app.dressroom.editorcomponent.component.wallpaper.image.effects.weather.WeatherSurfaceView",
+                                false,
+                                loader);
+                // SurfaceView has its own lifecycle and can become ready after the controller's
+                // configuration callback. Bind there too, without relying on a short method name.
+                for (Method lifecycle :
+                        new Method[] {
+                            surfaceType.getDeclaredMethod(
+                                    "surfaceCreated", android.view.SurfaceHolder.class),
+                            surfaceType.getDeclaredMethod(
+                                    "surfaceChanged",
+                                    android.view.SurfaceHolder.class,
+                                    int.class,
+                                    int.class,
+                                    int.class)
+                        }) {
+                    module.hook(lifecycle)
+                            .setId("dressroom-advanced.weather-surface-source")
+                            .intercept(
+                                    chain -> {
+                                        Object result = chain.proceed();
+                                        View surface = (View) chain.getThisObject();
+                                        View crop = findCropView(surface.getRootView(), false);
+                                        if (crop != null) {
+                                            EditorWallpaperSource.bind(crop, surface);
+                                            if (wallpaperListener != null)
+                                                wallpaperListener.accept(crop);
+                                            updateLiveMask();
+                                        }
+                                        return result;
+                                    });
+                    module.deoptimize(lifecycle);
+                }
+                WeatherPreviewBinding.Hooks weather =
+                        WeatherPreviewBinding.resolve(loader, cropType, surfaceType, legacy);
+                for (Method method : weather.methods()) {
                     module.hook(method)
                             .setId("dressroom-advanced.weather-depth-source")
                             .intercept(
                                     chain -> {
                                         Object result = chain.proceed();
-                                        Object owner = chain.getThisObject();
-                                        try {
-                                            Object crop = cropField.get(owner),
-                                                    surface = surfaceField.get(owner);
-                                            if (crop instanceof View image
-                                                    && surface instanceof View layer) {
-                                                EditorWallpaperSource.bind(image, layer);
-                                                image.post(
-                                                        () -> {
-                                                            if (wallpaperListener != null)
-                                                                wallpaperListener.accept(image);
-                                                            updateLiveMask();
-                                                        });
-                                            }
-                                        } catch (ReflectiveOperationException error) {
-                                            android.util.Log.w(
-                                                    DressroomModule.TAG,
-                                                    "Weather depth binding unavailable",
-                                                    error);
-                                        }
+                                        bindWeatherControllerSource(
+                                                weather.crop(),
+                                                weather.surface(),
+                                                chain.getThisObject());
                                         return result;
                                     });
                     module.deoptimize(method);
                 }
+            } catch (ReflectiveOperationException error) {
+                android.util.Log.w(
+                        DressroomModule.TAG, "Weather depth source unavailable", error);
+            }
+        }
+    }
+
+    private static void bindWeatherControllerSource(
+            Field cropField, Field surfaceField, Object owner) {
+        try {
+            Object crop = cropField.get(owner);
+            Object surface = surfaceField.get(owner);
+            if (crop instanceof View image && surface instanceof View layer) {
+                EditorWallpaperSource.bind(image, layer);
+                image.post(
+                        () -> {
+                            if (wallpaperListener != null) wallpaperListener.accept(image);
+                            updateLiveMask();
+                        });
+            }
         } catch (ReflectiveOperationException error) {
-            android.util.Log.w(DressroomModule.TAG, "Weather depth source unavailable", error);
+            android.util.Log.w(DressroomModule.TAG, "Weather depth binding unavailable", error);
         }
     }
 
@@ -952,6 +970,7 @@ final class DepthEffects {
             Runnable finished) {
         final Bitmap wallpaper;
         final LiveSubject capture;
+        final InstalledWallpaperMask.Target installed;
         final long generation = editorGeneration;
         final long request = ++scanRequest;
         detectionFailure = null;
@@ -964,6 +983,7 @@ final class DepthEffects {
             if (!EditorWallpaperSource.available(image))
                 throw new IllegalStateException(
                         "Wallpaper preview is not ready. Reopen the editor and try again.");
+            installed = InstalledWallpaperMask.target(image);
             LiveSubject.Capture snapshot = LiveSubject.capture(image);
             wallpaper = snapshot.bitmap();
             capture = snapshot.subject();
@@ -979,30 +999,32 @@ final class DepthEffects {
         }
         scanner.execute(
                 () -> {
-                    Object detector = null;
                     Bitmap prepared = null;
                     try {
                         if (request != scanRequest || generation != editorGeneration) return;
                         ClassLoader loader = editorContext.getClassLoader();
-                        detector = initializeDetector(editorContext, loader);
-                        prepared = MaskAlpha.detect(detector, wallpaper, "full image");
-                        if (prepared == null && request == scanRequest) {
-                            try {
+                        prepared = ObjectCaptureBackend.detect(editorContext, loader, detector -> {
+                            if (request != scanRequest || generation != editorGeneration)
+                                throw new InterruptedException("Editor scan superseded");
+                            Bitmap full = MaskAlpha.detect(detector, wallpaper, "full image");
+                            if (full == null && request == scanRequest) {
                                 Thread.sleep(60);
-                            } catch (InterruptedException ignored) {
+                                full = MaskAlpha.detect(detector, wallpaper, "full image retry");
                             }
-                            prepared = MaskAlpha.detect(detector, wallpaper, "full image retry");
-                        }
-                        final Object activeDetector = detector;
-                        prepared =
-                                MaskAlpha.refine(
-                                        prepared,
-                                        () -> detailMask(activeDetector, capture, wallpaper));
+                            if (request != scanRequest || generation != editorGeneration) {
+                                if (full != null) full.recycle();
+                                throw new InterruptedException("Editor scan superseded");
+                            }
+                            return MaskAlpha.refine(full, () -> detailMask(detector, capture, wallpaper));
+                        });
+                        if (prepared == null && request == scanRequest && generation == editorGeneration)
+                            prepared = InstalledWallpaperMask.find(editorContext, installed, capture, wallpaper);
                         if (prepared == null)
                             throw new IllegalStateException("No subject found in this wallpaper");
                         final Bitmap readyMask = prepared;
                         byte[] mask = MaskAlpha.encode(readyMask);
                         Path outline = contour(readyMask);
+                        Rect alphaBounds = MaskAlpha.bounds(readyMask);
                         if (!scanMain.post(
                                 () -> {
                                     if (generation != editorGeneration || request != scanRequest) {
@@ -1019,6 +1041,7 @@ final class DepthEffects {
                                     cachedPng = mask;
                                     cachedMask = readyMask;
                                     cachedSubject = outline;
+                                    cachedAlphaBounds = alphaBounds;
                                     capture.png = mask;
                                     activeSubject = capture;
                                     capture.watch(DepthEffects::updateLiveMask);
@@ -1028,6 +1051,8 @@ final class DepthEffects {
                                 }))
                             throw new IllegalStateException("Editor result handler stopped");
                         prepared = null;
+                    } catch (InterruptedException superseded) {
+                        // A newer wallpaper or scan owns the editor result.
                     } catch (Exception | LinkageError e) {
                         android.util.Log.w(DressroomModule.TAG, "Subject detection failed", e);
                         String message = e.getMessage();
@@ -1042,11 +1067,6 @@ final class DepthEffects {
                                         callback.done(null, visibleMessage);
                                 });
                     } finally {
-                        if (detector != null)
-                            try {
-                                Reflect.call(detector, "release");
-                            } catch (Exception | LinkageError ignored) {
-                            }
                         if (prepared != null && !prepared.isRecycled()) prepared.recycle();
                         wallpaper.recycle();
                         scanMain.post(finished);
@@ -1092,12 +1112,7 @@ final class DepthEffects {
         }
     }
 
-    private static Object initializeDetector(
-            android.content.Context editorContext, ClassLoader loader) throws Exception {
-        return ObjectCaptureBackend.open(editorContext, loader);
-    }
-
-    private static View findCropView(View root) {
+    static View findCropView(View root) {
         return findCropView(root, true);
     }
 
@@ -1237,6 +1252,7 @@ final class DepthEffects {
         final byte[] png;
         final Bitmap mask;
         final Path subject;
+        final Rect alphaBounds;
         final LiveSubject live;
         Object identity = new Object();
         final Map<Matrix, Path> paths = new java.util.LinkedHashMap<>();
@@ -1255,6 +1271,9 @@ final class DepthEffects {
                     activeSubject != null && Arrays.equals(activeSubject.png, png)
                             ? activeSubject
                             : null;
+            alphaBounds = mask == cachedMask && cachedAlphaBounds != null
+                    ? cachedAlphaBounds : MaskAlpha.bounds(mask);
+            if (mask == cachedMask) cachedAlphaBounds = alphaBounds;
             if (mask == cachedMask && cachedSubject != null) {
                 subject = cachedSubject;
                 return;

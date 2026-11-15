@@ -40,6 +40,16 @@ final class OneUi85FullscreenArt {
         OneUi85ArtworkBinding binding = new OneUi85ArtworkBinding(base);
         OneUi85WallpaperFadeBinding wallpaper = new OneUi85WallpaperFadeBinding(base);
         MediaBlurHost.install(module);
+        try {
+            MediaWallpaperBlur.install(module, loader);
+        } catch (ReflectiveOperationException | LinkageError error) {
+            module.report("Optional legacy wallpaper blur override unavailable", error);
+        }
+        try {
+            MediaClockContrast.install(module, loader);
+        } catch (ReflectiveOperationException | LinkageError error) {
+            module.report("8.5 artwork clock appearance unavailable", error);
+        }
         try (HookTransaction hooks = new HookTransaction()) {
             hooks.add(
                     module.hook(binding.constructor)
@@ -120,7 +130,13 @@ final class OneUi85FullscreenArt {
     static void wallpaperFade(View host, ValueAnimator animator, boolean expanded) {
         if (host == null || animator == null) return;
         Layer layer = ensure(host);
-        if (layer != null) layer.bindFade(animator, expanded);
+        if (layer != null) {
+            View previous = layer.wallpaperHost.get();
+            if (previous != host)
+                MediaWallpaperBlur.release(previous, layer.nativeFade ? layer.nativeAlpha : 1);
+            layer.wallpaperHost = new WeakReference<>(host);
+            layer.bindFade(animator, expanded);
+        }
     }
 
     private static Layer ensure(View view) {
@@ -257,14 +273,19 @@ final class OneUi85FullscreenArt {
 
     private static final class Layer extends View implements ViewTreeObserver.OnPreDrawListener {
         final WeakReference<ViewGroup> root;
+        final RectF paletteBounds = new RectF();
         WeakReference<ViewTreeObserver> observer = new WeakReference<>(null);
         final Set<View> held = Collections.newSetFromMap(new WeakHashMap<>());
         final Map<View, Blank> backgrounds = new WeakHashMap<>();
         final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
         final RectF bounds = new RectF(), crop = new RectF();
+        final android.graphics.RenderNode blurredArt =
+                new android.graphics.RenderNode("Dressroom 8.5 media clock aura");
+        boolean blurDirty = true;
         Source current;
         Bitmap bitmap;
         WeakReference<ValueAnimator> fadeAnimator = new WeakReference<>(null);
+        WeakReference<View> wallpaperHost = new WeakReference<>(null);
         FadeListener fadeListener;
         boolean nativeFade, nativeExpanded;
         float nativeAlpha;
@@ -272,6 +293,10 @@ final class OneUi85FullscreenArt {
         Layer(ViewGroup root) {
             super(root.getContext());
             this.root = new WeakReference<>(root);
+            float radius = 24f * getResources().getDisplayMetrics().density;
+            blurredArt.setRenderEffect(
+                    android.graphics.RenderEffect.createBlurEffect(
+                            radius, radius, android.graphics.Shader.TileMode.CLAMP));
             setVisibility(INVISIBLE);
             setClickable(false);
             setFocusable(false);
@@ -297,10 +322,14 @@ final class OneUi85FullscreenArt {
 
         @Override
         protected void onDetachedFromWindow() {
+            ViewGroup parent = root.get();
+            if (parent != null) MediaClockContrast.clear(parent);
             clearFade();
             restore();
             current = null;
             bitmap = null;
+            blurredArt.discardDisplayList();
+            blurDirty = true;
             ViewTreeObserver old = observer.get();
             if (old != null && old.isAlive()) old.removeOnPreDrawListener(this);
             observer.clear();
@@ -327,6 +356,7 @@ final class OneUi85FullscreenArt {
                     && !nativeExpanded
                     && bitmap != null
                     && !bitmap.isRecycled()) {
+                MediaClockContrast.clear(parent);
                 present(nativeAlpha);
                 if (nativeAlpha <= 0) hide();
                 return;
@@ -335,12 +365,35 @@ final class OneUi85FullscreenArt {
             float score = 0, alpha = 0;
             if (enabled)
                 for (Source source : sources.values()) {
+                    View item = source.item.get();
                     View frame = source.frame.get();
-                    if (frame == null
-                            || frame.getRootView() != parent
-                            || source.bitmap() == null
-                            || !frame.getGlobalVisibleRect(source.visible)) continue;
-                    float value = nativeFade ? nativeAlpha : opacity(frame, parent);
+                    if (item == null || item.getRootView() != parent || source.bitmap() == null) continue;
+                    boolean frameVisible = frame != null && frame.getGlobalVisibleRect(source.visible) && !source.visible.isEmpty();
+                    if (!frameVisible) {
+                        if (nativeExpanded) {
+                            View bg = source.background.get();
+                            View anchor = bg != null ? bg : item;
+                            if (anchor.isAttachedToWindow() && anchor.getVisibility() == View.VISIBLE
+                                    && anchor.getGlobalVisibleRect(source.visible) && !source.visible.isEmpty()) {
+                                // Frame collapsed post-expansion; card anchor is visible
+                            } else if (item.isAttachedToWindow() && item.getVisibility() == View.VISIBLE) {
+                                source.visible.set(0, 0, parent.getWidth(), parent.getHeight());
+                            } else {
+                                continue;
+                            }
+                        } else {
+                            continue;
+                        }
+                    }
+                    float value;
+                    if (nativeFade) {
+                        value = nativeAlpha;
+                    } else if (nativeExpanded) {
+                        float itemOpacity = opacity(item, parent);
+                        value = itemOpacity > 0 ? itemOpacity : (nativeAlpha > 0 ? nativeAlpha : 1f);
+                    } else {
+                        value = opacity(frame != null ? frame : item, parent);
+                    }
                     float size = source.visible.width() * (float) source.visible.height() * value;
                     if (size > score) {
                         score = size;
@@ -362,20 +415,33 @@ final class OneUi85FullscreenArt {
             Bitmap next = best.bitmap();
             if (bitmap != next) {
                 bitmap = next;
+                blurDirty = true;
                 invalidate();
+            }
+            paletteBounds.set(0, 0, parent.getWidth(), parent.getHeight());
+            try {
+                MediaClockContrast.apply(parent, bitmap, paletteBounds);
+            } catch (RuntimeException error) {
+                MediaClockContrast.clear(parent);
             }
             present(alpha);
         }
 
         void present(float alpha) {
+            if (alpha > 0) MediaWallpaperBlur.hold(wallpaperHost.get());
+            else MediaWallpaperBlur.release(wallpaperHost.get(), 0);
             if (getAlpha() != alpha) setAlpha(alpha);
             setVisibility(alpha > 0 ? VISIBLE : INVISIBLE);
         }
 
         void hide() {
+            ViewGroup parent = root.get();
+            if (parent != null) MediaClockContrast.clear(parent);
             restore();
             current = null;
             bitmap = null;
+            blurredArt.discardDisplayList();
+            blurDirty = true;
             setVisibility(INVISIBLE);
         }
 
@@ -469,6 +535,7 @@ final class OneUi85FullscreenArt {
         }
 
         void restore() {
+            MediaWallpaperBlur.release(wallpaperHost.get(), nativeFade ? nativeAlpha : 1);
             for (View view : held) MediaBlurHost.release(view);
             held.clear();
             for (var entry : backgrounds.entrySet())
@@ -482,6 +549,19 @@ final class OneUi85FullscreenArt {
             if (bitmap == null || bitmap.isRecycled()) return;
             bounds.set(0, 0, getWidth(), getHeight());
             NativeArtworkReveal.bitmap(canvas, bitmap, bounds, 1, 1, paint, crop);
+            ViewGroup parent = root.get();
+            if (canvas.isHardwareAccelerated() && MediaClockContrast.hasAura(parent)) {
+                if (blurDirty
+                        || blurredArt.getWidth() != getWidth()
+                        || blurredArt.getHeight() != getHeight()) {
+                    blurredArt.setPosition(0, 0, getWidth(), getHeight());
+                    Canvas record = blurredArt.beginRecording();
+                    NativeArtworkReveal.bitmap(record, bitmap, bounds, 1, 1, paint, crop);
+                    blurredArt.endRecording();
+                    blurDirty = false;
+                }
+                MediaClockContrast.drawAura(canvas, parent, blurredArt, bounds, null, 1f);
+            }
         }
     }
 }

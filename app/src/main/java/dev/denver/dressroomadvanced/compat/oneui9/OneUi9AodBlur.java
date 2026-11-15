@@ -1,127 +1,52 @@
 package dev.denver.dressroomadvanced;
 
-import android.graphics.Path;
-import android.graphics.PointF;
-import android.graphics.Shader;
 import android.view.View;
-import android.view.ViewGroup;
-import android.widget.ImageView;
 
+import java.io.IOException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 final class OneUi9AodBlur {
-    static final String STRATEGY = "aod.tx0",
-            OPTIONS = "aod.xb0",
-            HELPER = "aod.e70",
-            MANAGER = "aod.cq0",
-            GLYPH_RUNNABLE = "aod.yp0",
-            TONE_SAMPLER = "aod.n16",
-            BRIGHTNESS = "aod.rv2",
-            TONE_INFO = "aod.l49",
-            WIDGET_SIZING = "aod.v99";
-
     private OneUi9AodBlur() {}
 
-    static ClockBlurBinding resolve(ClassLoader loader) throws ReflectiveOperationException {
-        Class<?> weather =
-                Class.forName(
-                        "com.samsung.android.clockpack.plugins.clock.WeatherInfo", false, loader);
-        Class<?> builder = Class.forName("android.view.SemBlurInfo$Builder");
-        Class<?> strategy = strategy(loader, weather);
-        Class<?> options = options(loader, strategy, weather);
-        Class<?> helper =
-                NativeContract.findClass(
-                        loader,
-                        type -> NativeContract.hasStaticMethod(type, void.class, builder, Path.class),
-                        HELPER, "aod.x60");
-        return new ClockBlurBinding(strategy, options, weather, helper, "a", "o");
-    }
-
-    static Class<?> strategy(ClassLoader loader, Class<?> weather)
-            throws ReflectiveOperationException {
-        return NativeContract.findClass(
-                loader,
-                type ->
-                        NativeContract.hasMethod(type, PointF.class, ViewGroup.class)
-                                && NativeContract.hasMethod(
-                                        type,
-                                        Path.class,
-                                        ImageView.class,
-                                        weather,
-                                        float.class,
-                                        ViewGroup.class),
-                STRATEGY, "aod.jx0");
-    }
-
-    static Class<?> options(ClassLoader loader, Class<?> strategy, Class<?> weather)
-            throws ReflectiveOperationException {
-        for (Method method : strategy.getDeclaredMethods()) {
-            Class<?>[] params = method.getParameterTypes();
-            if (params.length == 3 && params[0] == ImageView.class && params[1] == weather) {
-                return params[2];
+    static Class<?> blurUtils(ClassLoader loader) throws ReflectiveOperationException {
+        List<DexSignatures.Body> matches;
+        try {
+            matches = DexSignatures.find(loader, Set.of("setBlurByCustomAttributes: "));
+        } catch (IOException invalidDex) {
+            throw new ReflectiveOperationException("Could not scan AOD blur helpers", invalidDex);
+        }
+        List<Method> resolved = new ArrayList<>();
+        List<String> signature =
+                List.of("Landroid/view/View;", "F", "[F", "Ljava/lang/Integer;");
+        for (DexSignatures.Body body : matches) {
+            if ((body.access() & 8) != 0
+                    && body.result().equals("V")
+                    && body.parameters().equals(signature)) {
+                resolved.add(body.method(loader));
             }
         }
-        return NativeContract.findClass(
-                loader,
-                type ->
-                        NativeContract.hasConstructor(
-                                type, double.class, float.class, boolean.class, float.class),
-                OPTIONS);
+        if (resolved.size() != 1)
+            throw new ClassNotFoundException(
+                    "Ambiguous AOD blur utility class: " + resolved.size());
+        return resolved.get(0).getDeclaringClass();
     }
 
-    static Class<?> manager(ClassLoader loader) throws ReflectiveOperationException {
-        Class<?> weather =
-                Class.forName(
-                        "com.samsung.android.clockpack.plugins.clock.WeatherInfo", false, loader);
-        return NativeContract.findClass(
-                loader,
-                type ->
-                        NativeContract.hasMethod(
-                                        type, void.class, ArrayList.class, int.class, float.class)
-                                && NativeContract.hasField(type, weather),
-                MANAGER, "aod.sp0");
-    }
-
-    static Class<?> glyphRunnable(ClassLoader loader, Class<?> manager)
-            throws ReflectiveOperationException {
-        return NativeContract.findClass(
-                loader,
-                type ->
-                        Runnable.class.isAssignableFrom(type)
-                                && NativeContract.hasConstructor(
-                                        type, manager, int.class, int.class, boolean.class),
-                GLYPH_RUNNABLE, "aod.op0");
-    }
-
-    static List<Method> submissions(ClassLoader loader) throws ReflectiveOperationException {
-        Class<?> utils =
-                NativeContract.findClass(
-                        loader,
-                        type ->
-                                NativeContract.hasStaticMethod(
-                                                type,
-                                                void.class,
-                                                View.class,
-                                                float.class,
-                                                float[].class,
-                                                Integer.class)
-                                        && NativeContract.hasStaticMethod(
-                                                type,
-                                                void.class,
-                                                View.class,
-                                                int.class,
-                                                float.class,
-                                                Integer.class,
-                                                String.class),
-                        HELPER, "aod.x60");
+    static List<Method> commonSubmissions(Class<?> utils) throws NoSuchMethodException {
         return List.of(
                 NativeContract.findStaticMethod(
-                        utils, "c", void.class, View.class, float.class, float[].class, Integer.class),
+                        utils,
+                        null,
+                        void.class,
+                        View.class,
+                        float.class,
+                        float[].class,
+                        Integer.class),
                 NativeContract.findStaticMethod(
                         utils,
-                        "d",
+                        null,
                         void.class,
                         View.class,
                         int.class,
@@ -130,61 +55,36 @@ final class OneUi9AodBlur {
                         String.class));
     }
 
-    static Class<?> toneSampler(ClassLoader loader) throws ReflectiveOperationException {
-        return NativeContract.findClass(
-                loader,
-                type ->
-                        NativeContract.hasStaticMethod(type, type)
-                                && NativeContract.hasMethod(type, float[].class, Object.class)
-                                && NativeContract.hasMethod(type, int.class, Object.class),
-                TONE_SAMPLER, "aod.i16");
-    }
-
-    static Class<?> brightness(ClassLoader loader) throws ReflectiveOperationException {
-        return NativeContract.findClass(
-                loader,
-                type ->
-                        NativeContract.hasStaticMethod(type, double.class, int.class)
-                                && NativeContract.hasStaticMethod(
-                                        type, Shader.TileMode.class, int.class),
-                BRIGHTNESS, "aod.ev2");
-    }
-
-    static Class<?> toneInfo(ClassLoader loader) throws ReflectiveOperationException {
-        return NativeContract.findClass(
-                loader,
-                type ->
-                        NativeContract.hasConstructor(type, double.class, float.class)
-                                && NativeContract.hasField(type, double.class)
-                                && NativeContract.hasField(type, float.class),
-                TONE_INFO, "aod.q39");
+    static List<Method> submissions(ClassLoader loader) throws ReflectiveOperationException {
+        Class<?> utils = blurUtils(loader);
+        List<Method> common = commonSubmissions(utils);
+        return List.of(
+                NativeContract.findStaticMethod(utils, null, void.class, View.class),
+                common.get(0),
+                common.get(1));
     }
 
     static Method widgetSizing(ClassLoader loader, Class<?> spec)
             throws ReflectiveOperationException {
-        Class<?> sizing =
-                NativeContract.findClass(
-                        loader,
-                        type ->
-                                NativeContract.hasStaticMethod(
-                                        type,
-                                        spec,
-                                        android.content.Context.class,
-                                        int.class,
-                                        int.class,
-                                        int.class,
-                                        int.class,
-                                        boolean.class),
-                        WIDGET_SIZING, "aod.x89");
-        return NativeContract.findStaticMethod(
-                sizing,
-                "a",
-                spec,
-                android.content.Context.class,
-                int.class,
-                int.class,
-                int.class,
-                int.class,
-                boolean.class);
+        List<DexSignatures.Body> matches;
+        try {
+            matches = DexSignatures.find(loader, Set.of("getSizeSpec"));
+        } catch (IOException invalidDex) {
+            throw new ReflectiveOperationException("Could not scan widget size helper", invalidDex);
+        }
+        String specDescriptor = DexSignatures.descriptor(spec);
+        List<String> expectedParams = List.of("Landroid/content/Context;", "I", "I", "I", "I", "Z");
+        List<Method> methods = new ArrayList<>();
+        for (DexSignatures.Body body : matches) {
+            if ((body.access() & 8) != 0
+                    && body.result().equals(specDescriptor)
+                    && body.parameters().equals(expectedParams)) {
+                methods.add(body.method(loader));
+            }
+        }
+        if (methods.size() != 1)
+            throw new NoSuchMethodException(
+                    "Ambiguous widget size helper: " + methods.size());
+        return methods.get(0);
     }
 }

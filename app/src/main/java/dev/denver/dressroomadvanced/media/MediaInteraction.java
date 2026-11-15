@@ -22,18 +22,22 @@ final class MediaInteraction {
     private static final class Target {
         final WeakReference<Object> holder;
         final WeakReference<View> title;
-        boolean outside;
+        final OneUi9MediaBinding.HolderContract contract;
+        boolean outside, moved;
         float x, y;
 
-        Target(Object holder, View title) {
+        Target(Object holder, View title, OneUi9MediaBinding.HolderContract contract) {
             this.holder = new WeakReference<>(holder);
             this.title = new WeakReference<>(title);
+            this.contract = contract;
         }
     }
 
     static void bind(DressroomModule module, Object holder, View root)
             throws ReflectiveOperationException {
-        targets.put(root, new Target(holder, (View) Reflect.field(holder, "c0")));
+        OneUi9MediaBinding.HolderContract contract =
+                OneUi9MediaBinding.holderContract(holder.getClass().getClassLoader());
+        targets.put(root, new Target(holder, (View) contract.titleArtist().get(holder), contract));
         if (installed) return;
         Method dispatch =
                 ViewGroup.class.getDeclaredMethod("dispatchTouchEvent", MotionEvent.class);
@@ -43,13 +47,13 @@ final class MediaInteraction {
                         chain -> {
                             View rootView = (View) chain.getThisObject();
                             Target target = targets.get(rootView);
-                            if (target == null
-                                    || !RuntimeExtras.enabled(
-                                            rootView.getContext(), "fullscreenArt"))
-                                return chain.proceed();
+                            if (target == null) return chain.proceed();
                             MotionEvent event = (MotionEvent) chain.getArg(0);
                             int action = event.getActionMasked();
                             if (action == MotionEvent.ACTION_DOWN) {
+                                target.outside = false;
+                                if (!RuntimeExtras.enabled(rootView.getContext(), "fullscreenArt"))
+                                    return chain.proceed();
                                 View title = target.title.get();
                                 Rect bounds = new Rect();
                                 target.outside =
@@ -58,21 +62,34 @@ final class MediaInteraction {
                                                 || !bounds.contains(
                                                         (int) event.getRawX(),
                                                         (int) event.getRawY());
-                                target.x = event.getX();
-                                target.y = event.getY();
+                                target.x = event.getRawX();
+                                target.y = event.getRawY();
+                                target.moved = false;
                             }
                             if (!target.outside) return chain.proceed();
+                            if (action == MotionEvent.ACTION_MOVE || action == MotionEvent.ACTION_UP) {
+                                float dx = event.getRawX() - target.x;
+                                float dy = event.getRawY() - target.y;
+                                int slop = ViewConfiguration.get(rootView.getContext()).getScaledTouchSlop();
+                                target.moved |= dx * dx + dy * dy > slop * slop;
+                            } else if (action == MotionEvent.ACTION_POINTER_DOWN) {
+                                target.moved = true;
+                            }
                             if (action == MotionEvent.ACTION_UP) {
                                 target.outside = false;
-                                float dx = event.getX() - target.x, dy = event.getY() - target.y;
-                                int slop =
-                                        ViewConfiguration.get(rootView.getContext())
-                                                .getScaledTouchSlop();
                                 Object holderObject = target.holder.get();
-                                if (holderObject != null && dx * dx + dy * dy <= slop * slop)
+                                if (holderObject != null && !target.moved
+                                        && RuntimeExtras.enabled(rootView.getContext(), "fullscreenArt"))
                                     try {
-                                        if (!Boolean.TRUE.equals(Reflect.field(holderObject, "T0")))
-                                            Reflect.call(Reflect.field(holderObject, "J"), "m");
+                                        if (!Boolean.TRUE.equals(
+                                                target.contract.showing().get(holderObject))) {
+                                            target.contract
+                                                    .viewModelExpand()
+                                                    .invoke(
+                                                            target.contract
+                                                                    .viewModel()
+                                                                    .get(holderObject));
+                                        }
                                     } catch (Exception error) {
                                         module.report(
                                                 "Native media outside-close unavailable", error);

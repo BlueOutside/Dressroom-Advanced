@@ -6,7 +6,14 @@ import android.os.Bundle;
 import org.json.JSONObject;
 
 final class ExtrasPreferences {
-    static final String[] FLAGS = {"keepCharging", "fullscreenArt", "keepStretch", "textCard"};
+    static final String[] FLAGS = {
+        "keepCharging", "fullscreenArt", "keepStretch", "textCard", "swipeBlur",
+        AodWidgetAppearance.KEY, WallpaperAod.CLOCK_BLUR, StretchSuggestions.KEY,
+        WidgetBackgroundOptions.CAMERA, WidgetBackgroundOptions.PICTURE_FRAME,
+        ClockBlurDelays.KEY, NotificationBlurOptions.COLORIZED, NotificationBlurOptions.CUSTOM,
+        BlurAppearanceSettings.NEUTRAL_CLOCK, MediaWidgetFade.KEY, AodWidgetAppearance.NEUTRAL,
+        NowBarGlass.KEY
+    };
 
     private ExtrasPreferences() {}
 
@@ -19,6 +26,7 @@ final class ExtrasPreferences {
                 Math.max(3, Math.min(8, input == null ? 3 : input.getInt("stackCards", 3))));
         b.putString("title", text(input == null ? null : input.getString("title"), 80));
         b.putString("message", text(input == null ? null : input.getString("message"), 180));
+        BlurAppearanceSettings.clean(input, b);
         return b;
     }
 
@@ -81,6 +89,7 @@ final class ExtrasPreferences {
             json.put("stackCards", b.getInt("stackCards", 3));
             json.put("title", b.getString("title"));
             json.put("message", b.getString("message"));
+            BlurAppearanceSettings.write(b, json);
             if (!prefs.edit().putString(key, json.toString()).commit())
                 throw new IllegalStateException("Could not save lockscreen extras");
             Bundle result = new Bundle();
@@ -94,6 +103,7 @@ final class ExtrasPreferences {
         b.putInt("stackCards", json.optInt("stackCards", 3));
         b.putString("title", json.optString("title"));
         b.putString("message", json.optString("message"));
+        BlurAppearanceSettings.read(json, b);
         return clean(b);
     }
 }

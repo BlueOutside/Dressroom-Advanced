@@ -7,6 +7,8 @@ An LSPosed (API 102) module that adds clock, widget and Now Bar controls to Sams
 ## Features
 
 - Clock size, position, manual stretching, shadows and blur.
+- Separate blur radius, saturation and tint controls for the clock, widgets and Now Bar, where native blur is available.
+- Keep live blur during swipe-to-unlock on One UI 9 (experimental).
 - Import TTF, OTF and TTC fonts. Adjust the axes the font provides, including weight, width, optical size, italic and custom axes.
 - Hide the date while keeping weather visible.
 - Wallpaper depth with Samsung Object Capture, automatic subject detection and crop/zoom tracking.*
@@ -14,7 +16,7 @@ An LSPosed (API 102) module that adds clock, widget and Now Bar controls to Sams
 - Separate portrait and landscape layouts on supported large screens.
 - Independent clock, widget and Extras settings for cover and inner screens on supported One UI 9 foldables.
 - Keep the charging Now Bar card visible, add a custom text card, and show up to eight cards in the stack.
-- Fullscreen album artwork in the expanded media player.
+- Fullscreen album artwork in the expanded media player, with adaptive clock contrast and blurred aura.
 
 Imported fonts use their own variable axes. Samsung's dynamic per-digit stretching remains limited to its supported native fonts.
 
@@ -24,9 +26,9 @@ Imported fonts use their own variable axes. Samsung's dynamic per-digit stretchi
 | --- | --- | --- |
 | 9.0 | AOD + Dressroom | Tested on SM-S948B |
 | 9.0, foldable | AOD + Dressroom | Experimental; tested on SM-F971B, cover and inner screens |
+| 9.0 | Clock Style + Dressroom | Supported for clock, fonts, depth, widgets and Now Bar stack (ClockPack 8.9.65.92); clock blur and foldable profiles require AOD |
 | 8.5 | Clock Style + Dressroom | Tested on SM-P613 with a custom ROM |
 | 8.5 | AOD + Dressroom | Experimental; widget issues remain on some app versions |
-| 9.0 | Clock Style + Dressroom | Unsupported |
 | 8.0 | Any combination | Unsupported |
 | 7.0 | Any combination | Unsupported |
 
@@ -47,6 +49,12 @@ See [foldable support](docs/compatibility/ONE_UI_9_FOLDABLES.md) and [device val
 5. Tap Apply/Done to save. Closing without applying discards the editor draft.
 
 Reboot after module updates too, so all scoped processes load the new version.
+
+Opening the editor checks for a newer GitHub release. Checks are cached for 15 minutes.
+Choose Update to download the APK and open Android's installer; Android may first ask
+you to allow installs from Dressroom Advanced. The updater checks the APK's package,
+version and signing certificate before installation. Cancel or Back dismisses the
+update prompt; tapping outside does not.
 
 For depth tracking during full-screen AOD wallpaper animations, also enable the Samsung live wallpaper scope (`com.samsung.android.wallpaper.live`). If its renderer is not supported or scoped, depth keeps its saved mapping.
 

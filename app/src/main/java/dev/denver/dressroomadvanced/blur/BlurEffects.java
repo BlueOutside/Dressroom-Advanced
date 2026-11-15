@@ -4,9 +4,11 @@ import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
 
+import java.io.IOException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.WeakHashMap;
@@ -27,51 +29,14 @@ final class BlurEffects {
     static synchronized void install(DressroomModule module, Class<?> base) {
         ClassLoader loader = base.getClassLoader();
         DepthBlurHooks.install(module, base);
+        StretchSuggestions.install(module, base);
         if (installed.contains(loader)) return;
         java.util.List<io.github.libxposed.api.XposedInterface.HookHandle> handles =
                 new java.util.ArrayList<>();
         boolean addedRadius = false;
         try {
-            Class<?> weather =
-                    Class.forName(
-                            "com.samsung.android.clockpack.plugins.clock.WeatherInfo",
-                            false,
-                            loader);
-            Class<?> strategy = OneUi9AodBlur.strategy(loader, weather);
-            Class<?> options = OneUi9AodBlur.options(loader, strategy, weather);
-            Method transition =
-                    NativeContract.findMethod(
-                            strategy, "h", void.class, int.class, android.widget.ImageView.class);
-            handles.add(
-                    module.hook(transition)
-                            .setId("dressroom-advanced.clock-stable-blur-tick")
-                            .intercept(
-                                    chain -> {
-                                        boolean stable = false;
-                                        try {
-                                            View clock = clockFromOwner(chain.getThisObject(), "b");
-                                            Bundle settings = read(clock);
-                                            stable =
-                                                    clock != null
-                                                            && !DepthEffects.mediaActive(clock)
-                                                            && !DepthEffects.wallpaperHidden(clock)
-                                                            && (DepthEffects.hasSubject(clock)
-                                                                    || (settings != null
-                                                                            && settings.getBoolean(
-                                                                                    "forceBlur")));
-                                        } catch (Exception ignored) {
-                                        }
-                                        return stable ? null : chain.proceed();
-                                    }));
-            module.deoptimize(transition);
-            Method draw =
-                    NativeContract.findMethod(
-                            strategy,
-                            "b",
-                            null,
-                            android.widget.ImageView.class,
-                            weather,
-                            options);
+            ClockBlurBinding blur = ClockBlurBinding.resolve(base);
+            Method draw = blur.render;
             handles.add(
                     module.hook(draw)
                             .setId("dressroom-advanced.blur-draw")
@@ -80,16 +45,13 @@ final class BlurEffects {
                                         Integer previous = radiusForDraw.get();
                                         try {
                                             try {
-                                                View clock =
-                                                        clockFromOwner(chain.getThisObject(), "b");
+                                                View clock = blur.clock(chain.getThisObject());
                                                 Bundle settings = read(clock);
-                                                if (settings != null)
-                                                    radiusForDraw.set(
-                                                            clamp(
-                                                                    settings.getInt(
-                                                                            "blurRadius", 200),
-                                                                    1,
-                                                                    300));
+                                                int radius = settings == null
+                                                        ? 200 : settings.getInt("blurRadius", 200);
+                                                if (radius != 200)
+                                                    radiusForDraw.set(clamp(radius, 1, 300));
+                                                else radiusForDraw.remove();
                                             } catch (Exception ignored) {
                                             }
                                             return chain.proceed();
@@ -98,40 +60,11 @@ final class BlurEffects {
                                             else radiusForDraw.set(previous);
                                         }
                                     }));
-            Class<?> manager = OneUi9AodBlur.manager(loader);
-            Method tone =
-                    NativeContract.findMethod(manager, "h", OneUi9AodBlur.toneInfo(loader));
-            handles.add(
-                    module.hook(tone)
-                            .setId("dressroom-advanced.custom-glass-wallpaper-tone")
-                            .intercept(
-                                    chain -> {
-                                        try {
-                                            View clock = clockFromOwner(chain.getThisObject(), "a");
-                                            Bundle settings = read(clock);
-                                            if (clock != null
-                                                    && settings != null
-                                                    && settings.getBoolean("forceBlur")
-                                                    && !DepthEffects.mediaActive(clock)
-                                                    && "Custom"
-                                                            .equals(
-                                                                    String.valueOf(
-                                                                            ClockGlassBinding.of(clock).mode.get(clock)))) {
-                                                Object sampled =
-                                                        WallpaperBlurTone.read(
-                                                                chain.getThisObject().getClass(),
-                                                                 clock);
-                                                if (sampled != null) return sampled;
-                                            }
-                                        } catch (ReflectiveOperationException
-                                                | IllegalStateException ignored) {
-                                        }
-                                        return chain.proceed();
-                                    }));
-            module.deoptimize(tone);
-            Method collect =
-                    NativeContract.findMethod(
-                            manager, "d", void.class, ArrayList.class, int.class, float.class);
+            ClockBlurRetryBinding retry = ClockBlurRetryBinding.of(base);
+            Class<?> manager = retry.manager.getType();
+            Method collect = retry.collect;
+            Method submit = retry.submit;
+            java.lang.reflect.Field targetAlpha = targetAlpha(manager, collect, submit);
             handles.add(
                     module.hook(collect)
                             .setId("dressroom-advanced.blur-text-visibility")
@@ -139,40 +72,25 @@ final class BlurEffects {
                                     chain -> {
                                         float nativeValue = ((Number) chain.getArg(2)).floatValue(),
                                                 visibility = nativeValue;
+                                        boolean explicit = false;
                                         try {
-                                            View clock = clockFromOwner(chain.getThisObject(), "a");
+                                            View clock = retry.clock(chain.getThisObject());
                                             Bundle settings = read(clock);
                                             if (settings != null) {
-                                                boolean custom =
-                                                        "Custom"
-                                                                .equals(
-                                                                        String.valueOf(
-                                                                                ClockGlassBinding.of(clock).mode.get(clock)));
-                                                double brightness = Double.NaN;
-                                                if (custom && settings.getBoolean("forceBlur"))
-                                                    brightness =
-                                                            ((Number)
-                                                                            Reflect.field(
-                                                                                    Reflect.call(
-                                                                                            chain
-                                                                                                    .getThisObject(),
-                                                                                            tone
-                                                                                                    .getName()),
-                                                                                    "a"))
-                                                                    .doubleValue();
-                                                visibility =
-                                                        BlurOpacity.resolve(
-                                                                settings.getFloat(
-                                                                        "blurVisibility", -1),
-                                                                settings.getBoolean("forceBlur"),
-                                                                custom,
-                                                                ((Number)
-                                                                                ClockGlassBinding.of(clock).opacity.get(clock))
-                                                                        .intValue(),
-                                                                brightness,
-                                                                nativeValue);
+                                                float requested = settings.getFloat("blurVisibility", -1);
+                                                explicit = Float.isFinite(requested) && requested >= 0f;
+                                                visibility = BlurOpacity.resolve(requested, nativeValue);
                                             }
                                         } catch (Exception ignored) {
+                                        }
+                                        if (targetAlpha != null && explicit) {
+                                            Object result = chain.proceed();
+                                            try {
+                                                targetAlpha.setInt(chain.getThisObject(),
+                                                        Math.round(visibility * 255f));
+                                            } catch (IllegalAccessException ignored) {
+                                            }
+                                            return result;
                                         }
                                         return visibility == nativeValue
                                                 ? chain.proceed()
@@ -184,11 +102,9 @@ final class BlurEffects {
                                                         });
                                     }));
             module.deoptimize(collect);
-            module.deoptimize(
-                    NativeContract.findMethod(
-                            manager, "c", void.class, int.class, int.class, boolean.class));
+            module.deoptimize(submit);
             module.deoptimize(ClockGlassBinding.of(base).refresh);
-            Method unsupported = base.getDeclaredMethod("y", boolean.class);
+            Method unsupported = resolveUnsupported(base);
             handles.add(
                     module.hook(unsupported)
                             .setId("dressroom-advanced.force-blur-capability")
@@ -225,96 +141,52 @@ final class BlurEffects {
         }
     }
 
+    private static Method resolveUnsupported(Class<?> clockBase)
+            throws ReflectiveOperationException, IOException {
+        Class<?> abs = ClockBlurRetryBinding.absClockView(clockBase);
+        String absDesc = DexSignatures.descriptor(abs);
+        List<Method> matches = new ArrayList<>();
+        for (DexSignatures.Body body :
+                DexSignatures.find(abs.getClassLoader(), Set.of("Blur request - disableBlur"))) {
+            if ((body.access() & 8) == 0
+                    && body.owner().equals(absDesc)
+                    && body.result().equals("V")
+                    && body.parameters().equals(List.of("Z"))) {
+                matches.add(body.method(abs.getClassLoader()));
+            }
+        }
+        if (matches.size() != 1)
+            throw new NoSuchMethodException(
+                    "Ambiguous disableBlur method on " + abs.getName() + ": " + matches.size());
+        return matches.get(0);
+    }
+
+    private static java.lang.reflect.Field targetAlpha(Class<?> manager, Method collect, Method submit) {
+        try {
+            String owner = DexSignatures.descriptor(manager);
+            var field = DexSignatures.body(submit).uniqueRead(owner, "I", null);
+            if (DexSignatures.body(collect).reads().stream().noneMatch(read -> read.field().equals(field)))
+                return null;
+            return field.field(manager.getClassLoader());
+        } catch (ReflectiveOperationException | java.io.IOException | RuntimeException unavailable) {
+            return null;
+        }
+    }
+
     static synchronized void installGlyphSync(DressroomModule module, Class<?> base) {
         ClassLoader loader = base.getClassLoader();
         if (glyphSyncInstalled.contains(loader)) return;
-        io.github.libxposed.api.XposedInterface.HookHandle handle = null;
         try {
-            Class<?> managerType = OneUi9AodBlur.manager(loader);
-            Class<?> glyph =
-                    Class.forName(
-                            "com.samsung.android.uniform.widget.NonePaddingTextView",
-                            false,
-                            loader);
-            Method submit =
-                    NativeContract.findMethod(
-                            managerType, "c", void.class, int.class, int.class, boolean.class);
-            handle =
-                    module.hook(submit)
-                            .setId("dressroom-advanced.native-blur-glyph-ready")
-                            .intercept(
-                                    chain -> {
-                                        Object manager = chain.getThisObject();
-                                        try {
-                                            View clock = clockFromOwner(manager, "a");
-                                            Object strategy = Reflect.field(manager, "p");
-                                            if (clock != null
-                                                    && clock.isShown()
-                                                    && clock.isAttachedToWindow()
-                                                    && !ClockBlurSync.rebuilding(clock)
-                                                    && strategy != null
-                                                    && Reflect.field(strategy, "d")
-                                                            instanceof java.util.List<?> views
-                                                    && (ClockBlurSync.pending(clock)
-                                                            || GlyphBlurReadiness.needsDraw(
-                                                                    views, glyph))) {
-                                                java.lang.ref.WeakReference<Object> reference =
-                                                        new java.lang.ref.WeakReference<>(manager);
-                                                int color = ((Number) chain.getArg(0)).intValue(),
-                                                        retry =
-                                                                ((Number) chain.getArg(1))
-                                                                        .intValue();
-                                                boolean force = (Boolean) chain.getArg(2);
-                                                if (ClockBlurSync.defer(
-                                                        clock,
-                                                        target -> {
-                                                            Object current = reference.get();
-                                                            if (current == null
-                                                                    || !target.isShown()) return;
-                                                            try {
-                                                                if (ClockGlassBinding.of(target).manager.get(target)
-                                                                        == current)
-                                                                    Reflect.call(
-                                                                            current,
-                                                                            submit.getName(),
-                                                                            color,
-                                                                            retry,
-                                                                            force);
-                                                            } catch (Exception error) {
-                                                                module.report(
-                                                                        "Native blur redraw resume"
-                                                                                + " unavailable",
-                                                                        error);
-                                                            }
-                                                        })) return null;
-                                            }
-                                        } catch (ReflectiveOperationException error) {
-                                            module.report(
-                                                    "Native blur glyph readiness unavailable",
-                                                    error);
-                                        }
-                                        return chain.proceed();
-                                    });
-            module.deoptimize(submit);
-            module.deoptimize(
-                    NativeContract.findMethod(
-                            managerType, "b", void.class, Integer.class, boolean.class));
-            module.deoptimize(
-                    OneUi9AodBlur.glyphRunnable(loader, managerType).getDeclaredMethod("run"));
-            module.deoptimize(base.getDeclaredMethod("setClockTextBlur"));
-            module.deoptimize(
-                    ClockGlassBinding.of(base).collectGlyphs);
+            ClockBlurRetries.install(module, base);
             glyphSyncInstalled.add(loader);
-            Log.i(
-                    DressroomModule.TAG,
-                    "Native blur submissions synchronized with cached glyph drawing");
-        } catch (ReflectiveOperationException | LinkageError error) {
-            if (handle != null) handle.unhook();
+            Log.i(DressroomModule.TAG, "Native blur glyph sync and retry lifecycle installed");
+        } catch (ReflectiveOperationException | java.io.IOException | LinkageError error) {
             module.report("Optional native blur glyph sync unavailable", error);
         }
     }
 
     static void preview(View clock, boolean enable, int radius, float visibility) {
+        BlurAppearance.trackClock(clock);
         Bundle value = new Bundle();
         value.putBoolean("forceBlur", enable);
         value.putInt("blurRadius", radius);
@@ -334,12 +206,22 @@ final class BlurEffects {
     }
 
     static boolean discardOutline(View clock) throws ReflectiveOperationException {
-        return discardStrategy(Reflect.field(ClockGlassBinding.of(clock).manager.get(clock), "p"));
+        ClockGlassBinding glass = ClockGlassBinding.of(clock);
+        Object manager = glass.manager.get(clock);
+        Object strategy = manager == null ? null : glass.strategy.get(manager);
+        if (strategy == null) return false;
+        ClockBlurBinding.resolve(clock.getClass()).clear.invoke(strategy);
+        return true;
     }
 
     static boolean discardStrategy(Object strategy) throws ReflectiveOperationException {
         if (strategy == null) return false;
-        Reflect.call(strategy, "c");
+        try {
+            ClockBlurBinding.resolveClear(strategy.getClass()).invoke(strategy);
+        } catch (java.io.IOException invalidDex) {
+            throw new ReflectiveOperationException(
+                    "Could not read clock blur strategy DEX", invalidDex);
+        }
         return true;
     }
 
@@ -362,6 +244,7 @@ final class BlurEffects {
         clock.post(
                 () -> {
                     try {
+                        if (!clock.isAttachedToWindow() || !clock.isShown()) return;
                         if (Boolean.TRUE.equals(ClockGlassBinding.of(clock).dozing.get(clock))) return;
                         Reflect.call(clock, "setBlurEffectEnabled", true);
                         float scale = ((Number) Reflect.call(clock, "getScale")).floatValue();
@@ -372,12 +255,6 @@ final class BlurEffects {
                         Log.w(DressroomModule.TAG, "Forced blur unavailable for clock", e);
                     }
                 });
-    }
-
-    private static View clockFromOwner(Object owner, String field) throws Exception {
-        Object holder = Reflect.field(owner, field);
-        Object clock = Reflect.field(holder, "o");
-        return clock instanceof View ? (View) clock : null;
     }
 
     private static Bundle read(View clock) {

@@ -65,6 +65,13 @@ final class NativeClockPanel {
     private boolean customShadow;
     private boolean initialShadowEnabled, initialManual;
     private Boolean shadowPreference;
+
+    private record ShadowValues(float radius, float dx, float dy, int color) {}
+
+    // Samsung's clock color refresh rewrites ClockShadowStyle in place with theme defaults
+    // (yc.e.a on One UI 9, the clock color repository on One UI 8.5). Keep the custom shadow
+    // chosen in Advanced here and put it back instead of trusting the live clock data.
+    private ShadowValues shadowValues, initialShadowValues;
     private boolean hideDate;
     private boolean initialHideDate;
     private Boolean weatherPreference;
@@ -232,6 +239,7 @@ final class NativeClockPanel {
                 weatherJob = null;
                 editGeneration++;
                 shadowPreference = null;
+                shadowValues = null;
                 weatherPreference = null;
                 android.os.Bundle saved =
                         module.editorSettings(context, newType, newFont, newFontPath);
@@ -248,6 +256,14 @@ final class NativeClockPanel {
                     customShadow = saved.getBoolean("enabled");
                     shadowPreference = customShadow;
                     initialShadowEnabled = customShadow;
+                    shadowValues =
+                            customShadow
+                                    ? new ShadowValues(
+                                            saved.getFloat("radius"),
+                                            saved.getFloat("dx"),
+                                            saved.getFloat("dy"),
+                                            saved.getInt("color"))
+                                    : null;
                     initialManual = saved.getBoolean("manual");
                     manualProgress = saved.getIntArray("manualProgress");
                     hideDate = saved.getBoolean("hideDate");
@@ -318,6 +334,8 @@ final class NativeClockPanel {
                     }
                 }
                 initialFontValues = new android.os.Bundle(fontValues);
+                keepShadow(data);
+                initialShadowValues = shadowValues;
                 initialSnapshot = copy(data);
                 initialWeather =
                         weatherPreference != null
@@ -326,6 +344,7 @@ final class NativeClockPanel {
             }
             if (weatherJob == null) weatherPreference = null;
             if (!fontFile.isEmpty()) suppressImportedStretch(data);
+            keepShadow(data);
             updateDepthPreview(data);
             Object color = Reflect.call(data, "getClockColorData");
             Object shadow = Reflect.call(color, "getClockShadowStyle");
@@ -427,11 +446,7 @@ final class NativeClockPanel {
             if (!module.depthAvailable(renderer)) {
                 label(module.depthUnavailableReason(renderer), 12, false);
             } else if (!module.depthHardwareAvailable()) {
-                label(
-                        "Depth effect requires Samsung Object Capture, which is not supported"
-                                + " on this device model.",
-                        12,
-                        false);
+                label(ObjectCaptureBackend.unavailableReason(), 12, false);
             } else {
                 boolean imageAvailable = module.depthImageAvailable();
                 toggle(
@@ -621,6 +636,7 @@ final class NativeClockPanel {
                             Reflect.call(repo, "setData", copy(initialSnapshot), true);
                             customShadow = initialShadowEnabled;
                             shadowPreference = customShadow;
+                            shadowValues = initialShadowValues;
                             hideDate = initialHideDate;
                             weatherPreference = initialWeather;
                             forceBlur = initialForceBlur;
@@ -709,22 +725,26 @@ final class NativeClockPanel {
             label("Blur is unavailable for this clock.", 12, false);
             return;
         }
-        slider(
-                "Blur strength",
-                1,
-                300,
-                blurRadius,
-                false,
-                value -> {
-                    blurRadius = Math.round(value);
-                    edit("blurRadius", d -> {});
-                    if (renderer instanceof View)
-                        BlurEffects.preview(
-                                (View) renderer,
-                                forceBlur || bool(data(), "getBlurEnabled"),
-                                blurRadius,
-                                blurVisibility);
-                });
+        if (BlurAppearance.customClockRadius(context)) {
+            label("Radius is set in Advanced → Extras → Blur.", 12, false);
+        } else {
+            slider(
+                    "Blur strength",
+                    1,
+                    300,
+                    blurRadius,
+                    false,
+                    value -> {
+                        blurRadius = Math.round(value);
+                        edit("blurRadius", d -> {});
+                        if (renderer instanceof View)
+                            BlurEffects.preview(
+                                    (View) renderer,
+                                    forceBlur || bool(data(), "getBlurEnabled"),
+                                    blurRadius,
+                                    blurVisibility);
+                    });
+        }
         boolean custom = blurVisibility >= 0f;
         View[] visibility = new View[1];
         toggle(
@@ -1194,7 +1214,10 @@ final class NativeClockPanel {
             }
             Object draft = copy(source);
             NativeEdits.changing(controller, true);
+            if (customShadow && shadowValues != null) putShadow(draft, shadowValues);
             for (Edit edit : edits.values()) edit.apply(draft);
+            if (edits.keySet().stream().anyMatch(k -> k.startsWith("shadow")))
+                shadowValues = customShadow ? shadowValues(draft) : null;
             stage(draft);
             Reflect.call(repo, "setData", draft, true);
             stage(draft);
@@ -1433,6 +1456,33 @@ final class NativeClockPanel {
                                         number(shadow, "getShadowColor").intValue());
         Reflect.call(colors, "setClockShadowStyle", isolated);
         return copy;
+    }
+
+    private ShadowValues shadowValues(Object draft) throws Exception {
+        Object s = Reflect.call(Reflect.call(draft, "getClockColorData"), "getClockShadowStyle");
+        return new ShadowValues(
+                number(s, "getShadowRadius").floatValue(),
+                number(s, "getShadowDx").floatValue(),
+                number(s, "getShadowDy").floatValue(),
+                number(s, "getShadowColor").intValue());
+    }
+
+    private void putShadow(Object draft, ShadowValues value) throws Exception {
+        Object c = Reflect.call(draft, "getClockColorData");
+        Object s = Reflect.call(c, "getClockShadowStyle");
+        Object fresh =
+                s.getClass()
+                        .getConstructor(float.class, float.class, float.class, int.class)
+                        .newInstance(value.radius(), value.dx(), value.dy(), value.color());
+        Reflect.call(c, "setClockShadowStyle", fresh);
+    }
+
+    /** Puts the saved custom shadow back after Samsung reset it, and redraws the preview. */
+    private void keepShadow(Object data) throws Exception {
+        if (!customShadow || shadowValues == null || shadowValues.equals(shadowValues(data)))
+            return;
+        putShadow(data, shadowValues);
+        applyShadow(data);
     }
 
     private void shadow(Object draft, String method, Object value) throws Exception {

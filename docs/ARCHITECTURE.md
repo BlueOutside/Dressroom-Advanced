@@ -12,9 +12,10 @@ Source directories under `app/src/main/java/dev/denver/dressroomadvanced/`:
 | `editor/` | Editor panels and Apply/cancel handling |
 | `media/` | Artwork, contrast and media transitions |
 | `blur/` | Blur controls and draw synchronization |
+| `updates/` | Release checks, APK download verification and install prompt |
 | `compat/shared/` | Editor, clock, depth, widget and Now Bar contracts; shared stack engines |
 | `compat/oneui85/` | Clock Style and experimental AOD 8.5 mappings |
-| `compat/oneui9/` | AOD 9.0 method mappings |
+| `compat/oneui9/` | AOD and Clock Style 9.0 method mappings |
 
 These are source folders. Classes still share the Java package
 `dev.denver.dressroomadvanced` so package-private access and existing hook names

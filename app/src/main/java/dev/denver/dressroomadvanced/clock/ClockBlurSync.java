@@ -21,6 +21,7 @@ final class ClockBlurSync {
                 .setId("dressroom-advanced.media-clock-glyph-drawn")
                 .intercept(
                         chain -> {
+                            ClockBlurContinuity.beforeDraw((View) chain.getThisObject());
                             Object result = chain.proceed();
                             if (!pending.isEmpty()) drawn((View) chain.getThisObject());
                             return result;

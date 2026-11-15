@@ -75,7 +75,8 @@ final class OneUi85WidgetLayout {
                         type ->
                                 NativeContract.hasField(type, Uri.class)
                                         && NativeContract.hasMethod(type, model, profile, mode),
-                        WidgetEditorBinding.REPOSITORIES + "O");
+                        WidgetEditorBinding.REPOSITORIES + "O",
+                        WidgetEditorBinding.REPOSITORIES + "P");
         restore = NativeContract.findMethod(converter, "c", model, profile, mode);
         editable = NativeContract.method(model, "isEditableAlign", boolean.class);
         Class<?> assist =

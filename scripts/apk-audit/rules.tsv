@@ -1,0 +1,98 @@
+# role	package scope	kind	owner	name	prototype	anchor / call / library
+save_start	editor	anchor	*	*	()V	Start save.|checkSaveCondition
+save_failure	editor	anchor	*	*	*	save condition is false.
+save_complete	editor	anchor	*	*	()V	OnSaveListener Done. |Save done. Finish the Activity.
+weather_use_case	editor	anchor	*	*	*	EnableWeatherInfoUseCase
+weather_eligibility	editor	method	Lcom/samsung/android/lockscreen/editor/item/domain/entity/item/clock/ClockTypeData;	isSupportWeatherInfo	()Z	
+editor_controller_ref	editor	class	Lvo/x;	*	*	
+editor_controller_85	editor	class	LPa/w0;	*	*	
+native_tabs	editor	class	Lcom/google/android/material/tabs/TabLayout;	*	*	
+capture_factory	editor	method	Lcom/samsung/android/app/sdk/deepsky/objectcapture/ObjectCaptureProvider;	getInstance	(Landroid/content/Context;)Lcom/samsung/android/app/sdk/deepsky/objectcapture/base/ObjectCapture;	
+capture_support	editor	method	Lcom/samsung/android/app/sdk/deepsky/objectcapture/base/ObjectCapture;	isObjectCaptureSupported	()Z	
+capture_bitmap	editor	method	Lcom/samsung/android/app/sdk/deepsky/objectcapture/base/ObjectCapture;	capture	(Landroid/graphics/Bitmap;)Lcom/samsung/android/app/sdk/deepsky/objectcapture/base/ObjectResult;	
+capture_output	editor	method	Lcom/samsung/android/app/sdk/deepsky/objectcapture/base/ObjectResult;	getObjects	()Ljava/util/List;	
+capture_bounds	editor	method	Lcom/samsung/android/app/sdk/deepsky/objectcapture/base/ObjectInfo;	getBoundRect	()Landroid/graphics/Rect;	
+crop_drawable	editor	method	Lcom/samsung/android/app/dressroom/presentation/preview/widget/CropImageView;	getDrawableInner	()Landroid/graphics/drawable/Drawable;	
+crop_draw	editor	method	Lcom/samsung/android/app/dressroom/presentation/preview/widget/CropImageView;	onDraw	(Landroid/graphics/Canvas;)V	
+srib_jni	editor	class	Lsrib/vizinsight/dvs/DVS;	*	*	
+srib_lib	editor	library	*	*	*	libdvs.camera.samsung.so
+clock_base	provider	class	Lcom/samsung/android/uniform/widget/clock/AbsClockView;	*	*	
+font_set	provider	method	Lcom/samsung/android/uniform/widget/clock/AbsClockView;	setFontType	(Lcom/samsung/android/clockpack/plugins/clock/ClockFontData;)V	
+font_source	provider	method	Lcom/samsung/android/app/facewidget/utils/KeyguardClockProvider;	getClockFontData	()Lcom/samsung/android/clockpack/plugins/clock/ClockFontData;	
+height_source	provider	method	Lcom/samsung/android/app/facewidget/utils/KeyguardClockProvider;	getClockFontHeights	()Ljava/util/List;	
+stretch_supported	provider	method	Lcom/samsung/android/uniform/widget/clock/AbsClockView;	isStretchable	(Ljava/util/List;)Z	
+height_axis	provider	anchor	*	*	*	HEGT
+clock_doze	provider	method	Lcom/samsung/android/uniform/widget/clock/AbsClockView;	setDozing	(Z)V	
+clock_doze_amount	provider	method	Lcom/samsung/android/uniform/widget/clock/AbsClockView;	setDozeAmount	(F)V	
+clock_media	provider	method	Lcom/samsung/android/uniform/widget/clock/AbsClockView;	setMediaExpanded	(Z)V	
+clock_shadow	provider	method	Lcom/samsung/android/uniform/widget/clock/AbsClockView;	setShadowStyle	(Lcom/samsung/android/clockpack/plugins/clock/ShadowStyle;)V	
+fixed_typeface_shape	provider	method	Lcom/samsung/android/uniform/widget/clock/AbsClockView;	*	(Landroid/graphics/Typeface;[Landroid/widget/TextView;)V	
+clock_date_order	provider	method	Lcom/samsung/android/uniform/widget/clock/AbsClockView;	setShowDateInfoFirst	(Z)V	
+clock_weather	provider	method	Lcom/samsung/android/uniform/widget/clock/AbsClockView;	setShowWeatherInformation	(Z)V	
+clock_weather_data	provider	method	Lcom/samsung/android/uniform/widget/clock/AbsClockView;	updateWeatherInfo	(Lcom/samsung/android/clockpack/plugins/clock/WeatherInfo;)V	
+clock_blur_entry	provider	method	Lcom/samsung/android/uniform/widget/clock/AbsClockView;	setClockTextBlur	()V	
+clock_blur_remove	provider	method	Lcom/samsung/android/uniform/widget/clock/AbsClockView;	removeBlur	()V	
+clock_blur_enable	provider	method	Lcom/samsung/android/uniform/widget/clock/AbsClockView;	setBlurEffectEnabled	(Z)V	
+clock_blur_host	provider	anchor	*	*	()Landroid/view/ViewGroup;	lock_clock_blur
+clock_blur_retry	provider	anchor	*	*	(IIZ)V	applyTextBlurInner: Blur failed - isReady=
+clock_blur_reveal	provider	anchor	*	*	()V	startBlurAnimation: Starting blur animation
+clock_dashboard_reveal	provider	anchor	*	*	()V	startDashBoardBlurOnAnimation: Starting blur animation
+clock_blur_state_controller	provider	class	Lcom/samsung/android/app/facewidget/pages/clock/blur/ClockBlurController;	*	*	
+clock_blur_state_apply	provider	call	Lcom/samsung/android/app/facewidget/pages/clock/blur/ClockBlurController;	*	*	Lcom/samsung/android/uniform/widget/clock/AbsClockView;->removeBlur()V
+glyph_path_shape	provider	method	Lcom/samsung/android/uniform/widget/ClockNonePaddingTextView;	*	()Landroid/graphics/Path;	
+weather_path_shape	provider	method	Lcom/samsung/android/uniform/widget/ClockTextView;	*	()Landroid/graphics/Path;	
+seconds_transition_config	provider	anchor	Lcom/samsung/android/app/facewidget/pages/clock/FaceWidgetClockPage;	*	*	common_clock_transition_second
+seconds_attach	provider	anchor	*	*	()V	makeSourceData()
+seconds_finish	provider	anchor	*	*	()V	handleTransitionFinished()
+clock_widget_movable	provider	anchor	*	*	*	ClockMovableAreaResolver[clock_position]
+widget_host	provider	class	Lcom/samsung/android/app/facewidget/complication/ComplicationWidgetHostViewContainer;	*	*	
+widget_size	provider	class	Lcom/samsung/android/app/facewidget/complication/ComplicationWidgetSizeManager;	*	*	
+widget_blur_refresh	provider	method	Lcom/samsung/android/app/facewidget/complication/ComplicationWidgetHostViewContainer;	refreshBlur	(F)V	
+widget_blur_surface	provider	method	Lcom/samsung/android/app/facewidget/complication/ComplicationWidgetHostViewContainer;	getBlurView	()Landroid/view/View;	
+widget_cover_blur	provider	method	Lcom/samsung/android/app/facewidget/complication/ComplicationWidgetHostViewContainer;	setCoverWidgetBlurState	(ZF)V	
+widget_media_state	provider	method	Lcom/samsung/android/app/facewidget/complication/ComplicationWidgetHostViewContainer;	setMusicExpandState	(Z)V	
+widget_grid	provider	class	Lcom/samsung/android/app/facewidget/complication/ComplicationGridUIController;	*	*	
+widget_data	provider	class	Lcom/samsung/android/app/facewidget/complication/ComplicationDataManager;	*	*	
+widget_for_each	provider	method	Lcom/samsung/android/app/facewidget/complication/ComplicationGridUIController;	forEachWidgetView	(Ljava/util/function/Consumer;)V	
+nowbar_stack	provider	class	Lcom/samsung/android/app/facewidget/utils/NowBarCardStackView;	*	*	
+nowbar_media	provider	class	Lcom/samsung/android/app/facewidget/presentation/NowBarMediaCardView;	*	*	
+nowbar_brief	provider	class	Lcom/samsung/android/app/facewidget/presentation/NowBarBriefCardView;	*	*	
+nowbar_base	provider	class	Lcom/samsung/android/app/facewidget/presentation/a;	*	*	
+wallpaper_draw	wallpaper	anchor	*	*	(Landroid/view/SurfaceHolder;)V	drawRenderNodes: durDraw=
+wallpaper_draw_bitmap	wallpaper	anchor	*	*	(Landroid/graphics/Canvas;)V	draw: drawable is null
+unlock_touch	systemui	method	Lcom/android/systemui/keyguard/animator/KeyguardTouchAnimator;	onTouchEvent	(Landroid/view/MotionEvent;)Z	
+unlock_move	systemui	method	Lcom/android/systemui/keyguard/animator/ActionMoveHandler;	handleMotionEvent	(Landroid/view/MotionEvent;)*	
+keyguard_alpha_bridge	systemui	method	Lcom/android/systemui/facewidget/plugin/KeyguardStatusViewAlphaChangeControllerWrapper;	updateAlpha	(F)V	
+shade_attach	systemui	method	Lcom/android/systemui/shade/NotificationShadeWindowView;	onAttachedToWindow	()V	
+systemui_facewidget	systemui	class	Lcom/android/systemui/facewidget/plugin/PluginFaceWidgetManager;	*	*	
+editor_open_ref	editor	method	Lvo/x;	a	()Z	
+editor_open_85	editor	method	LPa/w0;	a	()Z	
+widget_editor_model	editor	class	Lcom/samsung/android/lockscreen/editor/item/domain/entity/item/widget/WidgetData;	*	*	
+widget_preview_ref	editor	class	Lop/m;	*	*	
+widget_preview_85	editor	class	Lib/l0;	*	*	
+widget_toolbar_ref	editor	class	Lv8/y;	*	*	
+widget_toolbar_85	editor	class	LV3/v;	*	*	
+widget_drag_adapter_shape	editor	method	*	*	(Landroid/view/View;IIFIIZ)V	
+widget_drag_static_shape	editor	static-method	*	*	(Landroid/view/View;IIFIIZ)V	
+capture_init	editor	method	Lcom/samsung/android/app/sdk/deepsky/objectcapture/base/ObjectCapture;	init	()V	
+capture_release	editor	method	Lcom/samsung/android/app/sdk/deepsky/objectcapture/base/ObjectCapture;	release	()V	
+capture_pixels	editor	method	Lcom/samsung/android/app/sdk/deepsky/objectcapture/base/ObjectInfo;	getObjBitmap	()Landroid/graphics/Bitmap;	
+fold_profile_v3	provider	class	Lcom/samsung/android/app/clockpack/profile/entity/LockProfileV3;	*	*	
+fold_profile_bundle	provider	class	Lcom/samsung/android/app/clockpack/profile/entity/LockProfileBundle;	*	*	
+fold_profile_map	provider	class	Lcom/samsung/android/app/clockpack/db/entity/LockProfileMappingIdEntity;	*	*	
+fold_profile_read_shape	provider	method	*	*	(Ljava/lang/String;)Lcom/samsung/android/app/clockpack/profile/entity/LockProfileBundle;	
+fold_profile_write_shape	provider	method	*	*	(Ljava/lang/String;Lcom/samsung/android/app/clockpack/profile/entity/LockProfileBundle;)V	
+artwork_mask_view	provider	class	Lcom/samsung/android/uniform/nowbar/MediaMaskingFrameLayout;	*	*	
+artwork_lighting_view	provider	class	Lcom/samsung/android/uniform/nowbar/MediaLightingView;	*	*	
+artwork_observer	provider	method	Lcom/samsung/android/app/facewidget/presentation/MediaExpandStateObserver;	onChanged	(Ljava/lang/Object;)V	
+artwork_coordinator_shape	provider	method	*	*	(Landroid/widget/FrameLayout;Lcom/samsung/android/uniform/nowbar/MediaLightingView;Lcom/samsung/android/uniform/nowbar/MediaMaskingFrameLayout;Landroid/widget/ImageView;Landroid/widget/ImageView;)V	
+media_clock_page	provider	class	Lcom/samsung/android/app/facewidget/pages/music/FaceWidgetMusicPage;	*	*	
+media_clock_model	provider	class	Lcom/samsung/android/app/facewidget/pages/music/FaceWidgetMusicViewModel;	*	*	
+widget_update_blur_alpha	provider	method	Lcom/samsung/android/app/facewidget/complication/ComplicationWidgetHostViewContainer;	setBlurBackgroundAlpha	(I)V	
+widget_manager_refresh	provider	method	Lcom/samsung/android/app/facewidget/complication/BlurEffectManager;	refreshBlur	(F)V	
+charging_ui_ref	systemui	class	Lcom/android/systemui/power/feature/charginganimation/ChargingAnimationUI;	*	*	
+charging_remove_ref	systemui	method	Lcom/android/systemui/power/feature/charginganimation/ChargingAnimationUI;	removeNowBarView	()V	
+charging_remove_legacy	systemui	method	Lcom/android/systemui/power/SecPowerUI;	removeNowBarView	()V	
+charging_nowbar	systemui	class	Lcom/android/systemui/power/view/ChargerNowBarView;	*	*	
+custom_card_item	systemui	class	Lcom/android/systemui/plugins/keyguardstatusview/NowBarItem;	*	*	
+custom_card_bridge	systemui	method	Lcom/android/systemui/facewidget/plugin/FaceWidgetNotificationControllerWrapper;	initPlugin	(Lcom/android/systemui/plugins/keyguardstatusview/PluginNotificationController;Landroid/content/Context;)V	

@@ -91,6 +91,14 @@ final class LiveSubject {
 
     static record Detail(Bitmap bitmap, Matrix toSource) {}
 
+    Matrix sourceToViewport(int width, int height) {
+        if (Math.abs(((double) width * capturedHeight) / ((double) height * capturedWidth) - 1)
+                > .01) return null;
+        Matrix mapping = new Matrix(capturedToView);
+        mapping.postScale((float) width / capturedWidth, (float) height / capturedHeight);
+        return mapping;
+    }
+
     Detail detail(Bitmap full) {
         int capW = Math.max(1, capturedWidth), capH = Math.max(1, capturedHeight);
         float ratio = Math.min(1f, Math.min(1440f / capW, 4096f / capH));
@@ -113,10 +121,14 @@ final class LiveSubject {
 
     static Capture capture(View image) throws Exception {
         Drawable drawable = ready(image);
+        Bitmap base = alignedOriginal(image, drawable);
         int sourceWidth = Math.max(1, drawable.getIntrinsicWidth()),
                 sourceHeight = Math.max(1, drawable.getIntrinsicHeight());
         Drawable plain = ((android.widget.ImageView) image).getDrawable();
-        if (plain instanceof BitmapDrawable bitmap) {
+        if (base != null) {
+            sourceWidth = base.getWidth();
+            sourceHeight = base.getHeight();
+        } else if (plain instanceof BitmapDrawable bitmap) {
             sourceWidth = bitmap.getBitmap().getWidth();
             sourceHeight = bitmap.getBitmap().getHeight();
         }
@@ -133,8 +145,42 @@ final class LiveSubject {
         int width = Math.max(1, (int) Math.round(sourceWidth * ratio)),
                 height = Math.max(1, (int) Math.round(sourceHeight * ratio));
         String fingerprint = fingerprint(image);
-        Bitmap owned = render(drawable, width, height);
-        return new Capture(new LiveSubject(image, drawable, width, height, fingerprint), owned);
+        LiveSubject subject = new LiveSubject(image, drawable, width, height, fingerprint);
+        Bitmap owned = base == null ? render(drawable, width, height) : render(base, width, height);
+        return new Capture(subject, owned);
+    }
+
+    private static Bitmap alignedOriginal(View image, Drawable drawable) {
+        if (!(drawable instanceof android.graphics.drawable.LayerDrawable layers)
+                || layers.getNumberOfLayers() < 2) return null;
+        Drawable base = layers.getDrawable(0);
+        if (base == null || !base.getBounds().equals(drawable.getBounds())) return null;
+        try {
+            Object original = Reflect.call(image, "getOriginalDrawable");
+            if (!(original instanceof BitmapDrawable source)) return null;
+            Bitmap bitmap = source.getBitmap();
+            if (bitmap == null || bitmap.isRecycled()
+                    || base.getIntrinsicWidth() <= 0 || base.getIntrinsicHeight() <= 0) return null;
+            double originalRatio = bitmap.getWidth() / (double) bitmap.getHeight();
+            double layerRatio = base.getIntrinsicWidth() / (double) base.getIntrinsicHeight();
+            // The live matte uses the composite bounds. Only substitute the original
+            // when the wallpaper layer covers those bounds at the same source aspect.
+            return Math.abs(originalRatio / layerRatio - 1) <= .01 ? bitmap : null;
+        } catch (ReflectiveOperationException | RuntimeException unavailable) {
+            return null;
+        }
+    }
+
+    private static Bitmap render(Bitmap bitmap, int width, int height) {
+        Bitmap output = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+        try {
+            new Canvas(output).drawBitmap(bitmap, null, new RectF(0, 0, width, height),
+                    new Paint(Paint.FILTER_BITMAP_FLAG));
+            return output;
+        } catch (RuntimeException error) {
+            output.recycle();
+            throw error;
+        }
     }
 
     static LiveSubject bind(View image, byte[] png, String fingerprint, byte[] baked)

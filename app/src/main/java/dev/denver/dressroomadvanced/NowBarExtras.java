@@ -13,17 +13,23 @@ import android.view.View;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import java.io.IOException;
 import java.lang.ref.WeakReference;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.WeakHashMap;
+import java.util.function.Predicate;
 
 final class NowBarExtras {
     private static final String KEY = "dressroom_advanced_text";
     private static final ThreadLocal<Boolean> finishing = ThreadLocal.withInitial(() -> false);
-    private static final Map<Object, WeakReference<View>> held = new WeakHashMap<>();
-    private static final Handler main = new Handler(Looper.getMainLooper());
+    private static final Map<Object, WeakReference<View>> held =
+            Collections.synchronizedMap(new WeakHashMap<>());
     private static WeakReference<Object> wrapper = new WeakReference<>(null);
     private static Context context;
     private static ClassLoader loader;
@@ -31,9 +37,13 @@ final class NowBarExtras {
     private static String textSignature = "";
     private static boolean installed;
 
+    private static final class Main {
+        static final Handler HANDLER = new Handler(Looper.getMainLooper());
+    }
+
     private NowBarExtras() {}
 
-    static void install(DressroomModule module, ClassLoader classes) {
+    static synchronized void install(DressroomModule module, ClassLoader classes) {
         if (installed) return;
         loader = classes;
         try {
@@ -56,131 +66,159 @@ final class NowBarExtras {
                             "com.android.systemui.plugins.keyguardstatusview.PluginNotificationController",
                             false,
                             classes);
-            module.hook(bridge.getDeclaredMethod("initPlugin", plugin, Context.class))
-                    .setId("dressroom-advanced.extra-nowbar-host")
-                    .intercept(
-                            chain -> {
-                                Object result = chain.proceed();
-                                wrapper = new WeakReference<>(chain.getThisObject());
-                                textSignature = "";
-                                textItem = null;
-                                if (chain.getArg(1) instanceof Context c) bind(c);
-                                main.post(NowBarExtras::updateText);
-                                return result;
-                            });
+            Method init = bridge.getDeclaredMethod("initPlugin", plugin, Context.class);
             Class<?> ui =
                     Class.forName(
                             "com.android.systemui.power.feature.charginganimation.ChargingAnimationUI",
                             false,
                             classes);
             Method remove = ui.getDeclaredMethod("removeNowBarView");
-            module.hook(remove)
-                    .setId("dressroom-advanced.keep-charging-card")
-                    .intercept(
-                            chain -> {
-                                Object owner = chain.getThisObject();
-                                try {
-                                    Context c = (Context) Reflect.field(owner, "context");
-                                    if (finishing.get()
-                                            && RuntimeExtras.enabled(c, "keepCharging")
-                                            && plugged(c)
-                                            && "NowBar"
-                                                    .equals(
-                                                            String.valueOf(
-                                                                    Reflect.field(
-                                                                            Reflect.call(
-                                                                                    Reflect.field(
-                                                                                            owner,
-                                                                                            "_uiState"),
-                                                                                    "getValue"),
-                                                                            "currentOverlay")))) {
-                                        Object card = Reflect.field(owner, "chargerNowBarView");
-                                        if (card instanceof View view) {
-                                            bind(c);
-                                            held.put(owner, new WeakReference<>(view));
-                                            settle(view);
-                                            view.setAlpha(1);
-                                            view.setVisibility(View.VISIBLE);
-                                            return null;
-                                        }
-                                    }
-                                } catch (Exception e) {
-                                    module.report("Charging-card hold skipped", e);
-                                }
-                                held.remove(owner);
-                                return chain.proceed();
-                            });
-            module.deoptimize(remove);
             Class<?> cardClass =
                     Class.forName(
                             "com.android.systemui.power.view.ChargerNowBarView", false, classes);
             Method attach = cardClass.getDeclaredMethod("onAttachedToWindow");
-            module.hook(attach)
-                    .setId("dressroom-advanced.charging-card-reattach")
-                    .intercept(
-                            chain -> {
-                                View view = (View) chain.getThisObject();
-                                if (RuntimeExtras.enabled(view.getContext(), "keepCharging"))
-                                    sync(view, false);
-                                Object result = chain.proceed();
-                                view.post(
-                                        () -> {
-                                            if (isHeld(view))
-                                                try {
-                                                    settle(view);
-                                                } catch (Exception error) {
-                                                    module.report(
-                                                            "Charging reattach refresh unavailable",
-                                                            error);
-                                                }
-                                        });
-                                return result;
-                            });
-            module.deoptimize(attach);
             Method resources = cardClass.getDeclaredMethod("switchAnimationResources", int.class);
-            module.hook(resources)
-                    .setId("dressroom-advanced.held-charging-resources")
-                    .intercept(
-                            chain -> {
-                                Object result = chain.proceed();
-                                View view = (View) chain.getThisObject();
-                                if (isHeld(view))
-                                    try {
-                                        settle(view);
-                                    } catch (Exception error) {
-                                        module.report(
-                                                "Charging resource refresh unavailable", error);
-                                    }
-                                return result;
-                            });
-            module.deoptimize(resources);
-            for (String name :
-                    new String[] {
-                        "com.android.systemui.power.view.ChargerNowBarView$addOnChargerAnimationEndHandler$1",
-                        "com.android.systemui.power.feature.charginganimation.ChargingAnimationUI$forceDismissRunnable$1"
-                    }) {
-                Class<?> end = Class.forName(name, false, classes);
-                Method callback =
-                        end.getDeclaredMethod(
-                                name.contains("forceDismiss") ? "run" : "invokeSuspend",
-                                name.contains("forceDismiss")
-                                        ? new Class<?>[0]
-                                        : new Class<?>[] {Object.class});
-                module.hook(callback)
-                        .setId("dressroom-advanced.charging-finish-" + callback.getName())
-                        .intercept(
-                                chain -> {
-                                    boolean previous = finishing.get();
-                                    finishing.set(true);
-                                    try {
-                                        return chain.proceed();
-                                    } finally {
-                                        finishing.set(previous);
-                                    }
-                                });
-                module.deoptimize(callback);
+            List<Method> endCallbacks = resolveEndCallbacks(classes, ui, cardClass);
+            try (HookTransaction hooks = new HookTransaction()) {
+                hooks.add(
+                        module.hook(init)
+                                        .setId("dressroom-advanced.extra-nowbar-host")
+                                        .intercept(
+                                                chain -> {
+                                                    Object result = chain.proceed();
+                                                    wrapper =
+                                                            new WeakReference<>(
+                                                                    chain.getThisObject());
+                                                    textSignature = "";
+                                                    textItem = null;
+                                                    if (chain.getArg(1) instanceof Context c)
+                                                        bind(c);
+                                                    Main.HANDLER.post(NowBarExtras::updateText);
+                                                    return result;
+                                                })
+                                ::unhook);
+                module.deoptimize(init);
+                hooks.add(
+                        module.hook(remove)
+                                        .setId("dressroom-advanced.keep-charging-card")
+                                        .intercept(
+                                                chain -> {
+                                                    Object owner = chain.getThisObject();
+                                                    try {
+                                                        Context c =
+                                                                (Context)
+                                                                        Reflect.field(
+                                                                                owner, "context");
+                                                        Object card =
+                                                                Reflect.field(
+                                                                        owner, "chargerNowBarView");
+                                                        if (finishing.get()
+                                                                && RuntimeExtras.enabled(
+                                                                        c, "keepCharging")
+                                                                && plugged(c)
+                                                                && card instanceof View view
+                                                                && ("NowBar"
+                                                                                .equals(
+                                                                                        String
+                                                                                                .valueOf(
+                                                                                                        Reflect
+                                                                                                                .field(
+                                                                                                                        Reflect
+                                                                                                                                .call(
+                                                                                                                                        Reflect
+                                                                                                                                                .field(
+                                                                                                                                                        owner,
+                                                                                                                                                        "_uiState"),
+                                                                                                                                        "getValue"),
+                                                                                                                        "currentOverlay")))
+                                                                        || isHeld(view))) {
+                                                            bind(c);
+                                                            held.put(
+                                                                    owner,
+                                                                    new WeakReference<>(view));
+                                                            settle(view);
+                                                            view.setAlpha(1);
+                                                            view.setVisibility(View.VISIBLE);
+                                                            return null;
+                                                        }
+                                                    } catch (Exception e) {
+                                                        module.report(
+                                                                "Charging-card hold skipped", e);
+                                                    }
+                                                    held.remove(owner);
+                                                    return chain.proceed();
+                                                })
+                                ::unhook);
+                module.deoptimize(remove);
+                hooks.add(
+                        module.hook(attach)
+                                        .setId("dressroom-advanced.charging-card-reattach")
+                                        .intercept(
+                                                chain -> {
+                                                    View view = (View) chain.getThisObject();
+                                                    if (RuntimeExtras.enabled(
+                                                            view.getContext(), "keepCharging"))
+                                                        sync(view, false);
+                                                    Object result = chain.proceed();
+                                                    view.post(
+                                                            () -> {
+                                                                if (isHeld(view))
+                                                                    try {
+                                                                        settle(view);
+                                                                    } catch (Exception error) {
+                                                                        module.report(
+                                                                                "Charging reattach"
+                                                                                        + " refresh"
+                                                                                        + " unavailable",
+                                                                                error);
+                                                                    }
+                                                            });
+                                                    return result;
+                                                })
+                                ::unhook);
+                module.deoptimize(attach);
+                hooks.add(
+                        module.hook(resources)
+                                        .setId("dressroom-advanced.held-charging-resources")
+                                        .intercept(
+                                                chain -> {
+                                                    Object result = chain.proceed();
+                                                    View view = (View) chain.getThisObject();
+                                                    if (isHeld(view))
+                                                        try {
+                                                            settle(view);
+                                                        } catch (Exception error) {
+                                                            module.report(
+                                                                    "Charging resource refresh"
+                                                                            + " unavailable",
+                                                                    error);
+                                                        }
+                                                    return result;
+                                                })
+                                ::unhook);
+                module.deoptimize(resources);
+                for (Method callback : endCallbacks) {
+                    hooks.add(
+                            module.hook(callback)
+                                            .setId(
+                                                    "dressroom-advanced.charging-finish-"
+                                                            + callback.getName())
+                                            .intercept(
+                                                    chain -> {
+                                                        boolean previous = finishing.get();
+                                                        finishing.set(true);
+                                                        try {
+                                                            return chain.proceed();
+                                                        } finally {
+                                                            finishing.set(previous);
+                                                        }
+                                                    })
+                                    ::unhook);
+                    module.deoptimize(callback);
+                }
+                hooks.commit();
+                installed = true;
             }
-            installed = true;
             RuntimeExtras.listen(
                     () -> {
                         releaseIfNeeded();
@@ -191,6 +229,84 @@ final class NowBarExtras {
         } catch (Exception | LinkageError e) {
             module.report("Now Bar extras unavailable", e);
         }
+    }
+
+    @FunctionalInterface
+    interface AnchorFinder {
+        List<DexSignatures.Body> find(Set<String> anchors)
+                throws ReflectiveOperationException, IOException;
+    }
+
+    static List<Method> resolveEndCallbacks(
+            ClassLoader classes, Class<?> ui, Class<?> cardClass)
+            throws ReflectiveOperationException, IOException {
+        return resolveEndCallbacks(
+                classes, ui, cardClass, anchors -> DexSignatures.find(classes, anchors));
+    }
+
+    static List<Method> resolveEndCallbacks(
+            ClassLoader classes, Class<?> ui, Class<?> cardClass, AnchorFinder finder)
+            throws ReflectiveOperationException, IOException {
+        List<Method> callbacks = new ArrayList<>(2);
+        String uiDesc = DexSignatures.descriptor(ui);
+        Field forceDismiss =
+                NativeContract.assignableField(ui, "forceDismissRunnable", Runnable.class);
+        Class<?> forceDismissType = forceDismiss.getType();
+        if (!forceDismissType.isInterface() && Runnable.class.isAssignableFrom(forceDismissType)) {
+            callbacks.add(NativeContract.method(forceDismissType, "run", void.class));
+        } else {
+            String uiPrefix = innerPrefix(ui);
+            callbacks.add(
+                    uniqueDexCallback(
+                            classes,
+                            finder,
+                            "forceDismissOverlay: current=",
+                            body ->
+                                    body.owner().startsWith(uiPrefix)
+                                            && body.name().equals("run")
+                                            && body.parameters().isEmpty()
+                                            && body.result().equals("V")
+                                            && callsMethod(body, uiDesc, "dismissOverlay"),
+                            "ChargingAnimationUI forceDismiss callback"));
+        }
+        String cardPrefix = innerPrefix(cardClass);
+        callbacks.add(
+                uniqueDexCallback(
+                        classes,
+                        finder,
+                        "addOnChargerAnimationEndHandler, call onChargerAnimationEnd()",
+                        body ->
+                                body.owner().startsWith(cardPrefix)
+                                        && body.name().equals("invokeSuspend")
+                                        && body.parameters().equals(List.of("Ljava/lang/Object;"))
+                                        && body.result().equals("Ljava/lang/Object;")
+                                        && callsMethod(body, uiDesc, "dismissOverlay"),
+                        "ChargerNowBarView animation end callback"));
+        return callbacks;
+    }
+
+    private static Method uniqueDexCallback(
+            ClassLoader classes,
+            AnchorFinder finder,
+            String anchor,
+            Predicate<DexSignatures.Body> filter,
+            String description)
+            throws ReflectiveOperationException, IOException {
+        List<DexSignatures.Body> matches =
+                finder.find(Set.of(anchor)).stream().filter(filter).toList();
+        if (matches.size() != 1)
+            throw new NoSuchMethodException(
+                    "Expected one " + description + ", found " + matches.size());
+        return matches.get(0).method(classes);
+    }
+
+    private static String innerPrefix(Class<?> owner) {
+        return "L" + owner.getName().replace('.', '/') + "$";
+    }
+
+    private static boolean callsMethod(DexSignatures.Body body, String owner, String name) {
+        return body.calls().stream()
+                .anyMatch(call -> call.owner().equals(owner) && call.name().equals(name));
     }
 
     private static void installLegacy(DressroomModule module, ClassLoader classes) {
@@ -231,7 +347,7 @@ final class NowBarExtras {
                                             textSignature = "";
                                             textItem = null;
                                             if (chain.getArg(1) instanceof Context c) bind(c);
-                                            main.post(NowBarExtras::updateText);
+                                            Main.HANDLER.post(NowBarExtras::updateText);
                                             return result;
                                         });
                 hooks.add(connection::unhook);
@@ -344,7 +460,11 @@ final class NowBarExtras {
                             releaseIfNeeded();
                             return;
                         }
-                        for (WeakReference<View> ref : new ArrayList<>(held.values())) {
+                        List<WeakReference<View>> views;
+                        synchronized (held) {
+                            views = new ArrayList<>(held.values());
+                        }
+                        for (WeakReference<View> ref : views) {
                             View view = ref.get();
                             if (view == null) continue;
                             sync(view, true);
@@ -356,7 +476,9 @@ final class NowBarExtras {
     }
 
     private static boolean isHeld(View view) {
-        for (WeakReference<View> ref : held.values()) if (ref.get() == view) return true;
+        synchronized (held) {
+            for (WeakReference<View> ref : held.values()) if (ref.get() == view) return true;
+        }
         return false;
     }
 
@@ -399,7 +521,11 @@ final class NowBarExtras {
     private static void releaseIfNeeded() {
         if (context == null || (plugged(context) && RuntimeExtras.enabled(context, "keepCharging")))
             return;
-        for (Object ui : new ArrayList<>(held.keySet()))
+        List<Object> owners;
+        synchronized (held) {
+            owners = new ArrayList<>(held.keySet());
+        }
+        for (Object ui : owners)
             try {
                 Reflect.call(ui, "removeNowBarView");
             } catch (Exception e) {

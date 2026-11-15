@@ -5,6 +5,19 @@ Targets the inspected SM-F971B API 37 / One UI 90000 APK pair:
 - Dressroom 3.0.01.20, version code 300120000.
 - Active AOD 8.9.57.1, version code 895701000.
 
+## Seconds-view blur on AOD 8.9.57.1
+
+The supplied APK (`cb5b0bce22e1` SHA-256 prefix) configures the clock transition
+before `FaceWidgetPage.updateContentsView()` assigns the target view to the
+transition object. Its clock page configuration method has no `View` field
+read for the target. The reference AOD 8.9.66.1 has that read, which is how the
+optional return-blur hook finds the target before the native blocker runs.
+
+Keep Samsung's seconds-view return on this path. The module resolves the
+target before installing any of those hooks, so the missing field explains
+the compatibility warning. The reported lockscreen failure still needs a
+SystemUI crash or ANR trace to identify its cause.
+
 This adapter preserves the reference 3.0.10.38 and 8.5 paths. It does not enable arbitrary Dressroom versions.
 
 ## Inspected differences

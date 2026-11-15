@@ -24,10 +24,14 @@ final class FoldStateMonitor {
         }
         return screen;
     }
-    private synchronized void changed(boolean folded) {
+    private void changed(boolean folded) {
         int next = folded ? 2 : 1;
-        if (screen == next) return;
-        screen = next;
+        synchronized (this) {
+            if (screen == next) return;
+            screen = next;
+            if (!registered) return;
+        }
+        // Refresh can query ScreenIdentity again. Don't hold the monitor lock across it.
         changed.run();
     }
 }

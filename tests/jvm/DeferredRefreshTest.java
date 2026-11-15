@@ -12,7 +12,7 @@ public final class DeferredRefreshTest {
         checks++;
     }
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws Exception {
         ArrayDeque<Runnable> jobs = new ArrayDeque<>();
         List<Boolean> calls = new ArrayList<>();
         Object owner = new Object(), other = new Object();
@@ -74,6 +74,55 @@ public final class DeferredRefreshTest {
         failure.cancel(owner);
         jobs.remove().run();
         check(jobs.isEmpty(), "Cancelled failure retried");
+
+        java.util.concurrent.atomic.AtomicBoolean reject =
+                new java.util.concurrent.atomic.AtomicBoolean(true);
+        DeferredRefresh<Object> retry =
+                new DeferredRefresh<>(
+                        task -> {
+                            if (reject.getAndSet(false))
+                                throw new java.util.concurrent.RejectedExecutionException();
+                            jobs.add(task);
+                        },
+                        (value, force) -> calls.add(force));
+        try {
+            retry.offer(owner, true);
+            throw new AssertionError("Scheduler rejection hidden");
+        } catch (java.util.concurrent.RejectedExecutionException expected) {
+            checks++;
+        }
+        retry.offer(owner, false);
+        check(jobs.size() == 1, "Rejected scheduling permanently blocked its owner");
+        jobs.remove().run();
+        check(!calls.get(calls.size() - 1), "Rejected ticket leaked its force flag");
+
+        var concurrentJobs = new java.util.concurrent.ConcurrentLinkedQueue<Runnable>();
+        var seen = new ArrayList<Boolean>();
+        DeferredRefresh<Object> concurrent =
+                new DeferredRefresh<>(concurrentJobs::add, (value, force) -> seen.add(force));
+        var gate = new java.util.concurrent.CountDownLatch(1);
+        var fault = new java.util.concurrent.atomic.AtomicReference<Throwable>();
+        Thread[] threads = new Thread[6];
+        for (int i = 0; i < threads.length; i++) {
+            final boolean strong = i % 2 == 0;
+            threads[i] =
+                    new Thread(
+                            () -> {
+                                try {
+                                    gate.await();
+                                    for (int j = 0; j < 200; j++) concurrent.offer(owner, strong);
+                                } catch (Throwable error) {
+                                    fault.compareAndSet(null, error);
+                                }
+                            });
+            threads[i].start();
+        }
+        gate.countDown();
+        for (Thread thread : threads) thread.join();
+        check(fault.get() == null, "Concurrent offers failed: " + fault.get());
+        check(concurrentJobs.size() == 1, "Concurrent callbacks were not coalesced");
+        concurrentJobs.remove().run();
+        check(seen.equals(List.of(true)), "Concurrent updates lost the force request");
         System.out.println("Deferred refresh lifecycle: " + checks + " checks passed");
     }
 }

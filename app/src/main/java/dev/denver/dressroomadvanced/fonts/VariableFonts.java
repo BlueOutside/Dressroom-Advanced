@@ -95,6 +95,8 @@ final class VariableFonts {
             Collections.newSetFromMap(new WeakHashMap<>());
     private static final Map<View, List<java.lang.ref.WeakReference<TextView>>> targets =
             Collections.synchronizedMap(new WeakHashMap<>());
+    private static final Map<TextView, Typeface> measuredTypefaces =
+            Collections.synchronizedMap(new WeakHashMap<>());
 
     private VariableFonts() {}
 
@@ -117,14 +119,18 @@ final class VariableFonts {
                                                 if (font == null) return chain.proceed();
                                                 Bundle settings = settings(clock, profile);
                                                 Bundle values = FontAxisSettings.values(settings);
+                                                String imported = fileId(settings);
                                                 Typeface replacement =
                                                         typeface(
                                                                 clock.getContext(),
                                                                 font,
                                                                 values,
-                                                                fileId(settings));
-                                                applied.put(clock, profileKey(settings));
-                                                if (replacement == null) return chain.proceed();
+                                                                imported);
+                                                if (replacement == null) {
+                                                    if (values.isEmpty() && imported.isEmpty())
+                                                        applied.put(clock, profileKey(settings));
+                                                    return chain.proceed();
+                                                }
                                                 TextView[] views = (TextView[]) chain.getArg(1);
                                                 remember(clock, views);
                                                 Object result =
@@ -133,6 +139,7 @@ final class VariableFonts {
                                                                     replacement, chain.getArg(1)
                                                                 });
                                                 ensureTypeface(views, replacement);
+                                                applied.put(clock, profileKey(settings));
                                                 return result;
                                             })
                             ::unhook);
@@ -199,26 +206,31 @@ final class VariableFonts {
     static synchronized void configure(DressroomModule module, View clock, Bundle settings) {
         configure(clock, settings);
         if (FontAxisSettings.nativeStretch(settings)) return;
-        try {
+        try (HookTransaction hooks = new HookTransaction()) {
             FontBinding binding = FontBinding.of(clock);
             Method render = binding.renderer(clock.getClass());
             if (renderers.contains(render)) return;
-            module.hook(render)
-                    .setId("dressroom-advanced.imported-font-layout")
-                    .intercept(
-                            chain -> {
-                                if (!(chain.getThisObject() instanceof View owner)
-                                        || FontAxisSettings.nativeStretch(configured.get(owner)))
-                                    return chain.proceed();
-                                Object original = chain.getArg(0);
-                                // Keep the saved font identity on the clock; only the drawing
-                                // request uses the static path.
-                                Object plain = binding.plain(original);
-                                return chain.proceed(new Object[] {plain});
-                            });
+            hooks.add(
+                    module.hook(render)
+                                    .setId("dressroom-advanced.imported-font-layout")
+                                    .intercept(
+                                            chain -> {
+                                                if (!(chain.getThisObject() instanceof View owner)
+                                                        || FontAxisSettings.nativeStretch(
+                                                                configured.get(owner)))
+                                                    return chain.proceed();
+                                                Object original = chain.getArg(0);
+                                                if (original == null) return chain.proceed();
+                                                // Keep the saved font identity on the clock; only
+                                                // the drawing request uses the static path.
+                                                Object plain = binding.plain(original);
+                                                return chain.proceed(new Object[] {plain});
+                                            })
+                            ::unhook);
             module.deoptimize(render);
+            hooks.commit();
             renderers.add(render);
-        } catch (ReflectiveOperationException | RuntimeException error) {
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
             module.report("Imported font layout unavailable", error);
         }
     }
@@ -363,7 +375,17 @@ final class VariableFonts {
     private static void ensureTypeface(TextView[] views, Typeface typeface) {
         if (views == null) return;
         for (TextView view : views) {
-            if (view != null && view.getTypeface() != typeface) view.setTypeface(typeface);
+            if (view == null) continue;
+            boolean changed = view.getTypeface() != typeface;
+            if (changed) view.setTypeface(typeface);
+            if (view.getClass().getName().equals(
+                            "com.samsung.android.uniform.widget.ClockNonePaddingTextView")
+                    && (changed || measuredTypefaces.get(view) != typeface)) {
+                // Samsung's setTypeface leaves the trimmed digit bounds cached.
+                // Re-setting the same text runs its native glyph measurement.
+                view.setText(view.getText());
+                measuredTypefaces.put(view, typeface);
+            }
         }
     }
 

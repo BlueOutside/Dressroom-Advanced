@@ -30,6 +30,8 @@ final class NowBarStackLayers {
     private final ThreadLocal<Release> release = new ThreadLocal<>();
     private final Constructor<?> stackSize;
     private final WeakHashMap<ViewGroup, WeakReference<Tail>> tails = new WeakHashMap<>();
+    private final WeakHashMap<ViewGroup, CountRefresh> countRefreshes = new WeakHashMap<>();
+    private Method cardBlurAlpha;
     private volatile int liveTails;
     private final WeakHashMap<android.content.res.Resources, float[]> offsets = new WeakHashMap<>();
 
@@ -61,7 +63,7 @@ final class NowBarStackLayers {
                         "onLayout", boolean.class, int.class, int.class, int.class, int.class);
         try (HookTransaction hooks = new HookTransaction()) {
             for (String name : new String[] {"f", "g"}) {
-                Method method = stack.getDeclaredMethod(name, int.class);
+                Method method = name.equals("f") ? binding.scale : binding.offset;
                 hooks.add(
                         module.hook(method)
                                         .setId("dressroom-advanced.stack-density-" + name)
@@ -103,6 +105,7 @@ final class NowBarStackLayers {
                                                 ViewGroup root = (ViewGroup) chain.getThisObject();
                                                 if (layers.busy(root)) return chain.proceed();
                                                 Tail tail = layers.tail(root);
+                                                layers.cancelCountRefresh(root);
                                                 boolean completing =
                                                         tail != null && tail.outgoing != null;
                                                 Object manager = layers.animationManager.get(root);
@@ -150,7 +153,7 @@ final class NowBarStackLayers {
             for (String name : new String[] {"z", "setExpandedCardState", "setExpandVIStarted"}) {
                 Method method =
                         name.equals("z")
-                                ? stack.getDeclaredMethod(name)
+                                ? binding.visibilityByExpandState
                                 : stack.getDeclaredMethod(name, boolean.class);
                 hooks.add(
                         module.hook(method)
@@ -182,7 +185,7 @@ final class NowBarStackLayers {
                                 ::unhook);
                 module.deoptimize(wave);
             }
-            Method depth = stack.getDeclaredMethod("e", View.class, boolean.class);
+            Method depth = binding.depth;
             hooks.add(
                     module.hook(depth)
                                     .setId("dressroom-advanced.stack-release-depth")
@@ -286,13 +289,36 @@ final class NowBarStackLayers {
                                             })
                             ::unhook);
             module.deoptimize(configuration);
+            try {
+                layers.cardBlurAlpha =
+                        binding.cardBlurAlpha != null
+                                ? binding.cardBlurAlpha
+                                : NowBarStackBinding.cardBlurAlpha(stack);
+            } catch (ReflectiveOperationException unavailable) {
+                module.report("Optional Now Bar rear blur alpha unavailable", unavailable);
+            }
+            Method alpha = View.class.getDeclaredMethod("setAlpha", float.class);
+            hooks.add(module.hook(alpha).setId("dressroom-advanced.stack-rear-opacity")
+                    .intercept(chain -> {
+                        Object result = chain.proceed();
+                        if (layers.liveTails != 0 && stack.isInstance(chain.getThisObject())) {
+                            ViewGroup root = (ViewGroup) chain.getThisObject();
+                            Tail tail = layers.tail(root);
+                            if (tail != null && tail.getChildCount() != 0)
+                                tail.applyStackAlpha(root.getAlpha());
+                        }
+                        return result;
+                    })::unhook);
+            module.deoptimize(alpha);
             Method detach = stack.getDeclaredMethod("onDetachedFromWindow");
             hooks.add(
                     module.hook(detach)
                                     .setId("dressroom-advanced.stack-rear-release")
                                     .intercept(
                                             chain -> {
-                                                layers.remove((ViewGroup) chain.getThisObject());
+                                                ViewGroup root = (ViewGroup) chain.getThisObject();
+                                                layers.cancelCountRefresh(root);
+                                                layers.remove(root);
                                                 return chain.proceed();
                                             })
                             ::unhook);
@@ -306,15 +332,71 @@ final class NowBarStackLayers {
                     for (ViewGroup root : new ArrayList<>(layers.tails.keySet())) {
                         if (!root.isAttachedToWindow()) continue;
                         try {
-                            refresh.invoke(
-                                    root,
-                                    new CopyOnWriteArrayList<>((List<?>) layers.items.get(root)));
+                            if (layers.busy(root)) layers.queueCountRefresh(root);
+                            else layers.refreshCount(root);
                         } catch (ReflectiveOperationException | RuntimeException error) {
                             module.report("Now Bar stack count refresh unavailable", error);
                         }
                     }
                 });
         android.util.Log.i(DressroomModule.TAG, "Configurable Now Bar rear layers installed");
+    }
+
+    private void refreshCount(ViewGroup root) throws ReflectiveOperationException {
+        binding.refresh.invoke(root, new CopyOnWriteArrayList<>((List<?>) items.get(root)));
+    }
+
+    private void queueCountRefresh(ViewGroup root) {
+        if (countRefreshes.containsKey(root)) return;
+        CountRefresh request = new CountRefresh(root);
+        countRefreshes.put(root, request);
+        request.observer.addOnPreDrawListener(request);
+        root.invalidate();
+    }
+
+    private void cancelCountRefresh(ViewGroup root) {
+        CountRefresh request = countRefreshes.remove(root);
+        if (request != null && request.observer.isAlive())
+            request.observer.removeOnPreDrawListener(request);
+    }
+
+    private final class CountRefresh implements ViewTreeObserver.OnPreDrawListener {
+        final WeakReference<ViewGroup> owner;
+        final ViewTreeObserver observer;
+        boolean posted;
+
+        CountRefresh(ViewGroup root) {
+            owner = new WeakReference<>(root);
+            observer = root.getViewTreeObserver();
+        }
+
+        @Override
+        public boolean onPreDraw() {
+            ViewGroup root = owner.get();
+            if (root == null) {
+                if (observer.isAlive()) observer.removeOnPreDrawListener(this);
+                return true;
+            }
+            try {
+                if (!posted && !busy(root)) {
+                    posted = true;
+                    root.post(() -> {
+                        posted = false;
+                        if (countRefreshes.get(root) != this || !root.isAttachedToWindow()) return;
+                        try {
+                            if (!busy(root)) refreshCount(root);
+                        } catch (ReflectiveOperationException | RuntimeException error) {
+                            cancelCountRefresh(root);
+                            module.report("Deferred Now Bar stack count refresh unavailable", error);
+                        }
+                    });
+                }
+            } catch (IllegalAccessException error) {
+                cancelCountRefresh(root);
+                module.report("Now Bar stack animation state unavailable", error);
+            }
+            return true;
+        }
     }
 
     private int count(ViewGroup root) {
@@ -397,13 +479,15 @@ final class NowBarStackLayers {
                         tail, 0, new FrameLayout.LayoutParams(root.getWidth(), root.getHeight()));
             }
             List<?> values = (List<?>) items.get(root);
+            Object currentMode = mode.get(root);
+            boolean dozing = !screenOn.getBoolean(root);
             for (int rank = Math.min(count, values.size() - 1); rank >= 3; rank--) {
                 Object value = values.get(rank);
                 View card = inflate(root, value);
                 if (card == null) continue;
                 Reflect.call(card, "setGetStackSize", stackSize.newInstance(root, 0));
-                Reflect.call(card, "setViewMode", mode.get(root));
-                Reflect.call(card, "setInitialDozing", !screenOn.getBoolean(root));
+                Reflect.call(card, "setViewMode", currentMode);
+                Reflect.call(card, "setInitialDozing", dozing);
                 binding.bindItem.invoke(card, value, Integer.valueOf(2));
                 binding.hideContents.invoke(card, 2, false);
                 card.setClickable(false);
@@ -413,6 +497,8 @@ final class NowBarStackLayers {
                 tail.addView(card, new FrameLayout.LayoutParams(-1, -1));
                 binding.hideContents.invoke(card, 2, false);
             }
+            tail.cardMode = currentMode;
+            tail.cardsDozing = dozing;
             position(root);
             tail.setVisibility(View.VISIBLE);
             sync(root);
@@ -469,12 +555,13 @@ final class NowBarStackLayers {
         Tail tail = tail(root);
         if (tail == null) return;
         try {
+            Enum<?> currentMode = (Enum<?>) mode.get(root);
             boolean visible =
                     count(root) > 3
                             && root.getVisibility() == View.VISIBLE
                             && !restricted.getBoolean(root)
                             && !Boolean.TRUE.equals(expanded.invoke(root))
-                            && !((Enum<?>) mode.get(root)).name().equals("AOD");
+                            && !currentMode.name().equals("AOD");
             if (visible
                     && tail.getChildCount() == 0
                     && !tail.rebuilding
@@ -488,8 +575,18 @@ final class NowBarStackLayers {
                         });
             }
             if (!visible) tail.stop();
+            boolean dozing = !screenOn.getBoolean(root);
+            if (tail.cardMode != currentMode || tail.cardsDozing != dozing) {
+                for (int i = 0; i < tail.getChildCount(); i++) {
+                    View card = tail.getChildAt(i);
+                    Reflect.call(card, "setViewMode", currentMode);
+                    Reflect.call(card, "setInitialDozing", dozing);
+                }
+                tail.cardMode = currentMode;
+                tail.cardsDozing = dozing;
+            }
             tail.setVisibility(visible ? View.VISIBLE : View.INVISIBLE);
-            tail.setAlpha(root.getAlpha());
+            tail.applyStackAlpha(root.getAlpha());
         } catch (ReflectiveOperationException | RuntimeException error) {
             tail.setVisibility(View.INVISIBLE);
         }
@@ -509,6 +606,8 @@ final class NowBarStackLayers {
         private final WeakReference<ViewGroup> root;
         final IdentityHashMap<View, Rank> ranks = new IdentityHashMap<>();
         boolean rebuilding;
+        Object cardMode;
+        boolean cardsDozing;
         Release outgoing;
         ViewTreeObserver observer;
         float progress;
@@ -524,11 +623,9 @@ final class NowBarStackLayers {
                         owner.post(
                                 () -> {
                                     try {
-                                        Reflect.call(
-                                                owner,
-                                                "q",
-                                                new CopyOnWriteArrayList<>(
-                                                        (List<?>) items.get(owner)));
+                                        if (tail(owner) != this || !owner.isAttachedToWindow()) return;
+                                        if (busy(owner)) queueCountRefresh(owner);
+                                        else refreshCount(owner);
                                     } catch (ReflectiveOperationException
                                             | RuntimeException error) {
                                         module.report(
@@ -582,9 +679,32 @@ final class NowBarStackLayers {
         }
 
         void stop() {
+            Release moving = outgoing;
             if (observer != null && observer.isAlive()) observer.removeOnPreDrawListener(advance);
             observer = null;
             outgoing = null;
+            if (moving == null) return;
+            for (var entry : ranks.entrySet()) {
+                View card = entry.getKey();
+                Rank rank = entry.getValue();
+                float size = scale(rank.rank, rank.count);
+                card.setScaleX(size);
+                card.setScaleY(size);
+                card.setTranslationY(offset(moving.root, rank.rank, rank.count));
+                card.setAlpha(rank.rank < rank.count ? 1f : 0f);
+            }
+            moving.root.invalidate();
+        }
+
+        void applyStackAlpha(float alpha) {
+            if (getAlpha() != alpha) setAlpha(alpha);
+            if (cardBlurAlpha == null || getVisibility() != View.VISIBLE) return;
+            try {
+                for (int i = 0; i < getChildCount(); i++)
+                    cardBlurAlpha.invoke(null, alpha, getChildAt(i));
+            } catch (ReflectiveOperationException | RuntimeException error) {
+                module.report("Now Bar rear blur alpha update unavailable", error);
+            }
         }
 
         @Override

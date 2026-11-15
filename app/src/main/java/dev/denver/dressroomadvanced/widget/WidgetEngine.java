@@ -16,8 +16,10 @@ final class WidgetEngine {
             "com.samsung.android.app.facewidget.complication.ComplicationWidgetSizeManager";
     private final DressroomModule module;
     private int runtimeScreen;
-    private final Set<ClassLoader> installed = Collections.newSetFromMap(new WeakHashMap<>());
-    private final Set<Object> grids = Collections.newSetFromMap(new WeakHashMap<>());
+    private final Set<ClassLoader> installed =
+            Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
+    private final Set<Object> grids =
+            Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
     private final ThreadLocal<Boolean> nativeMetrics = ThreadLocal.withInitial(() -> false);
     private final ThreadLocal<Object> nativeArrangement = new ThreadLocal<>();
     private Bundle runtime;
@@ -52,8 +54,10 @@ final class WidgetEngine {
                     }
                 }
             };
-    private final Set<ClassLoader> legacyProviders = Collections.newSetFromMap(new WeakHashMap<>());
-    private final Set<ClassLoader> scaleInstalled = Collections.newSetFromMap(new WeakHashMap<>());
+    private final Set<ClassLoader> legacyProviders =
+            Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
+    private final Set<ClassLoader> scaleInstalled =
+            Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
 
     WidgetEngine(DressroomModule module) {
         this.module = module;
@@ -174,14 +178,11 @@ final class WidgetEngine {
 
     synchronized void install(ClassLoader loader) {
         if (installed.contains(loader)) return;
-        java.util.ArrayList<io.github.libxposed.api.XposedInterface.HookHandle> handles =
-                new java.util.ArrayList<>();
-        try {
+        try (HookTransaction hooks = new HookTransaction()) {
             Class<?> size = Class.forName(SIZE, false, loader);
-            installed.add(loader);
             for (String name : new String[] {"getColumn", "getRow", "isBiggerSize"}) {
                 Method m = size.getDeclaredMethod(name);
-                handles.add(
+                hooks.add(
                         module.hook(m)
                                 .setId("dressroom-advanced.widget-" + name)
                                 .intercept(
@@ -210,12 +211,13 @@ final class WidgetEngine {
                                                 }
                                             }
                                             return chain.proceed();
-                                        }));
+                                        })
+                                ::unhook);
                 module.deoptimize(m);
             }
             for (Method m : size.getDeclaredMethods())
                 if (m.getName().equals("init") && m.getParameterCount() == 1) {
-                    handles.add(
+                    hooks.add(
                             module.hook(m)
                                     .setId("dressroom-advanced.widget-cell-scale")
                                     .intercept(
@@ -260,7 +262,8 @@ final class WidgetEngine {
                                                                 manager, "widgetAlignType", align);
                                                     nativeMetrics.set(old);
                                                 }
-                                            }));
+                                            })
+                                    ::unhook);
                     module.deoptimize(m);
                 }
             Class<?> grid = Class.forName(GRID, false, loader);
@@ -290,7 +293,7 @@ final class WidgetEngine {
                                 loader);
                 Method update =
                         viewModel.getDeclaredMethod("updateGridLayout", alignType, boolean.class);
-                handles.add(
+                hooks.add(
                         module.hook(update)
                                 .setId("dressroom-advanced.native-widget-arrangement-source")
                                 .intercept(
@@ -303,7 +306,8 @@ final class WidgetEngine {
                                                 if (previous == null) nativeArrangement.remove();
                                                 else nativeArrangement.set(previous);
                                             }
-                                        }));
+                                        })
+                                ::unhook);
                 module.deoptimize(update);
                 Class<?> layouts =
                         Class.forName(
@@ -311,7 +315,7 @@ final class WidgetEngine {
                                 false,
                                 loader);
                 Method refresh = layouts.getDeclaredMethod("refreshGridLayout", alignType);
-                handles.add(
+                hooks.add(
                         module.hook(refresh)
                                 .setId("dressroom-advanced.runtime-widget-arrangement-capability")
                                 .intercept(
@@ -342,11 +346,12 @@ final class WidgetEngine {
                                                     controller, "changeAlignType", targetAlign);
                                             reflow(controller);
                                             return null;
-                                        }));
+                                        })
+                                ::unhook);
                 module.deoptimize(refresh);
             }
             Method rotate = grid.getDeclaredMethod("onclickChangeWidgetAlign", alignType);
-            handles.add(
+            hooks.add(
                     module.hook(rotate)
                             .setId("dressroom-advanced.native-widget-reflow")
                             .intercept(
@@ -359,7 +364,8 @@ final class WidgetEngine {
                                         if (main(manager) && config(manager).getBoolean("layout"))
                                             reflow(chain.getThisObject());
                                         return result;
-                                    }));
+                                    })
+                            ::unhook);
             module.deoptimize(rotate);
             for (Method m : grid.getDeclaredMethods())
                 if (java.util.Set.of(
@@ -381,7 +387,7 @@ final class WidgetEngine {
                         || m.getName().equals("getContainerHeight")) module.deoptimize(m);
             for (Method m : grid.getDeclaredMethods())
                 if (m.getName().equals("setRootContainer") && m.getParameterCount() == 3) {
-                    handles.add(
+                    hooks.add(
                             module.hook(m)
                                     .setId("dressroom-advanced.widget-grid-owner")
                                     .intercept(
@@ -395,17 +401,25 @@ final class WidgetEngine {
                                                 }
                                                 Object result = chain.proceed();
                                                 return result;
-                                            }));
+                                            })
+                                    ::unhook);
                     module.deoptimize(m);
                 }
-            installHostSizing(loader, handles::add);
+            installHostSizing(loader, handle -> hooks.add(handle::unhook));
+            hooks.commit();
+            installed.add(loader);
             WidgetDepthBlur.install(module, loader);
+            if (module.inEditorProcess()) {
+                try {
+                    EditorWidgetBlur.install(module, grid);
+                } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+                    module.report("Optional editor widget blur unavailable", error);
+                }
+            }
             android.util.Log.i(
                     DressroomModule.TAG,
                     "Widget grid capacity, native rules and cell metrics hooks installed");
         } catch (Exception | LinkageError e) {
-            installed.remove(loader);
-            for (var handle : handles) handle.unhook();
             module.report("Widget grid hooks unavailable", e);
         }
     }
@@ -422,8 +436,8 @@ final class WidgetEngine {
                         .intercept(
                                 chain -> {
                                     Object result = chain.proceed();
-                                    WidgetHostSizing.created(result);
                                     try {
+                                        WidgetHostSizing.created(result);
                                         if (result != null) {
                                             Object manager =
                                                     Reflect.field(
@@ -511,7 +525,11 @@ final class WidgetEngine {
         if (refreshing) return;
         refreshing = true;
         try {
-            for (Object grid : new java.util.ArrayList<>(grids)) refresh(grid);
+            java.util.List<Object> current;
+            synchronized (grids) {
+                current = new java.util.ArrayList<>(grids);
+            }
+            for (Object grid : current) refresh(grid);
         } finally {
             refreshing = false;
         }
@@ -610,11 +628,13 @@ final class WidgetEngine {
         Object manager = Reflect.call(grid, "getGridManager");
         Object container = Reflect.call(manager, "b", id);
         if (container == null) return;
-        Object items = Reflect.call(container, "f");
+        Method listItems =
+                NativeContract.findMethod(container.getClass(), null, java.util.List.class);
+        Object items = listItems.invoke(container);
         Method rearrange =
                 NativeContract.findMethod(
                         container.getClass(),
-                        "o",
+                        null,
                         boolean.class,
                         java.util.List.class,
                         java.util.Set.class,

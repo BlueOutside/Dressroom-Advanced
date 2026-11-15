@@ -23,16 +23,25 @@ final class RuntimeClockHooks {
     private final Set<ClassLoader> installing = Collections.newSetFromMap(new WeakHashMap<>());
     private final Set<ClassLoader> installed = Collections.newSetFromMap(new WeakHashMap<>());
     private final List<WeakReference<View>> clocks = new ArrayList<>();
-    private final Set<View> effects = Collections.newSetFromMap(new WeakHashMap<>());
+    private final Set<View> effects =
+            Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
     private final java.util.Map<View, Bundle> profiles =
             Collections.synchronizedMap(new WeakHashMap<>());
     private final ThreadLocal<Boolean> manual = ThreadLocal.withInitial(() -> false);
-    private final Set<View> restoringFont = Collections.newSetFromMap(new WeakHashMap<>());
-    private final Set<View> mediaReturnStarted = Collections.newSetFromMap(new WeakHashMap<>());
-    private final Set<View> mediaRestorePending = Collections.newSetFromMap(new WeakHashMap<>());
-    private final java.util.Map<View, Integer> settingsRetries = new WeakHashMap<>();
-    private final java.util.Map<View, Integer> fontRetries = new WeakHashMap<>();
+    private final Set<View> restoringFont =
+            Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
+    private final Set<View> mediaReturnStarted =
+            Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
+    private final Set<View> mediaRestorePending =
+            Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
+    private final java.util.Map<View, android.animation.Animator> mediaPageReturns = new WeakHashMap<>();
+    private final ThreadLocal<List<View>> closingMediaClocks = new ThreadLocal<>();
+    private final java.util.Map<View, Integer> settingsRetries =
+            Collections.synchronizedMap(new WeakHashMap<>());
+    private final java.util.Map<View, Integer> fontRetries =
+            Collections.synchronizedMap(new WeakHashMap<>());
     private XposedInterface.HookHandle bootstrap;
+    private final Object bootstrapLock = new Object();
     private final Handler main = new Handler(Looper.getMainLooper());
     private final DeferredDiscovery<ClassLoader> discovery;
     private static final java.util.concurrent.atomic.AtomicBoolean observing =
@@ -71,9 +80,11 @@ final class RuntimeClockHooks {
                                                 "com.samsung.android.uniform.widget.clock.AbsClockView",
                                                 false,
                                                 loader));
-                                if (bootstrap != null) {
-                                    bootstrap.unhook();
-                                    bootstrap = null;
+                                synchronized (bootstrapLock) {
+                                    if (bootstrap != null) {
+                                        bootstrap.unhook();
+                                        bootstrap = null;
+                                    }
                                 }
                                 return true;
                             } catch (Exception | LinkageError error) {
@@ -95,25 +106,28 @@ final class RuntimeClockHooks {
                 return;
             } catch (ClassNotFoundException ignored) {
             }
-            if (bootstrap != null) return;
-            Method load =
-                    ClassLoader.class.getDeclaredMethod("loadClass", String.class, boolean.class);
-            bootstrap =
-                    module.hook(load)
-                            .setId("dressroom-advanced.provider-discovery")
-                            .intercept(
-                                    chain -> {
-                                        Object result = chain.proceed();
-                                        String name = (String) chain.getArg(0);
-                                        if (name.equals(
-                                                        "com.samsung.android.uniform.widget.clock.AbsClockView")
-                                                || name.equals(
-                                                        "com.samsung.android.uniform.plugins.UfClockProvider")) {
-                                            discovery.offer(((Class<?>) result).getClassLoader());
-                                        }
-                                        return result;
-                                    });
-            android.util.Log.i(DressroomModule.TAG, "Waiting for runtime clock provider");
+            synchronized (bootstrapLock) {
+                if (bootstrap != null) return;
+                Method load =
+                        ClassLoader.class.getDeclaredMethod("loadClass", String.class, boolean.class);
+                bootstrap =
+                        module.hook(load)
+                                .setId("dressroom-advanced.provider-discovery")
+                                .intercept(
+                                        chain -> {
+                                            Object result = chain.proceed();
+                                            String name = (String) chain.getArg(0);
+                                            if (result instanceof Class<?> loaded
+                                                    && ("com.samsung.android.uniform.widget.clock.AbsClockView"
+                                                                    .equals(name)
+                                                            || "com.samsung.android.uniform.plugins.UfClockProvider"
+                                                                    .equals(name))) {
+                                                discovery.offer(loaded.getClassLoader());
+                                            }
+                                            return result;
+                                        });
+                android.util.Log.i(DressroomModule.TAG, "Waiting for runtime clock provider");
+            }
         } catch (Exception | LinkageError e) {
             module.report("Runtime clock hooks unavailable", e);
         }
@@ -123,10 +137,13 @@ final class RuntimeClockHooks {
         ClassLoader loader = base.getClassLoader();
         if (installed.contains(loader) || !installing.add(loader)) return;
         try (HookTransaction transaction = new HookTransaction()) {
+            DexSignatures.cachedReflective(() -> {
             installation = transaction;
             ClockBinding binding = ClockBinding.of(base);
-            if (ScreenIdentity.supported()) OneUi9FoldProfiles.install(module, loader);
+            if (!binding.legacy && !binding.clockStyle && ScreenIdentity.supported())
+                OneUi9FoldProfiles.install(module, loader);
             DepthEffects.install(module);
+            NowBarGlass.install(module, loader);
             ShadowEffects.install(module);
             if (!binding.legacy) {
                 if (!binding.clockStyle) {
@@ -240,6 +257,9 @@ final class RuntimeClockHooks {
                                                                     new Object[] {requestedFont});
                                             apply((View) chain.getThisObject());
                                             applyBlur((View) chain.getThisObject());
+                                            if (binding.clockStyle && !binding.legacy)
+                                                DateEffects.prepareMeasurement(
+                                                        module, (View) chain.getThisObject());
                                             return result;
                                         } finally {
                                             manual.set(previous);
@@ -289,7 +309,6 @@ final class RuntimeClockHooks {
                                                     "Runtime settings observer unavailable", e);
                                         }
                                         apply(view);
-                                        applyBlur(view);
                                         if (mediaRestorePending.contains(view))
                                             restoreAfterMedia(view);
 
@@ -321,7 +340,6 @@ final class RuntimeClockHooks {
                                         clock.post(
                                                 () -> {
                                                     apply(clock);
-                                                    applyBlur(clock);
                                                     if (mediaRestorePending.contains(clock))
                                                         restoreAfterMedia(clock);
                                                 });
@@ -352,6 +370,7 @@ final class RuntimeClockHooks {
                                 .intercept(
                                         chain -> {
                                             View clock = (View) chain.getThisObject();
+                                            boolean expanding = Boolean.TRUE.equals(chain.getArg(0));
 
                                             boolean wasExpanded = false;
                                             try {
@@ -362,38 +381,79 @@ final class RuntimeClockHooks {
                                             }
                                             if (wasExpanded
                                                     && Boolean.FALSE.equals(chain.getArg(0))) {
-                                                Bundle profile = profiles.get(clock);
-                                                if (profile != null
-                                                        && (profile.getBoolean("manual")
-                                                                || profile.getBoolean(
-                                                                        "depthEnabled"))
-                                                        && profile.getFloatArray("manualHeights")
-                                                                != null)
-                                                    try {
-                                                        BlurEffects.discardOutline(clock);
-                                                    } catch (Exception error) {
-                                                        module.report(
-                                                                "Media compact blur cleanup"
-                                                                        + " unavailable",
-                                                                error);
-                                                    }
+                                                // Drop compact glyph work; keep the live drawable until the next draw replaces its path.
+                                                ClockBlurSync.cancel(clock);
                                             }
-                                            if (Boolean.TRUE.equals(chain.getArg(0))) {
+                                            if (expanding) {
                                                 ClockBlurSync.cancel(clock);
                                                 finishMediaReturn(clock);
                                             }
                                             Object result = chain.proceed();
+                                            // Both framed and fullscreen players share Samsung's clock state.
+                                            MediaDepthTransition.update(clock, expanding);
                                             if (wasExpanded
                                                     && Boolean.FALSE.equals(chain.getArg(0))) {
                                                 mediaReturnStarted.remove(clock);
                                                 mediaRestorePending.add(clock);
                                                 AodStretchExtras.mediaReturn(clock, true);
+                                                List<View> closed = closingMediaClocks.get();
+                                                if (closed != null) closed.add(clock);
                                                 clock.postOnAnimation(
                                                         () -> restoreAfterMedia(clock));
                                             }
                                             return result;
                                         }));
                 module.deoptimize(media);
+                try {
+                    String anchor = "onMediaExpandStateChanged() mIsMediaExpanded: ";
+                    String owner = DexSignatures.descriptor(base);
+                    Class<?> page = Class.forName(
+                            "com.samsung.android.app.facewidget.pages.clock.FaceWidgetClockPage", false, loader);
+                    String pageType = DexSignatures.descriptor(page);
+                    for (var body : DexSignatures.find(loader, Set.of(anchor))) {
+                        if (body.calls().stream().anyMatch(call -> call.owner().equals(owner)
+                                && call.name().equals(media.getName())
+                                && call.parameters().equals(List.of("Z"))
+                                && call.result().equals("V"))) {
+                            Method observer = body.method(loader);
+                            module.deoptimize(observer);
+                            var pageField = body.uniqueRead(body.owner(), pageType, anchor).field(loader);
+                            var animator = body.uniqueWrite(pageType, "Landroid/animation/ValueAnimator;", null)
+                                    .field(loader);
+                            record(module.hook(observer).setId("dressroom-advanced.media-page-return")
+                                    .intercept(chain -> {
+                                        if (!Boolean.FALSE.equals(chain.getArg(0))) return chain.proceed();
+                                        List<View> previous = closingMediaClocks.get();
+                                        List<View> closed = new ArrayList<>();
+                                        closingMediaClocks.set(closed);
+                                        try {
+                                            Object result = chain.proceed();
+                                            if (!closed.isEmpty()) {
+                                                try {
+                                                    Object clockPage = pageField.get(chain.getThisObject());
+                                                    if (clockPage != null && animator.get(clockPage)
+                                                            instanceof android.animation.Animator running
+                                                            && running.isStarted()) {
+                                                        for (View clock : closed) {
+                                                            if (mediaRestorePending.contains(clock))
+                                                                mediaPageReturns.put(clock, running);
+                                                        }
+                                                    }
+                                                } catch (ReflectiveOperationException | RuntimeException error) {
+                                                    DressroomModule.note("Media return animator unavailable", error);
+                                                }
+                                            }
+                                            return result;
+                                        } finally {
+                                            if (previous == null) closingMediaClocks.remove();
+                                            else closingMediaClocks.set(previous);
+                                        }
+                                    }));
+                        }
+                    }
+                } catch (Exception | LinkageError error) {
+                    DressroomModule.note("Native media clock observer deoptimization unavailable", error);
+                }
                 try {
                     AodStretchExtras.install(module, base);
                 } catch (Exception | LinkageError error) {
@@ -411,6 +471,7 @@ final class RuntimeClockHooks {
                             + (binding.legacy ? "8.5 core" : "reference"));
             transaction.commit();
             installed.add(loader);
+            });
         } finally {
             installation = null;
             installing.remove(loader);
@@ -422,7 +483,10 @@ final class RuntimeClockHooks {
     }
 
     private void applyBlur(View view) {
-        if (!ClockBinding.of(view).legacy) BlurEffects.apply(view);
+        BlurAppearance.trackClock(view);
+        if (!ClockBinding.of(view).legacy) {
+            BlurEffects.apply(view);
+        }
     }
 
     private Bundle read(View view, Object font) {
@@ -467,17 +531,42 @@ final class RuntimeClockHooks {
         try {
             if (!mediaRestorePending.contains(clock)) return;
             if (!clock.isAttachedToWindow()) return;
-            Object controller = ClockTransitionBinding.of(clock).controller.get(clock);
-            if (Boolean.TRUE.equals(Reflect.field(controller, "h"))) {
+            ClockTransitionBinding transition = ClockTransitionBinding.of(clock);
+            Object controller = transition.controller.get(clock);
+            if (controller == null
+                    || Boolean.TRUE.equals(transition.expanded.get(controller))) {
                 finishMediaReturn(clock);
                 return;
             }
-            boolean dozing = Boolean.TRUE.equals(Reflect.field(controller, "d"));
+            boolean dozing = Boolean.TRUE.equals(transition.dozing.get(controller));
             if (dozing && !RuntimeExtras.enabled(clock.getContext(), "keepStretch")) return;
             Bundle profile = profiles.get(clock);
-            if (profile == null
-                    || !FontAxisSettings.nativeStretch(profile)
-                    || (!profile.getBoolean("manual") && !profile.getBoolean("depthEnabled"))) {
+            boolean manualStretch = profile != null && FontAxisSettings.nativeStretch(profile)
+                    && (profile.getBoolean("manual") || profile.getBoolean("depthEnabled"));
+            if (!manualStretch) {
+                if (!dozing && transition.amount.getFloat(clock) == 0f
+                        && transition.axes.get(controller) instanceof List<?> values
+                        && values.contains("HEGT")) {
+                    WeakReference<View> reference = new WeakReference<>(clock);
+                    Runnable resume = () -> {
+                        View view = reference.get();
+                        if (view != null) view.postOnAnimation(() -> restoreAfterMedia(view));
+                    };
+                    // Samsung's page animator can still submit compact glyphs after the
+                    // first return frame. Let it and the font spring finish before drawing
+                    // the canonical font, which is also used for the next minute tick.
+                    if (MediaReturnCompletion.await(clock, mediaPageReturns.get(clock), resume)
+                            || MediaReturnCompletion.await(clock,
+                                    (android.animation.Animator) transition.animation.get(controller), resume))
+                        return;
+                    ClockBinding binding = ClockBinding.of(clock);
+                    Object nativeFont = binding.font(clock);
+                    if (nativeFont != null) {
+                        binding.render(clock, nativeFont);
+                        Reflect.call(clock, "refresh");
+                        clock.requestLayout();
+                    }
+                }
                 finishMediaReturn(clock);
                 return;
             }
@@ -491,11 +580,11 @@ final class RuntimeClockHooks {
             if (restored != original) Reflect.call(clock, "setFontType", restored);
             if (!dozing) {
                 android.animation.Animator animation =
-                        (android.animation.Animator) Reflect.field(controller, "i");
+                        (android.animation.Animator) transition.animation.get(controller);
                 if (animation != null && animation.isStarted()) mediaReturnStarted.add(clock);
                 if (mediaReturnStarted.add(clock)) {
-                    ClockTransitionBinding.of(clock).transition.invoke(clock, 0f, false);
-                    animation = (android.animation.Animator) Reflect.field(controller, "i");
+                    transition.transition.invoke(clock, 0f, false);
+                    animation = (android.animation.Animator) transition.animation.get(controller);
                 }
                 WeakReference<View> reference = new WeakReference<>(clock);
                 if (MediaReturnCompletion.await(
@@ -512,12 +601,13 @@ final class RuntimeClockHooks {
             finishMediaReturn(clock);
         } catch (Exception error) {
             finishMediaReturn(clock);
-            module.report("Manual media-exit restore unavailable", error);
+            module.report("Media-exit stretch restore unavailable", error);
         }
     }
 
     private void finishMediaReturn(View clock) {
         mediaRestorePending.remove(clock);
+        mediaPageReturns.remove(clock);
         mediaReturnStarted.remove(clock);
         MediaReturnCompletion.cancel(clock);
         AodStretchExtras.mediaReturn(clock, false);
@@ -637,7 +727,7 @@ final class RuntimeClockHooks {
     }
 
     private void track(View view) {
-        if (!ClockBinding.of(view).legacy) MediaClockContrast.track(view);
+        MediaClockContrast.track(view);
         clocks.removeIf(reference -> reference.get() == null);
         for (WeakReference<View> ref : clocks) if (ref.get() == view) return;
         clocks.add(new WeakReference<>(view));

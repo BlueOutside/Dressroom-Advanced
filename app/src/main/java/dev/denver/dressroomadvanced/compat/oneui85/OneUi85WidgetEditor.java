@@ -29,6 +29,7 @@ final class OneUi85WidgetEditor {
                                 int.class,
                                 int.class,
                                 boolean.class),
-                ADAPTER);
+                ADAPTER,
+                "jb.c");
     }
 }

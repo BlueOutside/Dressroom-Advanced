@@ -25,24 +25,40 @@ final class DeferredRefresh<T> {
     }
 
     void offer(T owner, boolean force) {
-        Ticket existing = pending.get(owner);
-        if (existing != null) {
-            existing.force |= force;
-            return;
+        Ticket ticket;
+        synchronized (pending) {
+            Ticket existing = pending.get(owner);
+            if (existing != null) {
+                existing.force |= force;
+                return;
+            }
+            ticket = new Ticket(force);
+            pending.put(owner, ticket);
         }
-        Ticket ticket = new Ticket(force);
-        pending.put(owner, ticket);
         WeakReference<T> reference = new WeakReference<>(owner);
-        executor.execute(
-                () -> {
-                    T value = reference.get();
-                    if (value == null || pending.get(value) != ticket) return;
-                    pending.remove(value);
-                    refresh.accept(value, ticket.force);
-                });
+        try {
+            executor.execute(
+                    () -> {
+                        T value = reference.get();
+                        boolean requested;
+                        synchronized (pending) {
+                            if (value == null || pending.get(value) != ticket) return;
+                            pending.remove(value);
+                            requested = ticket.force;
+                        }
+                        refresh.accept(value, requested);
+                    });
+        } catch (RuntimeException | LinkageError error) {
+            synchronized (pending) {
+                if (pending.get(owner) == ticket) pending.remove(owner);
+            }
+            throw error;
+        }
     }
 
     void cancel(T owner) {
-        pending.remove(owner);
+        synchronized (pending) {
+            pending.remove(owner);
+        }
     }
 }

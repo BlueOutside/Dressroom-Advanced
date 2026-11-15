@@ -21,6 +21,7 @@ body:
       label: One UI and clock provider
       options:
         - One UI 9.0 / AOD
+        - One UI 9.0 / Clock Style
         - One UI 8.5 / Clock Style
         - One UI 8.5 / AOD (experimental)
         - Other

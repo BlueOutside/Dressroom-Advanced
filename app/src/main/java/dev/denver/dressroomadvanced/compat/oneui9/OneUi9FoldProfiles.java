@@ -10,6 +10,7 @@ import java.io.RandomAccessFile;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.nio.channels.FileLock;
+import java.nio.channels.OverlappingFileLockException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -30,7 +31,6 @@ final class OneUi9FoldProfiles {
     private static final Set<ClassLoader> attempted =
             Collections.newSetFromMap(new java.util.WeakHashMap<>());
     private final Map<String, String> ready = new java.util.concurrent.ConcurrentHashMap<>();
-    private final Set<String> reportedReads = java.util.concurrent.ConcurrentHashMap.newKeySet();
     private final ThreadLocal<Boolean> raw = ThreadLocal.withInitial(() -> false);
     private final ClassLoader loader;
     private FoldProfileBinding binding;
@@ -66,20 +66,23 @@ final class OneUi9FoldProfiles {
     }
 
     static void validate(ClassLoader loader) throws ReflectiveOperationException {
-        OneUi9FoldProfiles adapter = new OneUi9FoldProfiles(loader);
-        FoldProfileBinding binding = adapter.binding();
-        Class<?> profile = adapter.type(ENTITY + "LockProfileV3");
-        Class<?> bundle = adapter.type(ENTITY + "LockProfileBundle");
-        Class<?> function = adapter.type("kotlin.jvm.functions.Function1");
+        new OneUi9FoldProfiles(loader).validate();
+    }
+
+    private void validate() throws ReflectiveOperationException {
+        binding();
+        Class<?> profile = type(ENTITY + "LockProfileV3");
+        Class<?> bundle = type(ENTITY + "LockProfileBundle");
+        Class<?> function = type("kotlin.jvm.functions.Function1");
         NativeContract.method(profile, "copyBundle", bundle, function);
         NativeContract.method(profile, "getEnabledWidgetsIdList", String.class);
         NativeContract.method(profile, "getWidgetAlignType", Integer.class);
-        NativeContract.method(bundle, "getPrimary", adapter.type(ENTITY + "LockProfileData"));
+        NativeContract.method(bundle, "getPrimary", type(ENTITY + "LockProfileData"));
         NativeContract.method(bundle, "getScreenRelevant", Map.class);
-        Class<?> builder = adapter.type(ENTITY + "LockProfileBuilder");
+        Class<?> builder = type(ENTITY + "LockProfileBuilder");
         NativeContract.method(builder, "setEnabledWidgetsIdList", void.class, String.class);
         NativeContract.method(builder, "setWidgetAlignType", void.class, Integer.class);
-        adapter.type(DB + "ProfileScreen").getEnumConstants();
+        type(DB + "ProfileScreen").getEnumConstants();
     }
 
     static String profileId(String id) {
@@ -168,14 +171,14 @@ final class OneUi9FoldProfiles {
         return allowed;
     }
 
-    synchronized Object migrate(Object mediator, String id, Object original) throws Exception {
+    Object migrate(Object mediator, String id, Object original) throws Exception {
         FoldProfileBinding nativeApi = binding();
         Context context = (Context) nativeApi.contextValue.invoke(nativeApi.contextProvider.get(mediator));
         if (!AOD.equals(context.getPackageName()))
             return original;
         if (!Boolean.TRUE.equals(nativeApi.active.invoke(mediator))) return original;
         String canonical = profileId(id);
-        Object query = nativeApi.query.newInstance(4, Long.parseLong(canonical));
+        Object query = nativeApi.query.newInstance(nativeApi.queryCase, Long.parseLong(canonical));
         Object mapping = nativeApi.queryMapping.invoke(null,
                 nativeApi.database.get(nativeApi.getDao.invoke(mediator)), true, false, query);
         if (mapping == null) { ready.remove(canonical); return original; }
@@ -183,11 +186,13 @@ final class OneUi9FoldProfiles {
         if (rowId.equals(ready.get(canonical))) return original;
         ready.remove(canonical);
         File directory = new File(context.getFilesDir(), "dressroom_advanced_fold_profiles_v1");
-        if (!directory.isDirectory() && !directory.mkdirs()) throw new IllegalStateException("Profile journal unavailable");
-        // Native profile storage is shared by the AOD/provider processes. Serialize migration
-        // across both processes and reread under the lock, never from an earlier cached read.
+        if (!directory.isDirectory() && !directory.mkdirs() && !directory.isDirectory())
+            throw new IllegalStateException("Profile journal unavailable");
+        // Profile loads can run on SystemUI's main thread. If another process is migrating,
+        // use this native read and retry on a later load instead of waiting for its file lock.
         try (RandomAccessFile lock = new RandomAccessFile(new File(directory, "migration.lock"), "rw");
-                FileLock held = lock.getChannel().lock()) {
+                FileLock held = lock.getChannel().tryLock()) {
+            if (held == null) return original;
             AtomicFile file = new AtomicFile(new File(directory, rowId + ".json"));
             JSONObject status;
             try { status = new JSONObject(new String(file.readFully(), StandardCharsets.UTF_8)); }
@@ -226,6 +231,8 @@ final class OneUi9FoldProfiles {
                 android.util.Log.i(DressroomModule.TAG, "Fold screen widget migration verified");
                 return saved;
             } finally { raw.set(false); }
+        } catch (OverlappingFileLockException busy) {
+            return original;
         }
     }
 
@@ -247,8 +254,8 @@ final class OneUi9FoldProfiles {
     static synchronized void install(DressroomModule module, ClassLoader loader) {
         if (!ScreenIdentity.supported() || installed.contains(loader) || !attempted.add(loader)) return;
         try {
-            validate(loader);
             OneUi9FoldProfiles adapter = new OneUi9FoldProfiles(loader);
+            adapter.validate();
             FoldProfileBinding nativeApi = adapter.binding();
             Method load = nativeApi.load;
             Method read = nativeApi.read;
@@ -258,16 +265,18 @@ final class OneUi9FoldProfiles {
                 for (String getter : new String[] {"getEnabledWidgetsIdList", "getWidgetAlignType"}) {
                     Method method = nativeProfile.getDeclaredMethod(getter);
                     hooks.add(module.hook(method).setId("dressroom-advanced.fold-direct-" + getter).intercept(chain -> {
-                        Object owner = chain.getThisObject();
-                        boolean migrated = adapter.confirmed((String) get(owner, "getProfileId"));
-                        Object screen = get(get(owner, "getState"), "getScreen");
-                        String diagnostic = getter + ":" + screen + ":" + migrated;
-                        if (adapter.reportedReads.add(diagnostic))
-                            android.util.Log.i(DressroomModule.TAG, "Fold native read " + diagnostic);
-                        if (!migrated) return chain.proceed();
-                        Object record = ((Map<?, ?>) get(get(owner, "getBundle"), "getScreenRelevant")).get(screen);
-                        Object value = record == null ? null : get(record, getter);
-                        return value == null ? chain.proceed() : value;
+                        try {
+                            Object owner = chain.getThisObject();
+                            if (adapter.confirmed((String) get(owner, "getProfileId"))) {
+                                Object screen = get(get(owner, "getState"), "getScreen");
+                                Object record = ((Map<?, ?>) get(get(owner, "getBundle"), "getScreenRelevant")).get(screen);
+                                Object value = record == null ? null : get(record, getter);
+                                if (value != null) return value;
+                            }
+                        } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+                            DressroomModule.note("Fold screen getter unavailable: " + getter, error);
+                        }
+                        return chain.proceed();
                     })::unhook);
                     module.deoptimize(method);
                 }
@@ -278,10 +287,16 @@ final class OneUi9FoldProfiles {
                     catch (Exception error) { module.report("Fold profile migration deferred; native shared policy retained", error); return result; }
                 })::unhook);
                 hooks.add(module.hook(read).setId("dressroom-advanced.fold-widget-selection").intercept(chain -> {
-                    Object profile = chain.getArg(0);
-                    if (!adapter.confirmed((String) get(profile, "getProfileId"))) return chain.proceed();
-                    Object value = screenValue(profile, chain.getArg(1));
-                    return value == null ? chain.proceed() : value;
+                    try {
+                        Object profile = chain.getArg(0);
+                        if (adapter.confirmed((String) get(profile, "getProfileId"))) {
+                            Object value = screenValue(profile, chain.getArg(1));
+                            if (value != null) return value;
+                        }
+                    } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+                        DressroomModule.note("Fold widget selection unavailable", error);
+                    }
+                    return chain.proceed();
                 })::unhook);
                 Method global = nativeApi.global;
                 hooks.add(module.hook(global).setId("dressroom-advanced.fold-preserve-native-item").intercept(chain -> {
@@ -290,8 +305,15 @@ final class OneUi9FoldProfiles {
                 })::unhook);
                 module.deoptimize(global);
                 hooks.add(module.hook(delete).setId("dressroom-advanced.preserve-sibling-widget-ids").intercept(chain -> {
-                    Context context = (Context) nativeApi.deleteContext.get(chain.getThisObject());
-                    return chain.proceed(new Object[] {deletions(context, (ArrayList<?>) chain.getArg(0))});
+                    ArrayList<Integer> allowed;
+                    try {
+                        Context context = (Context) nativeApi.deleteContext.get(chain.getThisObject());
+                        allowed = deletions(context, (ArrayList<?>) chain.getArg(0));
+                    } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+                        DressroomModule.note("Deferring Fold widget deletion", error);
+                        return null;
+                    }
+                    return chain.proceed(new Object[] {allowed});
                 })::unhook);
                 module.deoptimize(load);
                 module.deoptimize(read);

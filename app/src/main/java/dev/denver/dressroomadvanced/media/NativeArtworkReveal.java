@@ -10,10 +10,34 @@ import android.widget.ImageView;
 
 import org.json.*;
 
+import java.io.IOException;
 import java.lang.ref.WeakReference;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.nio.charset.StandardCharsets;
+import java.util.Set;
 
 final class NativeArtworkReveal {
+    private static final String SPRING_CANCEL_ANCHOR =
+            "Animations may only be canceled from the same thread as the animation handler";
+    private static final ClassValue<LightingContract> LIGHTING =
+            new ClassValue<>() {
+                @Override
+                protected LightingContract computeValue(Class<?> type) {
+                    try {
+                        return DexSignatures.cached(() -> resolveLightingContract(type));
+                    } catch (RuntimeException error) {
+                        throw error;
+                    } catch (Exception error) {
+                        throw new IllegalStateException(
+                                "MediaLightingView contract unavailable", error);
+                    }
+                }
+            };
+
+    private record LightingContract(
+            Field spring, Field running, Field currentAlpha, Field maxAlpha) {}
     private final WeakReference<View> mask, light;
     private final WeakReference<ImageView> incoming, previous;
     private WeakReference<Animator> animator = new WeakReference<>(null);
@@ -41,10 +65,7 @@ final class NativeArtworkReveal {
     }
 
     static RuntimeShader load(Context context) throws Exception {
-        int id =
-                context.getResources()
-                        .getIdentifier(
-                                "media_album_masking", "raw", "com.samsung.android.app.aodservice");
+        int id = resolveMaskingResource(context);
         if (id == 0) throw new IllegalStateException("Native artwork reveal asset is unavailable");
         JSONObject layer;
         try (var input = context.getResources().openRawResource(id)) {
@@ -156,8 +177,10 @@ final class NativeArtworkReveal {
         if (animation != null && animation.isStarted()) return true;
         View view = light.get();
         try {
-            return view != null
-                    && Boolean.TRUE.equals(Reflect.field(Reflect.field(view, "r"), "f"));
+            if (view == null) return false;
+            LightingContract contract = lightingContract(view.getClass());
+            Object spring = contract.spring().get(view);
+            return spring != null && Boolean.TRUE.equals(contract.running().get(spring));
         } catch (ReflectiveOperationException | RuntimeException ignored) {
             DressroomModule.note("Could not read artwork animation state", ignored);
             return false;
@@ -213,9 +236,10 @@ final class NativeArtworkReveal {
                 || view.getWidth() <= 0
                 || view.getHeight() <= 0) return;
         try {
+            LightingContract contract = lightingContract(view.getClass());
             float alpha =
-                    ((Number) Reflect.field(view, "s")).floatValue()
-                            * ((Number) Reflect.field(view, "t")).floatValue();
+                    ((Number) contract.currentAlpha().get(view)).floatValue()
+                            * ((Number) contract.maxAlpha().get(view)).floatValue();
             if (view.getParent() instanceof View parent)
                 alpha *= MediaBlurHost.requestedAlpha(parent);
             if (alpha <= .001f) return;
@@ -261,6 +285,89 @@ final class NativeArtworkReveal {
 
     private static boolean valid(Bitmap bitmap) {
         return bitmap != null && !bitmap.isRecycled();
+    }
+
+    private static LightingContract lightingContract(Class<?> viewClass) {
+        return LIGHTING.get(viewClass);
+    }
+
+    private static LightingContract resolveLightingContract(Class<?> viewClass)
+            throws ReflectiveOperationException, IOException {
+        ClassLoader loader = viewClass.getClassLoader();
+        String viewDesc = "L" + viewClass.getName().replace('.', '/') + ";";
+        Method getCurrent = viewClass.getDeclaredMethod("getCurrentLightingAlpha");
+        Field currentAlpha =
+                DexSignatures.body(getCurrent).uniqueRead(viewDesc, "F", null).field(loader);
+        currentAlpha.setAccessible(true);
+
+        Method setMax = viewClass.getDeclaredMethod("setMaxLightingAlpha", float.class);
+        Field maxAlpha = DexSignatures.body(setMax).uniqueWrite(viewDesc, "F", null).field(loader);
+        maxAlpha.setAccessible(true);
+
+        Field springField = null;
+        Field runningField = null;
+        for (Field candidate : viewClass.getDeclaredFields()) {
+            if (Modifier.isStatic(candidate.getModifiers())) continue;
+            Class<?> fieldType = candidate.getType();
+            if (fieldType.isPrimitive() || fieldType.isArray() || fieldType == String.class) {
+                continue;
+            }
+            Field matchedRunning = findSpringRunningField(loader, fieldType);
+            if (matchedRunning == null) continue;
+            if (springField != null) {
+                throw new NoSuchFieldException(
+                        "Multiple SpringAnimation fields on " + viewClass.getName());
+            }
+            springField = candidate;
+            runningField = matchedRunning;
+        }
+        if (springField == null) {
+            throw new NoSuchFieldException(
+                    "SpringAnimation field not found on " + viewClass.getName());
+        }
+        springField.setAccessible(true);
+        runningField.setAccessible(true);
+        return new LightingContract(springField, runningField, currentAlpha, maxAlpha);
+    }
+
+    private static Field findSpringRunningField(ClassLoader loader, Class<?> fieldType)
+            throws ReflectiveOperationException, IOException {
+        String typeDesc = "L" + fieldType.getName().replace('.', '/') + ";";
+        Field matched = null;
+        for (Method method : fieldType.getDeclaredMethods()) {
+            if (Modifier.isStatic(method.getModifiers())
+                    || method.getParameterCount() != 0
+                    || method.getReturnType() != void.class) {
+                continue;
+            }
+            DexSignatures.Body body = DexSignatures.body(method, Set.of(SPRING_CANCEL_ANCHOR));
+            if (!body.anchors().containsKey(SPRING_CANCEL_ANCHOR)) continue;
+            Field running = body.uniqueRead(typeDesc, "Z", null).field(loader);
+            if (matched != null && !matched.equals(running)) {
+                throw new NoSuchFieldException("Ambiguous spring running flag on " + fieldType);
+            }
+            matched = running;
+        }
+        return matched;
+    }
+
+    static int resolveMaskingResource(Context context) {
+        if (context == null) return 0;
+        String ownPackage = context.getPackageName();
+        String[] candidates = {
+            ownPackage,
+            "com.samsung.android.app.aodservice",
+            "com.samsung.android.app.clockpack"
+        };
+        android.content.res.Resources resources = context.getResources();
+        for (int i = 0; i < candidates.length; i++) {
+            String pkg = candidates[i];
+            if (pkg == null || pkg.isEmpty()) continue;
+            if (i > 0 && pkg.equals(ownPackage)) continue;
+            int id = resources.getIdentifier("media_album_masking", "raw", pkg);
+            if (id != 0) return id;
+        }
+        return 0;
     }
 
     private static float clamp(float value) {

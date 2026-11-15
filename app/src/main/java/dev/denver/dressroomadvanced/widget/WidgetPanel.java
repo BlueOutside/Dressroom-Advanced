@@ -21,6 +21,7 @@ final class WidgetPanel {
     private final LinearLayout content;
     private PanelTabs pages;
     private int widgetPage;
+    private int extrasPage;
     private LinearLayout group;
     private boolean binding;
     private TextView status;
@@ -71,29 +72,16 @@ final class WidgetPanel {
                         });
         nativeTabs.listen(tabs, events);
         render();
-        Object nativePanel = Reflect.field(Reflect.field(ui, "a"), "c");
-        Reflect.set(nativePanel, editor.legacy() ? "j" : "h", true);
-        Reflect.call(nativePanel, "setAnchorStateSupported", false);
-        Class<?> menuType = null;
-        for (java.lang.reflect.Method m : ui.getClass().getDeclaredMethods()) {
-            if (m.getParameterCount() == 10 && m.getParameterTypes()[6].isEnum()) {
-                menuType = m.getParameterTypes()[6];
-                break;
-            }
-        }
-        if (menuType == null) {
-            menuType =
-                    Class.forName(
-                            editor.legacy()
-                                    ? OneUi85WidgetEditor.PANEL_MENU
-                                    : OneUi9WidgetEditor.PANEL_MENU,
-                            false,
-                            loader);
-        }
+        Object nativePanel = findNativePanel(ui);
+        enableNestedScroll(nativePanel);
+        NativeContract.method(
+                        nativePanel.getClass(), "setAnchorStateSupported", void.class, boolean.class)
+                .invoke(nativePanel, false);
+        java.lang.reflect.Method showMethod = findShowMethod(ui.getClass());
+        Class<?> menuType = showMethod.getParameterTypes()[6];
         Object type = WidgetEngine.enumValue(menuType, "WIDGET");
-        Reflect.call(
+        showMethod.invoke(
                 ui,
-                editor.legacy() ? "j" : "d",
                 content,
                 tabs,
                 null,
@@ -104,6 +92,122 @@ final class WidgetPanel {
                 null,
                 false,
                 null);
+    }
+
+    private static java.lang.reflect.Method findShowMethod(Class<?> uiClass)
+            throws NoSuchMethodException {
+        java.lang.reflect.Method found = null;
+        for (java.lang.reflect.Method m : uiClass.getDeclaredMethods()) {
+            Class<?>[] params = m.getParameterTypes();
+            if (!java.lang.reflect.Modifier.isStatic(m.getModifiers())
+                    && !m.isBridge()
+                    && m.getReturnType() == void.class
+                    && params.length == 10
+                    && params[6].isEnum()
+                    && params[7] == android.graphics.Rect.class
+                    && params[8] == boolean.class) {
+                if (found != null) {
+                    throw new NoSuchMethodException(
+                            "Ambiguous panel show methods on " + uiClass.getName());
+                }
+                found = m;
+            }
+        }
+        if (found == null) {
+            throw new NoSuchMethodException("Missing panel show method on " + uiClass.getName());
+        }
+        found.setAccessible(true);
+        return found;
+    }
+
+    private static Object findNativePanel(Object ui) throws ReflectiveOperationException {
+        Object found = null;
+        try {
+            found = panelFromMediator(Reflect.field(ui, "a"), "c");
+        } catch (ReflectiveOperationException ignored) {
+        }
+        if (found != null) return found;
+        for (java.lang.reflect.Field f : ui.getClass().getDeclaredFields()) {
+            if (java.lang.reflect.Modifier.isStatic(f.getModifiers())
+                    || f.getType().isPrimitive()) continue;
+            f.setAccessible(true);
+            Object mediator = f.get(ui);
+            if (mediator == null || mediator instanceof Context) continue;
+            Object candidate = panelFromMediator(mediator, null);
+            if (candidate != null) {
+                if (found != null && found != candidate) {
+                    throw new NoSuchFieldException(
+                            "Ambiguous panel views on " + ui.getClass().getName());
+                }
+                found = candidate;
+            }
+        }
+        if (found == null) {
+            throw new NoSuchFieldException("Missing panel view on " + ui.getClass().getName());
+        }
+        return found;
+    }
+
+    private static Object panelFromMediator(Object mediator, String preferredField)
+            throws ReflectiveOperationException {
+        if (mediator == null) return null;
+        if (preferredField != null) {
+            try {
+                java.lang.reflect.Field f = mediator.getClass().getDeclaredField(preferredField);
+                f.setAccessible(true);
+                Object v = f.get(mediator);
+                if (isNativePanel(v)) return v;
+            } catch (NoSuchFieldException ignored) {
+            }
+        }
+        Object found = null;
+        for (java.lang.reflect.Field f : mediator.getClass().getDeclaredFields()) {
+            if (java.lang.reflect.Modifier.isStatic(f.getModifiers())) continue;
+            if (!android.view.ViewGroup.class.isAssignableFrom(f.getType())) continue;
+            f.setAccessible(true);
+            Object v = f.get(mediator);
+            if (isNativePanel(v)) {
+                if (found != null && found != v) {
+                    throw new NoSuchFieldException(
+                            "Ambiguous panel fields on " + mediator.getClass().getName());
+                }
+                found = v;
+            }
+        }
+        return found;
+    }
+
+    private static boolean isNativePanel(Object view) {
+        if (!(view instanceof android.view.ViewGroup)) return false;
+        Class<?> type = view.getClass();
+        return hasDeclaredMethod(type, "setAnchorStateSupported", boolean.class)
+                && hasDeclaredMethod(type, "setInnerFooterView", View.class);
+    }
+
+    private static boolean hasDeclaredMethod(Class<?> owner, String name, Class<?>... params) {
+        try {
+            owner.getDeclaredMethod(name, params);
+            return true;
+        } catch (NoSuchMethodException ignored) {
+            return false;
+        }
+    }
+
+    private void enableNestedScroll(Object nativePanel) throws ReflectiveOperationException {
+        Class<?> panelClass = nativePanel.getClass();
+        java.lang.reflect.Method footer =
+                NativeContract.method(panelClass, "setInnerFooterView", void.class, View.class);
+        try {
+            DexSignatures.Member field =
+                    DexSignatures.body(footer)
+                            .uniqueRead(
+                                    "L" + panelClass.getName().replace('.', '/') + ";", "Z", null);
+            field.field(loader).setBoolean(nativePanel, true);
+            return;
+        } catch (ReflectiveOperationException | java.io.IOException | LinkageError ignored) {
+        }
+        NativeContract.field(panelClass, editor.legacy() ? "j" : "h", boolean.class)
+                .setBoolean(nativePanel, true);
     }
 
     private Bundle draft() {
@@ -256,7 +360,8 @@ final class WidgetPanel {
         }
         if (editor.depthAvailable()) {
             section("Appearance");
-            boolean imageAvailable = editor.depthImageAvailable();
+            boolean hardwareAvailable = editor.depthHardwareAvailable();
+            boolean imageAvailable = hardwareAvailable && editor.depthImageAvailable();
             choice(
                     "Subject depth",
                     new String[] {"Follow clock", "On", "Off"},
@@ -276,7 +381,8 @@ final class WidgetPanel {
                     (next, index) -> next.putInt("depthLayouts", index),
                     false,
                     imageAvailable);
-            if (!imageAvailable)
+            if (!hardwareAvailable) note(ObjectCaptureBackend.unavailableReason());
+            else if (!imageAvailable)
                 note(
                         "Depth requires a still-image wallpaper. Gyro, video and live wallpapers"
                                 + " are not supported.");
@@ -302,6 +408,10 @@ final class WidgetPanel {
                         error(e);
                     }
                 });
+        TextView wipe = label("Wipe all widgets");
+        PanelRows.action(
+                wipe, "Wipe all widgets", "Remove all lockscreen widgets and reset layout");
+        wipe.setOnClickListener(v -> confirmWipeWidgets());
         group = content;
         status = label("");
         status.setVisibility(View.GONE);
@@ -309,11 +419,48 @@ final class WidgetPanel {
         content.requestLayout();
     }
 
+    private void confirmWipeWidgets() {
+        try {
+            checkScreen();
+            new android.app.AlertDialog.Builder(context)
+                    .setTitle("Wipe all widgets?")
+                    .setMessage(
+                            "Removes all lockscreen widgets, clears orphaned widget hosts, and"
+                                + " resets widget layout adjustments immediately.")
+                    .setNegativeButton("Cancel", null)
+                    .setPositiveButton(
+                            "Wipe",
+                            (dialog, which) -> {
+                                try {
+                                    checkScreen();
+                                    editor.wipeWidgets(context);
+                                    render();
+                                    setStatus("Widgets wiped.");
+                                    android.widget.Toast.makeText(
+                                                    context,
+                                                    "All lockscreen widgets wiped.",
+                                                    android.widget.Toast.LENGTH_SHORT)
+                                            .show();
+                                } catch (Exception e) {
+                                    error(e);
+                                }
+                            })
+                    .show();
+        } catch (Exception e) {
+            error(e);
+        }
+    }
+
     interface Edit {
         void change(Bundle b) throws Exception;
     }
 
     private void renderExtras(Bundle b) throws Exception {
+        View strip = nativeView(EditorBinding.Row.TABS);
+        content.addView(strip);
+        PanelTabs extraPages = new PanelTabs(strip, loader,
+                new String[] {"General", "Blur"}, extrasPage, page -> extrasPage = page);
+        group = extraPages.group(content, 0);
         if (ScreenIdentity.value(b) != 0)
             label(ScreenIdentity.value(b) == ScreenIdentity.SUB
                     ? "Settings for the cover screen" : "Settings for the inner screen");
@@ -329,6 +476,7 @@ final class WidgetPanel {
                 b.getBoolean("fullscreenArt"),
                 next -> next.putBoolean("fullscreenArt", !b.getBoolean("fullscreenArt")),
                 false);
+        extraToggle(b, "Fade widgets when opening the player", MediaWidgetFade.KEY);
         if (editor.stackAvailable()) {
             slider(
                     "Visible cards",
@@ -357,6 +505,10 @@ final class WidgetPanel {
                     next -> next.putBoolean("keepStretch", !b.getBoolean("keepStretch")),
                     false);
         }
+        if (android.os.Build.VERSION.SDK_INT >= 37) {
+            PanelRows.heading(label("Automatic stretch"));
+            extraToggle(b, "Allow more stretch shapes", StretchSuggestions.KEY);
+        }
         TextView reset = label("Reset extra settings");
         PanelRows.action(reset, "Reset extra settings", "");
         reset.setOnClickListener(
@@ -369,8 +521,96 @@ final class WidgetPanel {
                         error(e);
                     }
                 });
+        group = extraPages.group(content, 1);
+        note("Customizes existing blur. System blur restrictions still apply.");
+        if (android.os.Build.VERSION.SDK_INT >= 37) {
+            toggle("Keep blur while swiping to unlock", b.getBoolean("swipeBlur"),
+                    next -> next.putBoolean("swipeBlur", !b.getBoolean("swipeBlur")), false);
+            if (!BlurAppearance.available(context, "clockBlur"))
+                group.getChildAt(group.getChildCount() - 1).setEnabled(false);
+        }
+        blurSection(b, "Clock", "clockBlur");
+        blurSection(b, "Widgets", "widgetBlur");
+        blurSection(b, "Now Bar", "nowBarBlur");
+        if (android.os.Build.VERSION.SDK_INT >= 37 && BlurAppearance.liveWindowBlurAllowed(context)) {
+            PanelRows.heading(label("Lockscreen notifications"));
+            extraToggle(b, "Blur behind colorized cards", NotificationBlurOptions.COLORIZED);
+            extraToggle(b, "Blur behind custom cards", NotificationBlurOptions.CUSTOM);
+        }
+        group = content;
         status = label("");
         status.setVisibility(View.GONE);
+    }
+
+    private void blurSection(Bundle b, String title, String key) throws Exception {
+        PanelRows.heading(label(title));
+        boolean available = BlurAppearance.available(context, key);
+        toggle("Customize " + title.toLowerCase(java.util.Locale.ROOT) + " blur",
+                b.getBoolean(key + "Custom"),
+                next -> next.putBoolean(key + "Custom", !b.getBoolean(key + "Custom")), false);
+        if (!available) {
+            group.getChildAt(group.getChildCount() - 1).setEnabled(false);
+            note("Blur is unavailable or disabled by the system.");
+            return;
+        }
+        if (key.equals("clockBlur")) {
+            extraToggle(b, "Neutral blur colors", BlurAppearanceSettings.NEUTRAL_CLOCK);
+            if (android.os.Build.VERSION.SDK_INT >= 37) {
+                extraToggle(b, "Shorter blur return delay", ClockBlurDelays.KEY);
+                if (WallpaperAod.supported() && ScreenIdentity.value(b) != ScreenIdentity.SUB
+                        && BlurAppearance.windowBlur(context)) {
+                    extraToggle(b, "Keep clock blur on AOD", WallpaperAod.CLOCK_BLUR);
+                    note("Applies when AOD shows your wallpaper.");
+                }
+            }
+        }
+        if (key.equals("nowBarBlur") && android.os.Build.VERSION.SDK_INT >= 37
+                && BlurAppearance.liveWindowBlurAllowed(context))
+            extraToggle(b, "Glass backgrounds for colored pills", NowBarGlass.KEY);
+        if (key.equals("widgetBlur")
+                && BlurAppearance.liveWindowBlurAllowed(context)) {
+            extraToggle(b, "Blur behind the camera widget", WidgetBackgroundOptions.CAMERA);
+            extraToggle(b, "Remove Picture Frame dimming", WidgetBackgroundOptions.PICTURE_FRAME);
+        }
+        if (b.getBoolean(key + "Custom")) blurControls(b, key);
+        if (key.equals("widgetBlur") && WallpaperAod.supported()
+                && BlurAppearance.windowBlur(context)) {
+            PanelRows.heading(label("Widgets on AOD"));
+            note("Apply, then enter AOD with your wallpaper showing to see changes.");
+            extraToggle(b, "Keep widget blur colors on AOD", AodWidgetAppearance.KEY);
+            String aod = AodWidgetAppearance.PROFILE;
+            extraToggle(b, "Customize AOD widget blur", aod + "Custom");
+            if (b.getBoolean(aod + "Custom")) {
+                extraToggle(b, "Neutral blur colors", AodWidgetAppearance.NEUTRAL);
+                blurControls(b, aod);
+            }
+        }
+    }
+
+    private void blurControls(Bundle b, String key) throws Exception {
+        boolean aod = key.equals(AodWidgetAppearance.PROFILE);
+        int defaultRadius = aod ? 110 : 200;
+        slider("Radius", 1, 300, b.getInt(key + "Radius", defaultRadius), " px",
+                (next, value) -> next.putInt(key + "Radius", value), false);
+        slider("Saturation adjustment", -100, 100, b.getInt(key + "Saturation"), "%",
+                (next, value) -> next.putInt(key + "Saturation", value), false);
+        if (!BlurAppearance.windowBlur(context)) {
+            note("Tint requires window blur. Only radius and saturation are available here.");
+            return;
+        }
+        String[] tints = aod ? new String[] {"Samsung default", "Dark", "Light", "None"}
+                : new String[] {"Samsung default", "Dark", "Light"};
+        int tint = b.getInt(key + "Tint");
+        choice("Tint", tints, tint,
+                (next, value) -> next.putInt(key + "Tint", value), false);
+        if (key.equals("clockBlur")) note("Tint applies to window blur on the lockscreen.");
+        if (tint == 1 || tint == 2)
+            slider("Tint opacity", 0, 100, b.getInt(key + "TintOpacity", 20), "%",
+                    (next, value) -> next.putInt(key + "TintOpacity", value), false);
+    }
+
+    private void extraToggle(Bundle settings, String title, String key) throws Exception {
+        toggle(title, settings.getBoolean(key), next -> next.putBoolean(key, !settings.getBoolean(key)), false);
     }
 
     private void text(String caption, String key, String value, int limit) {

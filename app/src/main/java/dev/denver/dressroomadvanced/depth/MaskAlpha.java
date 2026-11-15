@@ -3,6 +3,30 @@ package dev.denver.dressroomadvanced;
 import android.graphics.*;
 
 final class MaskAlpha {
+    static Rect bounds(Bitmap mask) {
+        int width = mask.getWidth(), height = mask.getHeight();
+        if (!mask.hasAlpha() || mask.getConfig() == Bitmap.Config.HARDWARE)
+            return new Rect(0, 0, width, height);
+        int left = width, right = 0, top = height, bottom = 0;
+        int[] row = new int[width];
+        for (int y = 0; y < height; y++) {
+            mask.getPixels(row, 0, width, 0, y, width, 1);
+            int first = 0;
+            while (first < width && (row[first] >>> 24) == 0) first++;
+            if (first == width) continue;
+            int last = width - 1;
+            while ((row[last] >>> 24) == 0) last--;
+            left = Math.min(left, first);
+            right = Math.max(right, last + 1);
+            top = Math.min(top, y);
+            bottom = y + 1;
+        }
+        if (left >= right) return new Rect();
+        // Include the extra source texel the filtered bitmap draw can sample.
+        return new Rect(Math.max(0, left - 1), Math.max(0, top - 1),
+                Math.min(width, right + 1), Math.min(height, bottom + 1));
+    }
+
     interface DetailPass {
         Bitmap run() throws Exception;
     }

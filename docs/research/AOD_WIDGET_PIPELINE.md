@@ -48,6 +48,13 @@ The host's `onMeasure` applies its `WidgetSizeSpec` scale and pivot. `onLayout` 
 
 Music expansion can disable blur, submit null blur info and hide content. Wallpaper-on-AOD, Now Bar, transparency and profile transitions have their own observers. A depth refresh must preserve these native states and must not resurrect a blur surface that Samsung has disabled.
 
+On One UI 9 the wake repair remembers which widget views successfully hosted
+native window blur even if a later clear removes the request. Once keyguard
+settles, a missing or zero-alpha background can be rebuilt by its current
+container with `refreshBlur(darkAmount)`. The repair checks native enable,
+doze, media and alpha state, along with the user's blur and transparency
+settings. Healthy backgrounds keep their existing drawables.
+
 ## Concrete module ownership bug
 
 Before 0.6.5, `RuntimeClockHooks.apply` updated the *shared* widget grid from each clock view. Its no-profile branch called `DepthEffects.applyWidgets(view, false, null, false)`; profiled clocks could also write enabled/disabled state for that shared grid. The clock's root was searched for the first `grid_layout`, without proving that this clock was the selected owner.
@@ -69,3 +76,7 @@ The signed APK compiled and passed v3 verification. The phone probe passed the e
 The user confirmed persistence in 0.6.3 but reported widget failure through 0.6.5. Its owner logs were correct; the remaining fully covered background needed null blur info rather than an empty clip path. The user confirmed 0.6.6 after lockscreen/AOD captures verified that correction. Mask extraction can miss parts of the mountain. Dressroom's main preview remains deferred.
 
 Source snapshots: `work/clock-audit/ComplicationWidgetHostViewContainer.java`, `ComplicationWidgetPluginController.java`, `BlurEffectManager.java`, `WidgetStateManager.java`, `WidgetLayoutManager.java`, `ComplicationAnimationManager.java`, `WidgetObserverManager.java`, `KeyguardClockProvider.java`, `aod.l11.java` and `aod.il6.java`.
+
+## 2026-11-12 One UI 9 Deep-Dive Sync
+
+See [ONE_UI_WIDGET_DEEP_DIVE.md](ONE_UI_WIDGET_DEEP_DIVE.md) and [AOD_9_ALIASES.md](AOD_9_ALIASES.md) for the full `8.9.66.1` host-ID (`2304`/`2346`/`1911`) & `semChangeHostIds` topology, exact `WidgetBlurTypeKt` `SemBlurInfo` curves (`maxY = 70.0` AOD nerfs & `#2B2B2B` no-wallpaper override), corner-rounding/3rd-party detection (`resolveWidgetRoundTargetView`), `tb9.applyTraverseWidgetColor`, and hardcoded per-widget exclusions (`CameraWidget` 2x2, `pictureframe`).

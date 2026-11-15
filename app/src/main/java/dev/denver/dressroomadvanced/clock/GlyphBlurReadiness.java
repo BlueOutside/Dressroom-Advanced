@@ -5,18 +5,14 @@ import android.view.View;
 import java.util.List;
 
 final class GlyphBlurReadiness {
-    static boolean stale(View view, Class<?> glyphType) throws ReflectiveOperationException {
-        return glyphType.isInstance(view)
-                && Boolean.TRUE.equals(Reflect.field(view, "S"))
-                && (view.isLayoutRequested()
-                        || view.isDirty()
-                        || !Boolean.TRUE.equals(Reflect.field(view, "R")));
+    static boolean stale(View view, GlyphOutlineBinding glyph) throws IllegalAccessException {
+        return glyph.stale(view);
     }
 
-    static boolean needsDraw(List<?> views, Class<?> glyphType)
-            throws ReflectiveOperationException {
+    static boolean needsDraw(List<?> views, GlyphOutlineBinding glyph)
+            throws IllegalAccessException {
         for (Object item : views)
-            if (item instanceof View view && view.isShown() && stale(view, glyphType)) return true;
+            if (item instanceof View view && view.isShown() && stale(view, glyph)) return true;
         return false;
     }
 }

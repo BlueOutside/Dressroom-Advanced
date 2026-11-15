@@ -272,4 +272,257 @@ final class OneUi9WidgetEditor {
                         PICKER_SIZE, "sd.c");
         return NativeContract.findMethod(owner, "a", ArrayList.class, uiMode, deviceType);
     }
+
+    static android.content.Context context(Object preview) throws ReflectiveOperationException {
+        return (android.content.Context)
+                NativeContract.findField(preview.getClass(), "b", android.content.Context.class)
+                        .get(preview);
+    }
+
+    static Object ui(Object preview) throws ReflectiveOperationException {
+        return WidgetEditorBinding.findUiController(preview, "i");
+    }
+
+    static Object grid(Object preview) throws ReflectiveOperationException {
+        ClassLoader loader = preview.getClass().getClassLoader();
+        Object lazy =
+                NativeContract.findField(
+                                preview.getClass(), "a", Class.forName("dagger.Lazy", false, loader))
+                        .get(preview);
+        return getGrid(loader).invoke(Reflect.call(lazy, "get"));
+    }
+
+    static Object repoData(Object preview) throws ReflectiveOperationException {
+        Class<?> widgetData = entity(preview.getClass().getClassLoader(), "item.widget.WidgetData");
+        return Reflect.call(WidgetEditorBinding.findObservableData(preview, "l", widgetData), "getData");
+    }
+
+    static void finalizeList(Object preview) throws ReflectiveOperationException {
+        try {
+            NativeContract.method(preview.getClass(), "c", void.class).invoke(preview);
+            return;
+        } catch (NoSuchMethodException ignored) {
+        }
+        Method found = null;
+        for (Method m : preview.getClass().getDeclaredMethods()) {
+            if (java.lang.reflect.Modifier.isPublic(m.getModifiers())
+                    && !java.lang.reflect.Modifier.isStatic(m.getModifiers())
+                    && !m.isBridge()
+                    && m.getParameterCount() == 0
+                    && m.getReturnType() == void.class
+                    && !m.getName().equals("getTag")
+                    && !m.getName().equals("getSubTag")) {
+                if (found != null) {
+                    throw new NoSuchMethodException(
+                            "Ambiguous finalize methods: " + found + " and " + m);
+                }
+                found = m;
+            }
+        }
+        if (found == null) {
+            throw new NoSuchMethodException(
+                    "Missing finalize method on " + preview.getClass().getName());
+        }
+        found.setAccessible(true);
+        found.invoke(preview);
+    }
+
+    static void refreshList(Object preview) throws ReflectiveOperationException {
+        java.lang.reflect.Field refreshField =
+                WidgetEditorBinding.findFieldMatching(
+                        preview.getClass(),
+                        "p",
+                        f ->
+                                NativeContract.hasMethod(
+                                        f.getType(), void.class, ArrayList.class, boolean.class));
+        Object useCase = refreshField.get(preview);
+        NativeContract.findMethod(useCase.getClass(), "a", void.class).invoke(useCase);
+    }
+
+    static void recalculate(Object preview) throws ReflectiveOperationException {
+        java.lang.reflect.Field refreshPos =
+                WidgetEditorBinding.findFieldMatching(
+                        preview.getClass(),
+                        "z",
+                        f -> {
+                            for (java.lang.reflect.Constructor<?> c :
+                                    f.getType().getDeclaredConstructors()) {
+                                if (c.getParameterCount() == 14) return true;
+                            }
+                            return false;
+                        });
+        Object target = refreshPos.get(preview);
+        NativeContract.findMethod(target.getClass(), "a", void.class).invoke(target);
+    }
+
+    static boolean isMain(Object preview) throws ReflectiveOperationException {
+        Class<?> uiMode = entity(preview.getClass().getClassLoader(), "preview.UIMode");
+        java.lang.reflect.Field uiModeField =
+                WidgetEditorBinding.findFieldMatching(
+                        preview.getClass(),
+                        "c",
+                        f -> NativeContract.hasMethod(f.getType(), uiMode));
+        Object useCase = uiModeField.get(preview);
+        Object mode = NativeContract.findMethod(useCase.getClass(), "b", uiMode).invoke(useCase);
+        return Boolean.TRUE.equals(Reflect.call(mode, "isLockScreen"));
+    }
+
+    static Object alignUpdater(Object preview, Class<?> alignType)
+            throws ReflectiveOperationException {
+        java.lang.reflect.Field field =
+                WidgetEditorBinding.findFieldMatching(
+                        preview.getClass(),
+                        "y",
+                        f -> NativeContract.hasMethod(f.getType(), boolean.class, alignType));
+        return field.get(preview);
+    }
+
+    static boolean applyAlign(Object preview, Object alignTarget)
+            throws ReflectiveOperationException {
+        Object updater = alignUpdater(preview, alignTarget.getClass());
+        return Boolean.TRUE.equals(
+                NativeContract.findMethod(
+                                updater.getClass(), "a", boolean.class, alignTarget.getClass())
+                        .invoke(updater, alignTarget));
+    }
+
+    static Object rotationTrimmedOwner(Object preview, Class<?> alignType)
+            throws ReflectiveOperationException {
+        Class<?> ownerClass = rotationTrimmed(preview.getClass().getClassLoader(), alignType).getDeclaringClass();
+        return NativeContract.findField(preview.getClass(), "D", ownerClass).get(preview);
+    }
+
+    static Object lifecycleMode(Object lifecycleUseCase) throws ReflectiveOperationException {
+        Class<?> uiMode =
+                entity(lifecycleUseCase.getClass().getClassLoader(), "preview.UIMode");
+        try {
+            java.lang.reflect.Field e = lifecycleUseCase.getClass().getDeclaredField("e");
+            e.setAccessible(true);
+            Object repo = e.get(lifecycleUseCase);
+            if (repo != null) {
+                Object mode = Reflect.call(repo, "getData");
+                if (uiMode.isInstance(mode)) return mode;
+            }
+        } catch (Throwable ignored) {
+        }
+        for (java.lang.reflect.Field f : lifecycleUseCase.getClass().getDeclaredFields()) {
+            if (java.lang.reflect.Modifier.isStatic(f.getModifiers()) || f.getType().isPrimitive())
+                continue;
+            f.setAccessible(true);
+            Object repo = f.get(lifecycleUseCase);
+            if (repo == null) continue;
+            try {
+                Object mode = Reflect.call(repo, "getData");
+                if (uiMode.isInstance(mode)) return mode;
+            } catch (Throwable ignored) {
+            }
+        }
+        throw new NoSuchFieldException(
+                "Missing UIMode repo on " + lifecycleUseCase.getClass().getName());
+    }
+
+    static float previewScale(Object preview) throws ReflectiveOperationException {
+        ClassLoader loader = preview.getClass().getClassLoader();
+        Class<?> contextClass = android.content.Context.class;
+        java.lang.reflect.Field vmField =
+                WidgetEditorBinding.findFieldMatching(
+                        preview.getClass(),
+                        "g",
+                        f -> {
+                            Class<?> t = f.getType();
+                            if (!NativeContract.hasField(t, float.class)) return false;
+                            for (java.lang.reflect.Constructor<?> c : t.getDeclaredConstructors()) {
+                                if (c.getParameterCount() == 7
+                                        && c.getParameterTypes()[0] == contextClass) return true;
+                            }
+                            return false;
+                        });
+        Object vm = vmField.get(preview);
+        return NativeContract.findField(vm.getClass(), "r", float.class).getFloat(vm);
+    }
+
+    static void addMenu(
+            Object toolbarOwner,
+            java.util.function.Function<android.content.Context, Runnable> openFactory,
+            String tag)
+            throws ReflectiveOperationException {
+        ClassLoader loader = toolbarOwner.getClass().getClassLoader();
+        Class<?> menuItemClass =
+                NativeContract.findClass(
+                        loader,
+                        cls ->
+                                NativeContract.hasConstructor(
+                                        cls,
+                                        int.class,
+                                        int.class,
+                                        Runnable.class,
+                                        String.class),
+                        MENU_ITEM);
+        Class<?> arrayType = java.lang.reflect.Array.newInstance(menuItemClass, 0).getClass();
+        java.lang.reflect.Field arrayField =
+                NativeContract.findField(toolbarOwner.getClass(), "g", arrayType);
+        Object current = arrayField.get(toolbarOwner);
+        if (current == null || java.lang.reflect.Array.getLength(current) == 0) return;
+        java.lang.reflect.Field tagField = resolveNineTagField(toolbarOwner.getClass(), menuItemClass);
+        java.lang.reflect.Field labelField = resolveOtherStringField(menuItemClass, tagField);
+        ArrayList<Object> items = new ArrayList<>();
+        for (int i = 0; i < java.lang.reflect.Array.getLength(current); i++) {
+            Object item = java.lang.reflect.Array.get(current, i);
+            if (tag.equals(tagField.get(item))) return;
+            items.add(item);
+        }
+        android.content.Context context =
+                (android.content.Context)
+                        WidgetEditorBinding.findFieldMatching(
+                                        toolbarOwner.getClass(),
+                                        "a",
+                                        f -> f.getType() == android.content.Context.class)
+                                .get(toolbarOwner);
+        int icon =
+                context.getResources()
+                        .getIdentifier(
+                                "preview_menu_icon_effect", "drawable", context.getPackageName());
+        if (icon == 0) icon = android.R.drawable.ic_menu_manage;
+        Object extra =
+                menuItemClass
+                        .getDeclaredConstructor(
+                                int.class, int.class, Runnable.class, String.class)
+                        .newInstance(-1, icon, openFactory.apply(context), tag);
+        if (labelField != null) labelField.set(extra, "Advanced");
+        items.add(extra);
+        Object updated = java.lang.reflect.Array.newInstance(menuItemClass, items.size());
+        for (int i = 0; i < items.size(); i++) java.lang.reflect.Array.set(updated, i, items.get(i));
+        arrayField.set(toolbarOwner, updated);
+    }
+
+    private static java.lang.reflect.Field resolveNineTagField(
+            Class<?> toolbarClass, Class<?> menuItemClass) throws NoSuchFieldException {
+        try {
+            Method renderer = NativeContract.findMethod(toolbarClass, TOOLBAR_METHOD, void.class);
+            DexSignatures.Member m =
+                    DexSignatures.body(renderer)
+                            .uniqueRead(
+                                    "L" + menuItemClass.getName().replace('.', '/') + ";",
+                                    "Ljava/lang/String;",
+                                    null);
+            return m.field(menuItemClass.getClassLoader());
+        } catch (ReflectiveOperationException | java.io.IOException | LinkageError ignored) {
+        }
+        return NativeContract.field(menuItemClass, "e", String.class);
+    }
+
+    private static java.lang.reflect.Field resolveOtherStringField(
+            Class<?> menuItemClass, java.lang.reflect.Field tagField) {
+        java.lang.reflect.Field other = null;
+        for (java.lang.reflect.Field f : menuItemClass.getDeclaredFields()) {
+            if (!java.lang.reflect.Modifier.isStatic(f.getModifiers())
+                    && f.getType() == String.class
+                    && !f.getName().equals(tagField.getName())) {
+                if (other != null) return null;
+                other = f;
+            }
+        }
+        if (other != null) other.setAccessible(true);
+        return other;
+    }
 }

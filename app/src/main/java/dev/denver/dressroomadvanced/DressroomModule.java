@@ -50,6 +50,11 @@ public final class DressroomModule extends XposedModule {
     private java.lang.ref.WeakReference<NativeClockPanel> panel =
             new java.lang.ref.WeakReference<>(null);
     private String scene = "", processName = "";
+
+    boolean inEditorProcess() {
+        return processName.equals("com.samsung.android.app.dressroom")
+                || processName.startsWith("com.samsung.android.app.dressroom:");
+    }
     private boolean platformReported;
     private long sessionGeneration;
     private final java.util.Map<View, android.os.Bundle> previewDepthProfiles =
@@ -70,17 +75,15 @@ public final class DressroomModule extends XposedModule {
     private final java.util.concurrent.atomic.AtomicBoolean sourceCheckQueued =
             new java.util.concurrent.atomic.AtomicBoolean();
 
-    private Boolean objectCaptureSupported;
+    private boolean depthLibrariesDisabled;
 
     boolean depthHardwareAvailable() {
-        if (objectCaptureSupported != null) return objectCaptureSupported;
         android.content.Context context = editorContext;
         if (context == null && editorActivity.get() instanceof android.content.Context act)
             context = act;
         if (context != null) {
             Boolean supported = DepthBinding.isObjectCaptureSupported(context);
             if (supported != null) {
-                objectCaptureSupported = supported;
                 return supported;
             }
         }
@@ -97,6 +100,8 @@ public final class DressroomModule extends XposedModule {
     }
 
     boolean depthProfileInvalid(android.os.Bundle profile) {
+        if (!source().known) syncWallpaperSource();
+        if (!source().known) return false;
         return DepthSourcePolicy.invalidProfile(
                 source().known,
                 source().image,
@@ -122,6 +127,9 @@ public final class DressroomModule extends XposedModule {
         if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) {
             queueWallpaperSourceCheck();
             return;
+        }
+        if (editorActivity.get() == null && editorContext instanceof android.app.Activity act) {
+            editorActivity = new java.lang.ref.WeakReference<>(act);
         }
         if (sourceSyncing || wallpaperSourceBinding == null || editorActivity.get() == null) return;
         if (editorScreen != ScreenIdentity.current()) return;
@@ -187,6 +195,11 @@ public final class DressroomModule extends XposedModule {
     }
 
     void depthDetectionFailed(String message) {
+        if (!depthHardwareAvailable()) {
+            depthLibrariesDisabled = true;
+            invalidateDepth(ObjectCaptureBackend.unavailableReason());
+            return;
+        }
         // A failed scan is not a wallpaper replacement. Keep user choices, suspend the matte.
         DepthEffects.clearEditorSubject();
         DepthEffects.pendingSource(true);
@@ -215,6 +228,7 @@ public final class DressroomModule extends XposedModule {
             new java.lang.ref.WeakReference<>(null);
 
     void stageSettings(android.content.Context context, android.os.Bundle settings) {
+        if (!depthHardwareAvailable()) DepthSafety.disable(settings);
         int orientation = layoutOrientation(context);
         EditorDepthSources.State state = source();
         long revision = state.revision;
@@ -245,7 +259,7 @@ public final class DressroomModule extends XposedModule {
     }
 
     private boolean widgetDepthOn(android.content.Context context) {
-        if (editorWidgets == null) return false;
+        if (editorWidgets == null || !depthHardwareAvailable()) return false;
         android.os.Bundle settings = editorWidgets.settings(context);
         return settings.getInt("depth") == 1 && WidgetPreferences.covers(settings);
     }
@@ -352,6 +366,7 @@ public final class DressroomModule extends XposedModule {
             android.content.Context context, int type, int font, String fontPath) {
         android.os.Bundle staged = editorDrafts.get(selectionKey(type, font, fontPath));
         if (staged != null) return new android.os.Bundle(staged);
+        syncWallpaperSource();
         android.os.Bundle query = new android.os.Bundle();
         query.putInt("type", type);
         query.putInt("font", font);
@@ -362,7 +377,7 @@ public final class DressroomModule extends XposedModule {
         android.os.Bundle saved =
                 SettingsBridge.read(editorContext == null ? context : editorContext, query);
         // Reading an old profile must not reset the currently active wallpaper or other clocks.
-        if (saved != null && depthProfileInvalid(saved)) DepthSafety.disable(saved);
+        if (saved != null && source().known && depthProfileInvalid(saved)) DepthSafety.disable(saved);
         return saved;
     }
 
@@ -379,6 +394,7 @@ public final class DressroomModule extends XposedModule {
     }
 
     private void beginEditor() {
+        depthLibrariesDisabled = false;
         sourceSyncing = false;
         depthSaveHolds = 0;
         nativeSaveActive = false;
@@ -483,6 +499,12 @@ public final class DressroomModule extends XposedModule {
                                         editorActivity =
                                                 new java.lang.ref.WeakReference<>(
                                                         chain.getThisObject());
+                                        Object result = chain.proceed();
+                                        android.app.Activity activity =
+                                                (android.app.Activity) chain.getThisObject();
+                                        activity.getWindow().getDecorView().postDelayed(
+                                                () -> UpdatePrompt.check(activity), 500);
+                                        return result;
                                     }
                                     return chain.proceed();
                                 }));
@@ -498,6 +520,7 @@ public final class DressroomModule extends XposedModule {
                                             .getName()
                                             .equals(
                                                     "com.samsung.android.app.dressroom.presentation.preview.activity.EditMainActivity")) {
+                                        UpdatePrompt.close((android.app.Activity) chain.getThisObject());
                                         DepthEffects.resetEditor();
                                         if (depthAuto != null) depthAuto.reset();
                                     }
@@ -791,6 +814,7 @@ public final class DressroomModule extends XposedModule {
                                     Object renderer = chain.getArg(0);
                                     if (renderer instanceof View) {
                                         prepareRenderer(renderer);
+                                        BlurAppearance.trackClock((View) renderer);
                                         DateEffects.attach(this, (View) renderer);
                                     }
                                     Object result = chain.proceed();
@@ -1059,7 +1083,9 @@ public final class DressroomModule extends XposedModule {
     void prepareRenderer(Object renderer) {
         if (renderer == null) return;
         ClassLoader loader = renderer.getClass().getClassLoader();
-        if (rendererHooks.contains(loader) || !rendererInstalling.add(loader)) return;
+        synchronized (rendererHooks) {
+            if (rendererHooks.contains(loader) || !rendererInstalling.add(loader)) return;
+        }
         HookTransaction previousInstallation = editorInstallation.get();
         try (HookTransaction transaction = new HookTransaction()) {
             editorInstallation.set(transaction);
@@ -1261,7 +1287,9 @@ public final class DressroomModule extends XposedModule {
                                         return result;
                                     }));
             transaction.commit();
-            rendererHooks.add(loader);
+            synchronized (rendererHooks) {
+                rendererHooks.add(loader);
+            }
             log(
                     Log.INFO,
                     TAG,
@@ -1269,7 +1297,9 @@ public final class DressroomModule extends XposedModule {
         } catch (ReflectiveOperationException | LinkageError | RuntimeException e) {
             report("Provider independent stretch hooks unavailable", e);
         } finally {
-            rendererInstalling.remove(loader);
+            synchronized (rendererHooks) {
+                rendererInstalling.remove(loader);
+            }
             if (previousInstallation == null) editorInstallation.remove();
             else editorInstallation.set(previousInstallation);
         }
@@ -1353,6 +1383,13 @@ public final class DressroomModule extends XposedModule {
     private void applyEditorDepth(View clock) {
         if (editorBinding == null || !depthAvailable(clock) || !DepthEffects.isEditorClock(clock))
             return;
+        if (!depthHardwareAvailable()) {
+            if (!depthLibrariesDisabled) {
+                depthLibrariesDisabled = true;
+                invalidateDepth(ObjectCaptureBackend.unavailableReason());
+            }
+            return;
+        }
         try {
             syncWallpaperSource();
             Object controller = activeClockController.get();
@@ -1458,7 +1495,8 @@ public final class DressroomModule extends XposedModule {
     public void onPackageReady(PackageReadyParam param) {
         if (!PlatformGate.supported()) return;
         if ("com.samsung.android.wallpaper.live".equals(param.getPackageName())) {
-            WallpaperMotionPublisher.install(this, param.getClassLoader());
+            DexSignatures.cachedRun(
+                    () -> WallpaperMotionPublisher.install(this, param.getClassLoader()));
             return;
         }
         if ("com.android.systemui".equals(param.getPackageName())
@@ -1470,24 +1508,37 @@ public final class DressroomModule extends XposedModule {
                     || processName.startsWith("com.samsung.android.app.aodservice:")
                     || processName.equals("com.samsung.android.app.clockpack")
                     || processName.startsWith("com.samsung.android.app.clockpack:"))) return;
-            if ("com.samsung.android.app.aodservice".equals(param.getPackageName()))
-                OneUi9FoldProfiles.install(this, param.getClassLoader());
-            if (runtimeHooks == null) {
-                runtimeHooks = new RuntimeClockHooks(this);
-            }
-            runtimeHooks.install(param.getClassLoader());
-            if ("com.android.systemui".equals(param.getPackageName())
-                    && processName.equals("com.android.systemui")
-                    && android.os.Build.VERSION.SDK_INT >= 36) {
-                ClassLoader classes = param.getClassLoader();
-                new android.os.Handler(android.os.Looper.getMainLooper())
-                        .post(
-                                () -> {
-                                    if (android.os.Build.VERSION.SDK_INT >= 37)
-                                        MediaFullscreenExtras.installRoot(this, classes);
-                                    NowBarExtras.install(this, classes);
-                                });
-            }
+            DexSignatures.cachedRun(
+                    () -> {
+                        if ("com.samsung.android.app.aodservice".equals(param.getPackageName()))
+                            OneUi9FoldProfiles.install(this, param.getClassLoader());
+                        if (runtimeHooks == null) {
+                            runtimeHooks = new RuntimeClockHooks(this);
+                        }
+                        runtimeHooks.install(param.getClassLoader());
+                        if ("com.android.systemui".equals(param.getPackageName())
+                                && processName.equals("com.android.systemui")
+                                && android.os.Build.VERSION.SDK_INT >= 36) {
+                            ClassLoader classes = param.getClassLoader();
+                            BuiltInWallpaperMotion.install(this, classes);
+                            UnlockBlur.install(this, classes);
+                            DozeBlurRegions.install(this, classes);
+                            new android.os.Handler(android.os.Looper.getMainLooper())
+                                    .post(
+                                            () ->
+                                                    DexSignatures.cachedRun(
+                                                            () -> {
+                                                                NotificationBlurOptions.install(
+                                                                        this, classes);
+                                                                if (android.os.Build.VERSION.SDK_INT
+                                                                        >= 37)
+                                                                    MediaFullscreenExtras
+                                                                            .installRoot(
+                                                                                    this, classes);
+                                                                NowBarExtras.install(this, classes);
+                                                            }));
+                        }
+                    });
             return;
         }
         if (!"com.samsung.android.app.dressroom".equals(param.getPackageName())) return;
@@ -1502,6 +1553,7 @@ public final class DressroomModule extends XposedModule {
         ClassLoader loader = param.getClassLoader();
         synchronized (installed) {
             if (installed.contains(loader) || !installing.add(loader)) return;
+            DexSignatures.cachedRun(() -> {
             try (HookTransaction transaction = new HookTransaction()) {
                 editorInstallation.set(transaction);
                 editorBinding =
@@ -1580,6 +1632,7 @@ public final class DressroomModule extends XposedModule {
                 editorInstallation.remove();
                 installing.remove(loader);
             }
+            });
         }
     }
 
@@ -1725,7 +1778,8 @@ public final class DressroomModule extends XposedModule {
                                                                         Reflect.call(
                                                                                 view,
                                                                                 "getClockType"))
-                                                                .intValue())) {
+                                                                .intValue())
+                                                ) {
                                             Reflect.call(
                                                     view, "setBlurEffectEnabled", chain.getArg(1));
                                             return null;
@@ -1746,7 +1800,8 @@ public final class DressroomModule extends XposedModule {
                                                                         Reflect.call(
                                                                                 view,
                                                                                 "getClockType"))
-                                                                .intValue())) {
+                                                                .intValue())
+                                                ) {
                                             Reflect.call(view, "setClockTextBlur");
                                             return null;
                                         }

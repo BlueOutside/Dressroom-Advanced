@@ -3,10 +3,15 @@ package dev.denver.dressroomadvanced;
 import android.content.Context;
 
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 /** Resolve every source/measurement dependency before installing any hooks. */
 final class ClockSourceBinding {
+    private static final String NORMALIZER_ANCHOR =
+            "balanceVerticalFontHeights: already balanced, left=";
     final Method data, heights, wallpaper;
     final List<Method> callers;
 
@@ -51,94 +56,70 @@ final class ClockSourceBinding {
             addCallers(methods, page, font, view, true);
         } catch (ReflectiveOperationException ignored) {
         }
+        // Deoptimize provider callers (e.g. measureClockSize) so ART does not inline native font
+        // getters and measure native heights while the view uses ours.
+        try {
+            String owner = DexSignatures.descriptor(provider);
+            addProviderCallers(methods, provider, owner, loader, data);
+            addProviderCallers(methods, provider, owner, loader, heights);
+        } catch (java.io.IOException | ReflectiveOperationException | RuntimeException error) {
+            android.util.Log.w(
+                    DressroomModule.TAG, "Provider measurement callers unavailable", error);
+        }
         callers = List.copyOf(methods);
+    }
+
+    private static void addProviderCallers(
+            List<Method> methods,
+            Class<?> provider,
+            String owner,
+            ClassLoader loader,
+            Method target)
+            throws java.io.IOException, ReflectiveOperationException {
+        for (DexSignatures.Body caller : DexSignatures.callers(target)) {
+            if (!caller.owner().equals(owner)) continue;
+            Method method = caller.method(loader);
+            if (method.getDeclaringClass() == provider
+                    && !Modifier.isAbstract(method.getModifiers())
+                    && !method.isBridge()
+                    && !method.isSynthetic()
+                    && !methods.contains(method)) {
+                methods.add(method);
+            }
+        }
     }
 
     static Method normalizer(ClassLoader loader, Class<?> font, boolean clockStyle)
             throws ReflectiveOperationException {
-        // Avoid a full modern-ABI scan on every known legacy provider.
-        Class<?> known =
-                NativeContract.knownClass(
-                        loader,
-                        type ->
-                                NativeContract.hasStaticMethod(
-                                        type, List.class, int.class, font, List.class),
-                        clockStyle ? "aod.uq6" : "aod.qn1",
-                        clockStyle ? "aod.qn1" : "aod.uq6", "aod.an1");
-        if (known != null)
-            return NativeContract.findStaticMethod(
-                    known,
-                    known.getName().equals("aod.uq6")
-                            ? "T"
-                            : known.getName().equals("aod.an1") ? "c0" : "X",
-                    List.class,
-                    int.class,
-                    font,
-                    List.class);
-        Class<?> aod8936 =
-                NativeContract.knownClass(
-                        loader,
-                        type -> NativeContract.hasStaticMethod(type, List.class, List.class),
-                        "aod.VO");
-        if (aod8936 != null)
-            return NativeContract.findStaticMethod(aod8936, "d", List.class, List.class);
-        known =
-                NativeContract.knownClass(
-                        loader,
-                        type -> NativeContract.hasStaticMethod(type, List.class, List.class),
-                        clockStyle ? "aod.QT" : "aod.PO",
-                        clockStyle ? "aod.PO" : "aod.QT");
-        if (known != null)
-            return NativeContract.findStaticMethod(
-                    known, clockStyle ? "g" : "k", List.class, List.class);
-        Class<?> owner;
+        Class<?> base =
+                Class.forName(
+                        "com.samsung.android.uniform.widget.clock.AbsClockView", false, loader);
+        Method setter = NativeContract.method(base, "setFontType", void.class, font);
+        String fontDesc = DexSignatures.descriptor(font);
+        List<String> modernArgs = List.of("I", fontDesc, "Ljava/util/List;");
+        List<String> legacyArgs = List.of("Ljava/util/List;");
+        Set<Method> candidates = new LinkedHashSet<>();
         try {
-            owner =
-                    NativeContract.findClass(
-                            loader,
-                            type ->
-                                    NativeContract.hasStaticMethod(
-                                            type, List.class, int.class, font, List.class),
-                            clockStyle ? "aod.uq6" : "aod.qn1",
-                            clockStyle ? "aod.qn1" : "aod.uq6", "aod.an1");
-            return NativeContract.findStaticMethod(
-                    owner,
-                    owner.getName().equals("aod.uq6")
-                            ? "T"
-                            : owner.getName().equals("aod.an1") ? "c0" : "X",
-                    List.class,
-                    int.class,
-                    font,
-                    List.class);
-        } catch (NativeContract.AmbiguousClassException ambiguous) {
-            throw ambiguous;
-        } catch (ClassNotFoundException missingModernAbi) {
-            // The legacy List -> List contract is weaker. Only try it after ruling out
-            // the modern font-data operation, not as part of the same broad scan.
-            // List -> List alone also matches Kotlin collection helpers. Follow the
-            // named clock API's actual call instead of scanning unrelated utilities.
-            Class<?> base =
-                    Class.forName(
-                            "com.samsung.android.uniform.widget.clock.AbsClockView", false, loader);
-            Method stretch =
-                    NativeContract.method(base, "isStretchable", boolean.class, List.class);
-            java.util.Set<Method> candidates = new java.util.LinkedHashSet<>();
-            try {
-                for (DexSignatures.Call call : DexSignatures.body(stretch).calls())
-                    if (call.isStatic()
-                            && (call.result().equals("Ljava/util/List;")
-                                    || call.result().equals("Ljava/util/ArrayList;"))
-                            && call.parameters().equals(List.of("Ljava/util/List;")))
-                        candidates.add(call.method(loader));
-            } catch (java.io.IOException invalidDex) {
-                throw new ReflectiveOperationException(
-                        "Could not read clock height call site", invalidDex);
+            for (DexSignatures.Call call : DexSignatures.body(setter).calls()) {
+                if (!call.isStatic() || !call.result().equals("Ljava/util/List;")) continue;
+                List<String> args = call.parameters();
+                if (!args.equals(modernArgs) && !args.equals(legacyArgs)) continue;
+                Method candidate = call.method(loader);
+                if (DexSignatures.body(candidate, Set.of(NORMALIZER_ANCHOR))
+                        .anchors()
+                        .containsKey(NORMALIZER_ANCHOR)) {
+                    candidates.add(candidate);
+                }
             }
-            if (candidates.size() != 1)
-                throw new NoSuchMethodException(
-                        "Ambiguous clock height call site: " + candidates.size());
-            return candidates.iterator().next();
+        } catch (java.io.IOException invalidDex) {
+            throw (NoSuchMethodException)
+                    new NoSuchMethodException("Could not read clock height call site")
+                            .initCause(invalidDex);
         }
+        if (candidates.size() != 1)
+            throw new NoSuchMethodException(
+                    "Expected unique clock height normalizer, found " + candidates.size());
+        return candidates.iterator().next();
     }
 
     private static void addCallers(

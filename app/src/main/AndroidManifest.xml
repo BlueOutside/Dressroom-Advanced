@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="dev.denver.dressroomadvanced">
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
     <queries>
         <package android:name="com.samsung.android.app.dressroom"/>
         <package android:name="com.samsung.android.app.aodservice"/>
@@ -7,9 +9,16 @@
         <package android:name="com.android.systemui"/>
     </queries>
     <application android:label="Dressroom Advanced" android:description="@string/module_description"
+        android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher"
         android:allowBackup="false" android:supportsRtl="true">
         <activity android:name=".FontPickerActivity" android:exported="true"
             android:excludeFromRecents="true" android:theme="@android:style/Theme.DeviceDefault.NoActionBar"/>
+        <activity android:name=".UpdateActivity" android:exported="true"
+            android:excludeFromRecents="true" android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|keyboardHidden|uiMode"
+            android:theme="@android:style/Theme.DeviceDefault.Dialog.Alert"/>
+        <provider android:name=".UpdateFileProvider" android:authorities="dev.denver.dressroomadvanced.updates"
+            android:exported="false" android:grantUriPermissions="true"/>
         <provider android:name=".SettingsProvider" android:authorities="dev.denver.dressroomadvanced.settings" android:exported="true"/>
     </application>
 </manifest>

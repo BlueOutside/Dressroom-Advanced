@@ -24,6 +24,8 @@ final class RuntimeExtras {
 
     private RuntimeExtras() {}
 
+    static Bundle defaults() { return defaults; }
+
     static synchronized Bundle get(Context c) {
         if (context == null) {
             context = c.getApplicationContext();

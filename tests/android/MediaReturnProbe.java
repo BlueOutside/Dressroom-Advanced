@@ -207,6 +207,8 @@ public final class MediaReturnProbe {
         Object state = artCtor.newInstance(image, image, holder);
         Reflect.set(state, "small", new java.lang.ref.WeakReference<>(image));
         Reflect.set(backdrop, "current", state);
+        var corner = type.getDeclaredMethod("coverCorner");
+        corner.setAccessible(true);
         Reflect.set(backdrop, "showing", true);
         var bitmap =
                 android.graphics.Bitmap.createBitmap(
@@ -214,6 +216,21 @@ public final class MediaReturnProbe {
         bitmap.eraseColor(0xffff0000);
         Reflect.set(backdrop, "bitmap", bitmap);
         ((android.graphics.RectF) Reflect.field(backdrop, "destination")).set(0, 0, 100, 200);
+        Reflect.set(state, "small", new java.lang.ref.WeakReference<>(null));
+        check(((Number) corner.invoke(backdrop)).floatValue() == 0,
+                "Fullscreen cover retains the framed player's rounded corners");
+        Reflect.set(state, "small", new java.lang.ref.WeakReference<>(image));
+        check(((Number) corner.invoke(backdrop)).floatValue() > 0,
+                "Returning thumbnail lost its rounded shape");
+        var bridge = new android.graphics.RectF();
+        var pill = new android.graphics.RectF(0, 100, 100, 200);
+        MediaFullscreenExtras.returnBridgeBounds(bridge, pill,
+                new android.graphics.RectF(10, 10, 90, 90));
+        check(bridge.isEmpty(), "Cover strip drawn before artwork reaches the pill");
+        MediaFullscreenExtras.returnBridgeBounds(bridge, pill,
+                new android.graphics.RectF(20, 120, 60, 170));
+        check(bridge.equals(new android.graphics.RectF(20, 120, 60, 170)),
+                "Bridge paints fullscreen artwork outside the moving thumbnail");
 
         View layer = (View) Reflect.field(backdrop, "returnLayer");
         layer.layout(0, 0, 100, 200);

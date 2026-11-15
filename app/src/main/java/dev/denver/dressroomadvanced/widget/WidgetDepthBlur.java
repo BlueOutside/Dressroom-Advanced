@@ -1,6 +1,7 @@
 package dev.denver.dressroomadvanced;
 
 import android.graphics.Path;
+import android.view.ViewParent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewTreeObserver;
@@ -19,14 +20,23 @@ final class WidgetDepthBlur {
             java.lang.ref.WeakReference<ViewTreeObserver> observer,
             ViewTreeObserver.OnPreDrawListener listener) {}
 
-    private static final Map<View, Watch> roots = new WeakHashMap<>();
-    private static final Map<View, ViewGeometry> geometry = new WeakHashMap<>();
-    private static final Map<View, Object> originals = new WeakHashMap<>();
-    private static final Map<View, Boolean> blurDisabled = new WeakHashMap<>();
-    private static final Set<View> verified = Collections.newSetFromMap(new WeakHashMap<>());
-    private static final Set<View> hidden = Collections.newSetFromMap(new WeakHashMap<>());
+    private static final Map<View, Watch> roots = Collections.synchronizedMap(new WeakHashMap<>());
+    private static final Map<View, ViewGeometry> geometry =
+            Collections.synchronizedMap(new WeakHashMap<>());
+    private static final Map<View, Object> originals =
+            Collections.synchronizedMap(new WeakHashMap<>());
+    private static final Map<View, java.lang.ref.WeakReference<View>> windowOwners =
+            Collections.synchronizedMap(new WeakHashMap<>());
+    private static final Map<View, Boolean> blurDisabled =
+            Collections.synchronizedMap(new WeakHashMap<>());
+    private static final Set<View> verified =
+            Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
+    private static final Set<View> hidden =
+            Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
+    private static final Set<View> previewLayout =
+            Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
     private static final Set<ClassLoader> deoptimized =
-            Collections.newSetFromMap(new WeakHashMap<>());
+            Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
     private static boolean installed;
     private static boolean separateSurfaces;
 
@@ -38,19 +48,63 @@ final class WidgetDepthBlur {
     private WidgetDepthBlur() {}
 
     static synchronized void install(DressroomModule module, ClassLoader loader) {
+        UnlockBlur.installProvider(module, loader);
+        AodWidgetAppearance.install(module, loader);
+        WidgetBackgroundOptions.install(module, loader);
+        MediaWidgetFade.install(module, loader);
         try {
             if (ScreenIdentity.supported()) separateSurfaces = true;
             if (!installed) {
                 Class<?> info = Class.forName("android.view.SemBlurInfo");
                 WidgetBlurInfo copies = new WidgetBlurInfo(info);
                 Method submit = View.class.getDeclaredMethod("semSetBlurInfo", info);
-                module.hook(submit)
-                        .setId("dressroom-advanced.widget-depth-submit")
-                        .intercept(
+                BlurAppearance.install(info, submit);
+                if (module.inEditorProcess()) {
+                    try {
+                        EditorBlurCapture.install(module);
+                    } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+                        module.report("Optional editor blur capture unavailable", error);
+                    }
+                }
+                try {
+                    ClockBlurSync.install(module);
+                } catch (ReflectiveOperationException | RuntimeException error) {
+                    module.report("Blur appearance draw synchronization unavailable", error);
+                }
+                try (HookTransaction hooks = new HookTransaction()) {
+                    hooks.add(module.hook(submit)
+                            .setId("dressroom-advanced.widget-depth-submit")
+                            .intercept(
                                 chain -> {
                                     View view = (View) chain.getThisObject();
-                                    if (!isBackground(view)) return chain.proceed();
                                     Object original = chain.getArg(0);
+                                    if (EditorWidgetBlur.isCanvasRequest(original)) return chain.proceed();
+                                    if (module.inEditorProcess()) EditorBlurCapture.clear(view);
+                                    if (original == null && (MediaWidgetFade.holdClear(view)
+                                            || UnlockBlur.holdContainerClear(view)))
+                                        return null;
+                                    if (!isBackground(view)) {
+                                        NowBarGlass.nativeRequest(view, original);
+                                        Object styled = BlurAppearance.submit(view, original, original);
+                                        if (isClockBlurHost(view)) {
+                                            // Keep the full-screen host measured while native blur is cleared.
+                                            view.setVisibility(styled == null ? View.INVISIBLE : View.VISIBLE);
+                                            if (styled != null && module.inEditorProcess()
+                                                    && "lock_clock_blur_on_lockeditor".equals(view.getTag())) {
+                                                try {
+                                                    styled = BlurAppearance.editorCanvas(view, styled, true);
+                                                } catch (ReflectiveOperationException | RuntimeException error) {
+                                                    DressroomModule.note("Optional editor clock canvas blur", error);
+                                                }
+                                            }
+                                        }
+                                        Object result = styled == original ? chain.proceed()
+                                                : chain.proceed(new Object[] {styled});
+                                        NowBarGlass.submitted(view, original);
+                                        DepthBlurHooks.clockBlurSubmitted(view, styled);
+                                        UnlockBlur.submitted(view, styled != null);
+                                        return result;
+                                    }
                                     if (original == null) originals.remove(view);
                                     else originals.put(view, original);
                                     Object submitted = original;
@@ -93,12 +147,34 @@ final class WidgetDepthBlur {
                                         module.report("Widget final blur clip unavailable", error);
                                     }
                                     if (blurOff(view)) submitted = null;
-                                    return submitted == original
+                                    submitted = BlurAppearance.submit(view, submitted, original);
+                                    if (submitted != null && module.inEditorProcess()
+                                            && EditorWidgetBlur.canvasView(view)) {
+                                        if (previewLayout.add(view))
+                                            view.addOnLayoutChangeListener(
+                                                    WidgetDepthBlur::resizeEditorBlur);
+                                        if (view.getWidth() > 0 && view.getHeight() > 0) {
+                                            try {
+                                                submitted = BlurAppearance.editorCanvas(view, submitted, false);
+                                            } catch (ReflectiveOperationException | RuntimeException error) {
+                                                module.report("Optional editor widget canvas blur unavailable", error);
+                                                submitted = null;
+                                            }
+                                        } else submitted = null;
+                                    }
+                                    Object result = submitted == original
                                             ? chain.proceed()
                                             : chain.proceed(new Object[] {submitted});
-                                });
-                module.deoptimize(submit);
-                installed = true;
+                                    if (!module.inEditorProcess() && submitted != null
+                                            && BlurAppearance.hasWindowDrawable(view))
+                                        rememberWindowOwner(view);
+                                    UnlockBlur.submitted(view, submitted != null);
+                                    return result;
+                                })::unhook);
+                    module.deoptimize(submit);
+                    hooks.commit();
+                    installed = true;
+                }
                 android.util.Log.i(
                         DressroomModule.TAG, "Final complication blur clipping installed");
             }
@@ -122,11 +198,87 @@ final class WidgetDepthBlur {
         }
     }
 
-    private static boolean isBackground(View view) {
+    private static void resizeEditorBlur(
+            View view, int l, int t, int r, int b, int oldL, int oldT, int oldR, int oldB) {
+        if (r - l == oldR - oldL && b - t == oldB - oldT) return;
+        Object original = originals.get(view);
+        if (original == null || r <= l || b <= t) return;
+        try {
+            Reflect.call(view, "semSetBlurInfo", original);
+        } catch (ReflectiveOperationException | RuntimeException error) {
+            DressroomModule.note("Editor widget blur resize", error);
+        }
+    }
+
+    static boolean isBackground(View view) {
         return "BlurView".equals(view.getTag())
                 || (view.getParent() instanceof View parent
                         && parent.getClass().getName().equals(CONTAINER)
                         && !(view instanceof ViewGroup));
+    }
+
+    private static void rememberWindowOwner(View view) {
+        ViewParent parent = view.getParent();
+        if (parent instanceof View owner && owner.getClass().getName().equals(CONTAINER)) {
+            var known = windowOwners.get(view);
+            if (known == null || known.get() != owner)
+                windowOwners.put(view, new java.lang.ref.WeakReference<>(owner));
+        }
+    }
+
+    static java.util.List<View> windowSurfaces() {
+        synchronized (windowOwners) {
+            return new java.util.ArrayList<>(windowOwners.keySet());
+        }
+    }
+
+    static void recoverWindowSurface(View view) throws ReflectiveOperationException {
+        var reference = windowOwners.get(view);
+        View owner = reference == null ? null : reference.get();
+        if (owner == null || view.getParent() != owner || blurOff(view)
+                || Reflect.call(owner, "getBlurView") != view
+                || !Boolean.TRUE.equals(Reflect.call(owner, "getEnableBlur"))
+                || Boolean.TRUE.equals(Reflect.field(owner, "isDozing"))
+                || Boolean.TRUE.equals(Reflect.field(owner, "musicExpandState"))) return;
+        float dark = ((Number) Reflect.field(owner, "darkAmount")).floatValue();
+        if (dark != 0f) return;
+        java.lang.reflect.Field alphaField;
+        try {
+            alphaField = NativeContract.field(owner.getClass(), "blurBackgroundAlpha", int.class);
+        } catch (NoSuchFieldException absent) {
+            alphaField = null;
+        }
+        int alpha = alphaField != null
+                ? ((Number) alphaField.get(owner)).intValue()
+                : (BlurAppearance.hasWindowDrawable(view) ? view.getBackground().getAlpha() : 0);
+        if (alpha <= 0) return;
+        // AOD can clear the old request. Ask the widget for its current preset.
+        Reflect.call(owner, "refreshBlur", dark);
+        if (BlurAppearance.hasWindowDrawable(view)) {
+            if (alphaField != null) Reflect.call(owner, "setBlurBackgroundAlpha", alpha);
+            else view.getBackground().setAlpha(alpha);
+        }
+    }
+
+    static boolean isClockBlurHost(View view) {
+        Object tag = view.getTag();
+        if ("lock_clock_blur".equals(tag)
+                || "lock_clock_blur_on_lockeditor".equals(tag)
+                || "Clock_Blur_Container".equals(tag)) {
+            return true;
+        }
+        try {
+            if (view.getId() != View.NO_ID) {
+                String name = view.getResources().getResourceEntryName(view.getId());
+                if ("lock_clock_blur".equals(name)
+                        || "lock_clock_blur_on_lockeditor".equals(name)
+                        || "Clock_Blur_Container".equals(name)) {
+                    return true;
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return false;
     }
 
     static void blur(View root, boolean off) {
@@ -196,7 +348,11 @@ final class WidgetDepthBlur {
     }
 
     static void afterPlacement(View root) {
-        for (var entry : roots.entrySet()) {
+        java.util.List<Map.Entry<View, Watch>> snapshot;
+        synchronized (roots) {
+            snapshot = new java.util.ArrayList<>(roots.entrySet());
+        }
+        for (var entry : snapshot) {
             View current = entry.getKey();
             while (current != null && current != root)
                 current = current.getParent() instanceof View parent ? parent : null;
@@ -241,7 +397,10 @@ final class WidgetDepthBlur {
     }
 
     private static boolean geometryChanged(View view) {
-        ViewGeometry state = geometry.computeIfAbsent(view, key -> new ViewGeometry());
+        ViewGeometry state;
+        synchronized (geometry) {
+            state = geometry.computeIfAbsent(view, key -> new ViewGeometry());
+        }
         return state.update(
                 view, DepthEffects.subjectIdentity(view), WidgetMediaOcclusion.source(view));
     }

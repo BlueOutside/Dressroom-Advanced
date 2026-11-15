@@ -70,7 +70,8 @@ final class DepthStorage {
             String caller = context.getOpPackageName();
             if (field.equals(DepthMetadata.SOURCE)
                     && (caller.equals("com.android.systemui")
-                            || caller.equals("com.samsung.android.app.aodservice"))) continue;
+                            || caller.equals("com.samsung.android.app.aodservice")
+                            || caller.equals("com.samsung.android.app.clockpack"))) continue;
             byte[] bytes = cache.get(key);
             if (bytes == null)
                 try (InputStream input = context.getContentResolver().openInputStream(uri(key))) {

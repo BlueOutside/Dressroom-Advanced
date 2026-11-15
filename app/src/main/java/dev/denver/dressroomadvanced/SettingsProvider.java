@@ -19,6 +19,7 @@ public final class SettingsProvider extends ContentProvider {
     private final Object maskReady = new Object();
     private final java.util.concurrent.ExecutorService maskWriter =
             java.util.concurrent.Executors.newSingleThreadExecutor();
+    private android.os.Handler maskCloseHandler;
     static final Uri URI = Uri.parse("content://dev.denver.dressroomadvanced.settings");
     private static final Set<String> READERS =
             new HashSet<>(
@@ -30,6 +31,10 @@ public final class SettingsProvider extends ContentProvider {
 
     @Override
     public boolean onCreate() {
+        android.os.HandlerThread maskCloseThread =
+                new android.os.HandlerThread("dressroom-mask-close");
+        maskCloseThread.start();
+        maskCloseHandler = new android.os.Handler(maskCloseThread.getLooper());
         android.os.Handler main = new android.os.Handler(android.os.Looper.getMainLooper());
         postApply = new PostApplyWallpaper((task, delay) -> main.postDelayed(task, delay),
                 android.os.SystemClock::uptimeMillis,
@@ -60,6 +65,14 @@ public final class SettingsProvider extends ContentProvider {
 
     @Override
     public Bundle call(String method, String argument, Bundle extras) {
+        if ("checkUpdate".equals(method)) {
+            checkCaller(true);
+            try { return UpdateRepository.check(getContext()); }
+            catch (Exception error) {
+                android.util.Log.i(DressroomModule.TAG, "Release check unavailable: " + error.getClass().getSimpleName());
+                return Bundle.EMPTY;
+            }
+        }
         if ("readFoldProfile".equals(method) || "markFoldProfile".equals(method)) {
             checkCaller(false);
             String key = OneUi9FoldProfiles.profileId(argument);
@@ -355,7 +368,7 @@ public final class SettingsProvider extends ContentProvider {
             return android.os.ParcelFileDescriptor.open(
                     temporary,
                     android.os.ParcelFileDescriptor.MODE_WRITE_ONLY,
-                    new android.os.Handler(android.os.Looper.getMainLooper()),
+                    maskCloseHandler,
                     error ->
                             maskWriter.execute(
                                     () -> {

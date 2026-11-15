@@ -47,11 +47,21 @@ public final class WidgetPlacementOrderProbe {
         widgets.getViewTreeObserver().dispatchOnPreDraw();
         if (x != widgets.getTranslationX() || y != widgets.getTranslationY())
             throw new AssertionError("Stationary placement oscillates");
+        screen.layout(0, 0, 1600, 1000);
+        // These headless views have not gone through a window measure pass.
+        widgets.layout(50, 100, 250, 700);
+        blur.layout(0, 0, 200, 100);
+        screen.setTranslationY(35);
+        screen.setScaleX(.85f);
+        screen.setScaleY(.85f);
+        widgets.getViewTreeObserver().dispatchOnPreDraw();
+        if (sampled.update(blur, DepthEffects.subjectIdentity(blur), WidgetMediaOcclusion.source(blur)))
+            throw new AssertionError("Viewport/parent motion sampled before final placement");
         WidgetPlacement.clear(widgets);
         if (widgets.getTranslationX() != 0 || widgets.getTranslationY() != 0)
             throw new AssertionError("Native translation was not restored");
         DepthEffects.applyWidgetRoot(widgets, false, null);
-        System.out.println("Free vertical placement/depth draw ordering: 4 checks passed");
+        System.out.println("Free vertical placement/depth draw ordering: 5 checks passed");
         System.exit(0);
     }
 }

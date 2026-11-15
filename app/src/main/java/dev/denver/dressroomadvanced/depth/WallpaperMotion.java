@@ -8,6 +8,8 @@ import android.view.Choreographer;
 /** Sample renderer motion only while it changes. Static AOD does not need a frame loop. */
 final class WallpaperMotion implements Choreographer.FrameCallback {
     private static WallpaperMotion instance;
+    private record SurfaceFrame(Object source, WallpaperMotionPacket.Frame frame) {}
+    private static final SurfaceFrame[] surfaces = new SurfaceFrame[WallpaperMotionPacket.SLOTS];
     private final WallpaperMotionChannel channel;
     private final Context context;
     private boolean interactive = true, showMain = true, showSub = true;
@@ -86,11 +88,13 @@ final class WallpaperMotion implements Choreographer.FrameCallback {
                                 "aod_show_cover_screen_wallpaper",
                                 main ? 1 : 0)
                         == 1;
-        boolean changed = interactive != awake || showMain != main || showSub != sub;
+        int changed = 0;
+        if (interactive != awake || showMain != main) changed |= ScreenIdentity.MAIN;
+        if (interactive != awake || showSub != sub) changed |= ScreenIdentity.SUB;
         interactive = awake;
         showMain = main;
         showSub = sub;
-        if (changed && notify) DepthEffects.wallpaperMotionChanged();
+        if (changed != 0 && notify) DepthEffects.wallpaperMotionChanged(changed);
     }
 
     static boolean visible(int screen) {
@@ -138,6 +142,10 @@ final class WallpaperMotion implements Choreographer.FrameCallback {
 
     private void wake() {
         lastChange = SystemClock.uptimeMillis();
+        requestFrame();
+    }
+
+    private void requestFrame() {
         if (!scheduled) {
             scheduled = true;
             Choreographer.getInstance().postFrameCallback(this);
@@ -147,32 +155,57 @@ final class WallpaperMotion implements Choreographer.FrameCallback {
     @Override
     public void doFrame(long frameTimeNanos) {
         scheduled = false;
-        boolean changed = false;
+        int changed = 0;
         for (int i = 0; i < frames.length; i++) {
             WallpaperMotionPacket.Frame next = channel.read(i);
             // A busy writer is not an identity transform. Keep the last complete frame.
-            if (next != null && !java.util.Objects.equals(frames[i], next)) {
+            if (next != null && !next.equals(frames[i])) {
                 frames[i] = next;
-                changed = true;
+                changed |= screenBit(next.which());
             }
         }
-        if (changed) {
+        if (changed != 0) {
             if (++received == 3)
                 android.util.Log.i(DressroomModule.TAG, "Live wallpaper motion received");
             lastChange = SystemClock.uptimeMillis();
-            DepthEffects.wallpaperMotionChanged();
+            DepthEffects.wallpaperMotionChanged(changed);
         }
-        if (SystemClock.uptimeMillis() - lastChange < 250) {
-            scheduled = true;
-            Choreographer.getInstance().postFrameCallback(this);
+        if (SystemClock.uptimeMillis() - lastChange < 250) requestFrame();
+    }
+
+    // SystemUI's image engine shares this process, so its geometry needs no IPC.
+    static void setSurfaceFrame(Object source, int which, WallpaperMotionPacket.Frame frame) {
+        int slot = WallpaperMotionPacket.slot(which);
+        SurfaceFrame previous = surfaces[slot];
+        if (frame == null) {
+            if (previous == null || previous.source() != source) return;
+            surfaces[slot] = null;
+        } else {
+            if (previous != null && previous.source() == source && previous.frame().equals(frame))
+                return;
+            surfaces[slot] = new SurfaceFrame(source, frame);
         }
+        if (instance != null) DepthEffects.wallpaperMotionChanged(screenBit(which));
+    }
+
+    private static int screenBit(int which) {
+        return switch (which & 60) {
+            case 0, 4 -> ScreenIdentity.MAIN;
+            case 16 -> ScreenIdentity.SUB;
+            default -> 0;
+        };
     }
 
     static void transform(Matrix transform, int wallpaper, int screen, float width, float height) {
-        if (instance == null) return;
         int which = ScreenIdentity.wallpaperWhich(screen == 0 ? ScreenIdentity.MAIN : screen, true);
-        WallpaperMotionPacket.Frame frame = instance.frames[WallpaperMotionPacket.slot(which)];
-        if (frame == null || !frame.fits(wallpaper, Math.round(width), Math.round(height))) return;
+        int slot = WallpaperMotionPacket.slot(which);
+        SurfaceFrame surface = surfaces[slot];
+        int w = Math.round(width), h = Math.round(height);
+        WallpaperMotionPacket.Frame frame = surface == null ? null : surface.frame();
+        if (frame == null || !frame.fits(wallpaper, w, h)) {
+            frame = instance == null ? null : instance.frames[slot];
+            if (frame == null || !frame.fits(wallpaper, w, h)) return;
+        }
         Matrix motion = new Matrix();
         motion.setScale(frame.scaleX(), frame.scaleY());
         motion.postTranslate(frame.offsetX() * width, frame.offsetY() * height);

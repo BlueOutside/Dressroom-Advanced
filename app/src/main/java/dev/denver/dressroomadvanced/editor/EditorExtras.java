@@ -30,6 +30,7 @@ final class EditorExtras {
         dirty = true;
         drafts.put(ScreenIdentity.value(draft), new Bundle(draft));
         changed.add(ScreenIdentity.value(draft));
+        BlurAppearance.preview(draft);
     }
 
     Bundle freeze() {
@@ -56,6 +57,7 @@ final class EditorExtras {
         if (same(pending, saved)) changed.remove(ScreenIdentity.value(saved));
         if (draft == null || saved == null) return;
         if (ScreenIdentity.value(draft) != ScreenIdentity.value(saved)) return;
+        if (!BlurAppearanceSettings.same(draft, saved)) return;
         for (String key : ExtrasPreferences.FLAGS)
             if (draft.getBoolean(key) != saved.getBoolean(key)) return;
         if (draft.getInt("stackCards", 3) != saved.getInt("stackCards", 3)) return;
@@ -66,6 +68,7 @@ final class EditorExtras {
     }
 
     void reset() {
+        BlurAppearance.clearPreview();
         context = null;
         draft = null;
         dirty = false;
@@ -75,6 +78,7 @@ final class EditorExtras {
 
     private static boolean same(Bundle a, Bundle b) {
         if (a == null || b == null) return false;
+        if (!BlurAppearanceSettings.same(a, b)) return false;
         for (String key : ExtrasPreferences.FLAGS)
             if (a.getBoolean(key) != b.getBoolean(key)) return false;
         return a.getInt("stackCards", 3) == b.getInt("stackCards", 3)

@@ -86,21 +86,15 @@ final class ClockBinding {
 
         fontType = NativeContract.method(type, "getFontType", int.class);
         // Requested font identity can differ from the temporary FontData used by a transition.
-        // Pair verified storage layouts; never pick an arbitrary int field on a new provider.
-        String idName =
-                switch (font.getName()) {
-                    case "T0" -> "D0";
-                    case "S0" -> "C0";
-                    case "L0" -> "w0";
-                    case "M0" -> "x0";
-                    default -> null;
-                };
+        // Resolve the int field read in AbsClockView.setFontType(int) when DEX inspection is available.
         Field id = null;
-        if (idName != null) {
-            try {
-                id = NativeContract.field(base, idName, int.class);
-            } catch (NoSuchFieldException changedLayout) {
-            }
+        try {
+            Method setter = base.getDeclaredMethod("setFontType", int.class);
+            id =
+                    DexSignatures.body(setter)
+                            .uniqueRead(DexSignatures.descriptor(base), "I", null)
+                            .field(loader);
+        } catch (ReflectiveOperationException | java.io.IOException unavailable) {
         }
         nativeFontId = id;
 

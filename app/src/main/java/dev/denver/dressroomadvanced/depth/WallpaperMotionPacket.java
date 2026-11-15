@@ -47,6 +47,15 @@ final class WallpaperMotionPacket {
                     && h > 0
                     && Math.abs((double) width * h / ((double) height * w) - 1) < .01;
         }
+
+        static Frame fromSurface(int wallpaper, int which, int width, int height,
+                int targetWidth, int targetHeight, int leftShift, int topShift) {
+            if (width <= 0 || height <= 0) return null;
+            Frame frame = new Frame(0, wallpaper, which, width, height,
+                    (float) targetWidth / width, (float) targetHeight / height,
+                    (float) leftShift / width, (float) topShift / height);
+            return frame.valid() ? frame : null;
+        }
     }
 
     static int slot(int which) {

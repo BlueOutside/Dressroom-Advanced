@@ -4,6 +4,18 @@
 `compat/oneui85` maps the inspected 8.5 Clock Style and AOD methods; `compat/oneui9`
 maps the reference AOD and Clock Style methods. All classes retain the existing Java package.
 
+## Shared lifecycle rules
+
+Date/weather changes are applied synchronously to detached measurement clocks;
+only attached clocks queue a second pass, with one pending callback per view.
+Hook registration is recorded after installation succeeds. Refresh scheduling
+coalesces concurrent requests and releases rejected or cancelled tickets.
+Rollback attempts every cleanup handle, including after hook API linkage errors.
+Optional position corrections leave native updates running if their state cannot
+be read. Runtime Clock Style reads keep the mask but omit the editor's source
+image, matching AOD and SystemUI. Update checks share one in-flight request and
+never attach a dialog to a finishing editor window.
+
 The clock source contract resolves its entire dependency list before hooks are
 installed. Missing methods disable that optional synchronization, leaving native
 behavior intact. Do not try nearby obfuscated names until their behavior is
@@ -15,8 +27,8 @@ restoring only the visible clock leaves native measurement with old heights.
 
 AOD 8.9.32.95 has an experimental 8.5 source/measurement and depth-blur shim.
 It is declaration-checked, not device-validated. 9.0 Clock Style (ClockPack 8.9.65.92)
-is supported via the One UI 9 Clock Style combo shim (`OneUi9ClockStyleFonts`,
-the shared clock-source contract, `OneUi9ClockStyleStack`). The 0.21.0 fullscreen artwork port follows the native 8.5 fade and retains its
+is supported via the One UI 9 Clock Style bindings (`ClockBinding`/`FontBinding`,
+`ClockSourceBinding`, `OneUi9ClockStyleStack`, and `ClockStyleWidgetPosition`). The 0.21.0 fullscreen artwork port follows the native 8.5 fade and retains its
 controls container. The tablet user confirms fullscreen display; 0.21.1 follows the native wallpaper
 fade for closing. The tablet user confirms both closing and reopening during
 the fade work correctly. Glyph-cache optimizations and
@@ -40,6 +52,28 @@ Clock source deoptimization selects a small superset of declared measurement and
 font/view getter signatures. Those methods are only deoptimized, never hooked or
 invoked through that broad match. This avoids an all-or-nothing dependency on
 short names such as C/y/w while preserving native behavior.
+
+Modern Clock Style also deoptimizes provider-local callers of `getClockFontData`,
+resolved from DEX call sites. In ClockPack_v80 these include `measureClockSize`
+and both `getClockView` overloads. This keeps cached size measurements from
+bypassing the saved-height getter through inlining. The extra lookup does not
+run for AOD or legacy Clock Style. This alone did not resolve the reported shift.
+
+The remaining report uses manual stretch with both date and weather hidden.
+Modern Clock Style's detached measurement clock now gets the same date-row
+visibility handling as the attached clock, before measurement and after native
+`forceRefresh`. Previously that handling began at window attachment, which the
+size probe never reaches. The affected user confirmed the date/weather case is
+fixed in 1.1.8. No translation or saved position is changed by that correction.
+
+Adding widgets exposed another Clock Style position path. Its movable-area
+resolver can replace a valid boundary from the editor's WallpaperDataBundle with
+a freshly calculated area. Version 1.1.10 preserves that saved boundary during the
+position manager's update when widgets are present. Both rectangles must fit the
+current display. Missing boundaries (Samsung default placement), widget-free
+clocks, legacy Clock Style and AOD retain their native paths. Resolver/update
+methods and the widget-presence field are resolved from DEX anchors and call/read
+signatures. This widget-specific correction still needs user confirmation.
 
 Clock/font binding objects are shared by subclasses within a provider loader.
 DEX names are deduplicated and cached with a fingerprint of the loader's current

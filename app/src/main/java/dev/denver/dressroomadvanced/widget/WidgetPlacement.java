@@ -8,10 +8,13 @@ import android.view.ViewGroup;
 import android.view.ViewTreeObserver;
 
 import java.lang.ref.WeakReference;
+import java.util.Collections;
+import java.util.Map;
 import java.util.WeakHashMap;
 
 final class WidgetPlacement {
-    private static final WeakHashMap<View, State> states = new WeakHashMap<>();
+    private static final Map<View, State> states =
+            Collections.synchronizedMap(new WeakHashMap<>());
 
     private static final class State implements ViewTreeObserver.OnPreDrawListener {
         final WeakReference<View> root;
@@ -33,17 +36,19 @@ final class WidgetPlacement {
                     || settings == null
                     || settings.getInt("anchor") == 0
                     || !(view.getParent() instanceof View parent)) return true;
+            View window = view.getRootView();
             View time = clock.get();
-            if (time == null || !time.isAttachedToWindow() || time.getWidth() == 0) {
-                time = findClock(view.getRootView());
-                if (time != null) clock = new WeakReference<>(time);
+            if (time == null || !time.isAttachedToWindow() || time.getRootView() != window
+                    || time.getWidth() == 0 || time.getHeight() == 0) {
+                time = findClock(window);
+                clock = new WeakReference<>(time);
             }
             if (time == null && lastClockRect.isEmpty() && settings.getInt("anchor") != 5) return true;
             Matrix parentGlobal = new Matrix();
             parent.transformMatrixToGlobal(parentGlobal);
             Matrix inverse = new Matrix();
             if (!parentGlobal.invert(inverse)) return true;
-            RectF screen = rect(view.getRootView(), inverse);
+            RectF screen = rect(window, inverse);
             RectF current = rect(view, inverse);
             RectF clockRect;
             if (time != null) {
@@ -79,6 +84,10 @@ final class WidgetPlacement {
             float targetTx = target[0] + screen.left - baseLeft;
             float targetTy = target[1] + screen.top - baseTop;
             float tx = view.getTranslationX(), ty = view.getTranslationY();
+            // A native animation can replace either translation between frames.
+            // Our previous delta no longer belongs to an axis it has overwritten.
+            if (Math.abs(tx - appliedX) > .01f) deltaX = 0;
+            if (Math.abs(ty - appliedY) > .01f) deltaY = 0;
             if (Math.abs(tx - targetTx) > .25f || Math.abs(ty - targetTy) > .25f) {
                 deltaX = targetTx - (tx - deltaX);
                 deltaY = targetTy - (ty - deltaY);
@@ -131,6 +140,9 @@ final class WidgetPlacement {
             root.addOnLayoutChangeListener(state.layoutListener);
         }
         WidgetDepthBlur.afterPlacement(root);
+        // Non-foldables use the canvas-motion watcher instead of the separate
+        // outline watcher. Both must sample after this frame's placement.
+        DepthViewMotion.afterPlacement(root);
         root.invalidate();
     }
 
@@ -181,7 +193,8 @@ final class WidgetPlacement {
         if (root == null) return null;
         for (Class<?> type = root.getClass(); type != null; type = type.getSuperclass())
             if (type.getName().equals("com.samsung.android.uniform.widget.clock.AbsClockView")) {
-                if (allowHidden || root.getVisibility() == View.VISIBLE) return root;
+                if (root.getWidth() > 0 && root.getHeight() > 0
+                        && (allowHidden || root.isShown())) return root;
             }
         View best = null;
         if (root instanceof ViewGroup group)

@@ -171,6 +171,28 @@ public final class AdapterContractsTest {
         failing.close();
         check(removed.equals(List.of(1)), "Rollback ran twice");
 
+        removed.clear();
+        HookTransaction incompatible = new HookTransaction();
+        NoSuchMethodError linkage = new NoSuchMethodError("Old hook API");
+        incompatible.add(() -> removed.add(3));
+        incompatible.add(
+                () -> {
+                    throw linkage;
+                });
+        incompatible.add(
+                () -> {
+                    throw linkage;
+                });
+        try {
+            incompatible.close();
+            throw new AssertionError("Lost linkage failure");
+        } catch (NoSuchMethodError expected) {
+            check(expected == linkage, "Rollback replaced the original linkage error");
+        }
+        check(removed.equals(List.of(3)), "Linkage/self-suppression failure stopped cleanup");
+        incompatible.close();
+        check(removed.equals(List.of(3)), "Failed compatibility rollback ran twice");
+
         NativeSaveRequests<String> saves = new NativeSaveRequests<>();
         check(
                 NativeContract.findField(Renamed.class, "old", String.class)
@@ -312,6 +334,18 @@ public final class AdapterContractsTest {
                 "Primary recovery ran after loading the fallback backend");
         check(recoverable.releases == 0, "Recovered detector was released before capture");
 
+        WorkingDetector emptyScan = new WorkingDetector();
+        WorkingDetector repeatedScan = new WorkingDetector();
+        WorkingDetector alternateScan = new WorkingDetector() {};
+        String subject = ObjectCaptureBackend.choose(
+                List.of(() -> emptyScan, () -> repeatedScan, () -> alternateScan),
+                new ArrayList<>(), candidate -> false,
+                candidate -> candidate == alternateScan ? "subject" : null, false);
+        check("subject".equals(subject), "An empty scan blocked the alternate backend");
+        check(emptyScan.releases == 1 && alternateScan.releases == 1,
+                "Detection must release both engines");
+        check(repeatedScan.inits == 0, "Provider and direct factory retried the same backend");
+
         Object first = new EqualRequest(), second = new EqualRequest();
         saves.begin(first, "first");
         saves.begin(second, "second");
@@ -324,6 +358,43 @@ public final class AdapterContractsTest {
         saves.begin(first, "old editor");
         saves.clear();
         check(saves.complete(first) == null, "A new editor inherited a suspended save");
+
+        var writeOwner = "Lcom/samsung/android/uniform/widget/clock/AbsClockView;";
+        var ctrlDesc = "Laod/ctrl;";
+        var writesBody =
+                new DexSignatures.Body(
+                        writeOwner,
+                        "setMediaExpanded",
+                        List.of("Z"),
+                        "V",
+                        0,
+                        java.util.Map.of(),
+                        List.of(),
+                        List.of(
+                                new DexSignatures.Write(
+                                        1, new DexSignatures.Member(writeOwner, "c1", "Z")),
+                                new DexSignatures.Write(
+                                        2, new DexSignatures.Member(ctrlDesc, "h", "Z"))),
+                        List.of());
+        check(
+                writesBody.uniqueWrite(writeOwner, "Z", null).name().equals("c1")
+                        && writesBody.uniqueWrite(ctrlDesc, "Z", null).name().equals("h"),
+                "Unique field write resolution failed");
+        missing(
+                () -> writesBody.uniqueWrite(writeOwner, "F", null),
+                "Missing field write accepted");
+        check(
+                AodStretchExtras.preserveHeight(true, false, true, 0f, true)
+                        && !AodStretchExtras.preserveHeight(true, true, true, 1f, false)
+                        && !AodStretchExtras.preserveHeight(true, false, false, 0f, true)
+                        && AodStretchExtras.preserveHeight(true, false, false, 0.25f, true),
+                "AOD height transition preservation contract changed");
+        check(
+                SavedStretch.heights(new float[] {1.5f, 2.0f}).equals(List.of(1.5f, 2.0f))
+                        && SavedStretch.heights(new float[0]) == null
+                        && SavedStretch.heights(new float[] {0f, 1.5f}) == null
+                        && SavedStretch.heights(new float[] {Float.NaN, 1.5f}) == null,
+                "Saved stretch heights contract changed");
         System.out.println("Adapter contracts: " + checks + " checks passed");
     }
 }

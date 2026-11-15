@@ -37,8 +37,9 @@ final class EditorClockRefresh {
                 new Runnable() {
                     @Override
                     public void run() {
-                        if (queued.get(clock) != this || !clock.isAttachedToWindow()) {
-                            queued.remove(clock);
+                        if (queued.get(clock) != this) return;
+                        if (!clock.isAttachedToWindow()) {
+                            queued.remove(clock, this);
                             return;
                         }
                         DateEffects.apply(clock);
@@ -46,8 +47,7 @@ final class EditorClockRefresh {
                         clock.invalidate();
                         clock.postOnAnimation(
                                 () -> {
-                                    if (queued.get(clock) != this || !clock.isAttachedToWindow())
-                                        return;
+                                    if (!queued.remove(clock, this) || !clock.isAttachedToWindow()) return;
                                     try {
                                         Reflect.call(clock, "setClockTextBlur");
                                     } catch (Exception error) {
@@ -56,8 +56,8 @@ final class EditorClockRefresh {
                                                 "Native blur refresh unavailable",
                                                 error);
                                     }
-                                    queued.remove(clock);
-                                    if (afterDraw != null) afterDraw.run();
+                                    if (afterDraw != null && !queued.containsKey(clock))
+                                        afterDraw.run();
                                 });
                     }
                 };

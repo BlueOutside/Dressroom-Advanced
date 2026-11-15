@@ -5,8 +5,8 @@ import java.lang.reflect.Method;
 
 /** Native glass owners are found by contract; scalar hints remain type checked. */
 final class ClockGlassBinding {
-    final Field manager, mode, opacity, fixedTone, dozing;
-    final Method collectGlyphs, refresh;
+    final Field manager, dozing, strategy;
+    final Method refresh;
     private static final ClassValue<ClockGlassBinding> bindings = new ClassValue<>() {
         @Override protected ClockGlassBinding computeValue(Class<?> type) {
             try { return new ClockGlassBinding(type); }
@@ -15,38 +15,48 @@ final class ClockGlassBinding {
     };
     static ClockGlassBinding of(Object clock) { return bindings.get(clock.getClass()); }
     static ClockGlassBinding of(Class<?> clock) { return bindings.get(clock); }
-    private ClockGlassBinding(Class<?> base) throws ReflectiveOperationException {
-        while (!base.getName().equals("com.samsung.android.uniform.widget.clock.AbsClockView")) {
-            base = base.getSuperclass();
-            if (base == null) throw new ClassNotFoundException("Clock glass owner");
+    private ClockGlassBinding(Class<?> clockBase) throws ReflectiveOperationException {
+        Class<?> base = ClockBlurRetryBinding.absClockView(clockBase);
+        ClockBlurRetryBinding retry = ClockBlurRetryBinding.of(base);
+        manager = retry.manager;
+        strategy = retry.strategy;
+        try {
+            String absDesc = DexSignatures.descriptor(base);
+            dozing =
+                    DexSignatures.body(base.getDeclaredMethod("setDozing", boolean.class))
+                            .uniqueRead(absDesc, "Z", null)
+                            .field(base.getClassLoader());
+            refresh = resolveRefresh(base, absDesc);
+        } catch (java.io.IOException invalidDex) {
+            throw new ReflectiveOperationException("Could not inspect clock glass DEX", invalidDex);
         }
-        Class<?> owner = OneUi9AodBlur.manager(base.getClassLoader());
-        manager = NativeContract.findField(base, "h1", owner);
-        Field colorMode = null;
-        for (Field field : base.getDeclaredFields()) {
-            Class<?> type = field.getType();
-            if (!type.isEnum()) continue;
-            boolean custom = false, adaptive = false;
-            for (Object value : type.getEnumConstants()) {
-                custom |= ((Enum<?>) value).name().equals("Custom");
-                adaptive |= ((Enum<?>) value).name().equals("Adaptive");
+    }
+
+    private static Method resolveRefresh(Class<?> base, String absDesc)
+            throws ReflectiveOperationException, java.io.IOException {
+        java.util.Set<Method> inRemove = selfVoidCalls(base, absDesc, "removeBlur");
+        java.util.Set<Method> inEnable =
+                selfVoidCalls(base, absDesc, "setBlurEffectEnabled", boolean.class);
+        inRemove.retainAll(inEnable);
+        if (inRemove.size() != 1)
+            throw new NoSuchMethodException("Ambiguous clock glass refresh: " + inRemove.size());
+        return inRemove.iterator().next();
+    }
+
+    private static java.util.Set<Method> selfVoidCalls(
+            Class<?> base, String absDesc, String name, Class<?>... params)
+            throws ReflectiveOperationException, java.io.IOException {
+        ClassLoader loader = base.getClassLoader();
+        java.util.Set<Method> calls = new java.util.LinkedHashSet<>();
+        for (DexSignatures.Call call :
+                DexSignatures.body(base.getDeclaredMethod(name, params)).calls()) {
+            if (!call.isStatic()
+                    && call.owner().equals(absDesc)
+                    && call.result().equals("V")
+                    && call.parameters().isEmpty()) {
+                calls.add(call.method(loader));
             }
-            if (!custom || !adaptive) continue;
-            if (colorMode != null) throw new NoSuchFieldException("Ambiguous glass color mode");
-            colorMode = field;
         }
-        if (colorMode == null) throw new NoSuchFieldException("Glass color mode unavailable");
-        colorMode.setAccessible(true);
-        mode = colorMode;
-        boolean reference = manager.getName().equals("h1");
-        if (!reference && !manager.getName().equals("f1")) throw new NoSuchFieldException("Unknown glass scalar layout");
-        opacity = NativeContract.field(base, reference ? "l0" : "k0", int.class);
-        fixedTone = NativeContract.field(base, reference ? "L0" : "J0", boolean.class);
-        dozing = NativeContract.field(base, reference ? "s0" : "r0", boolean.class);
-        collectGlyphs = NativeContract.findMethod(base, "x0", void.class, int.class, android.widget.TextView[].class);
-        Method invalidate;
-        try { invalidate = NativeContract.method(base, "E0", void.class); }
-        catch (NoSuchMethodException renamed) { invalidate = NativeContract.method(base, "C0", void.class); }
-        refresh = invalidate;
+        return calls;
     }
 }

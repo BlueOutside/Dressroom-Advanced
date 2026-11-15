@@ -38,6 +38,21 @@ public final class WallpaperMotionTest {
         check(!WallpaperMotionPacket.write(memory, frame(47, 6, Float.NaN)), "NaN accepted");
         check(!WallpaperMotionPacket.write(memory, frame(47, 6, 50)), "Unbounded scale accepted");
 
+        var surface = WallpaperMotionPacket.Frame.fromSurface(47, 6, 1440, 3120,
+                1512, 3276, -36, -78);
+        check(surface != null && surface.scaleX() == 1.05f && surface.scaleY() == 1.05f,
+                "The surface destination expands by both edges");
+        check(surface.offsetX() == -.025f && surface.offsetY() == -.025f,
+                "Lost the surface origin shift");
+        check(surface.fits(47, 1080, 2340) && !surface.fits(47, 2340, 1080),
+                "Surface motion crossed the orientation boundary");
+        check(WallpaperMotionPacket.Frame.fromSurface(47, 6, 0, 3120, 1512, 3276, -36, -78)
+                        == null,
+                "Unmeasured surface accepted");
+        check(WallpaperMotionPacket.Frame.fromSurface(47, 5, 1440, 3120, 1512, 3276, -36, -78)
+                        == null,
+                "Home-only surface accepted");
+
         ByteBuffer readOnly = memory.asReadOnlyBuffer().order(ByteOrder.nativeOrder());
         check(WallpaperMotionPacket.read(readOnly, phone).wallpaper() == 47, "Read-only mapping failed");
         int offset = phone * WallpaperMotionPacket.STRIDE;

@@ -2,6 +2,7 @@ package dev.denver.dressroomadvanced;
 
 import android.view.View;
 import android.view.ViewGroup;
+import java.util.Collections;
 import java.util.Map;
 import java.util.WeakHashMap;
 
@@ -9,7 +10,8 @@ import java.util.WeakHashMap;
 final class WidgetDepthClip {
     private static final String CONTAINER =
             "com.samsung.android.app.facewidget.complication.ComplicationWidgetHostViewContainer";
-    private static final Map<View, ViewGeometry> geometry = new WeakHashMap<>();
+    private static final Map<View, ViewGeometry> geometry =
+            Collections.synchronizedMap(new WeakHashMap<>());
 
     private WidgetDepthClip() {}
 

@@ -5,6 +5,7 @@ import android.graphics.drawable.GradientDrawable;
 import android.view.View;
 import android.view.ViewGroup;
 
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -13,8 +14,10 @@ final class WidgetHostSizing {
 
     private static final String CONTAINER =
             "com.samsung.android.app.facewidget.complication.ComplicationWidgetHostViewContainer";
-    private static final Map<AppWidgetHostView, Float> appliedZoom = new java.util.WeakHashMap<>();
-    private static final Map<AppWidgetHostView, Integer> savedIds = new java.util.WeakHashMap<>();
+    private static final Map<AppWidgetHostView, Float> appliedZoom =
+            Collections.synchronizedMap(new java.util.WeakHashMap<>());
+    private static final Map<AppWidgetHostView, Integer> savedIds =
+            Collections.synchronizedMap(new java.util.WeakHashMap<>());
 
     static java.lang.reflect.Method creation(ClassLoader loader)
             throws ReflectiveOperationException {

@@ -35,6 +35,13 @@ public final class FoldStateMonitorTest {
             public void register(Consumer<Boolean> value) { value.accept(true); }
         }, () -> {});
         check(synchronous.current() == 2, "Initial read overwrote registration-time callback");
+        FoldStateMonitor[] observed = new FoldStateMonitor[1];
+        observed[0] = new FoldStateMonitor(new FoldStateMonitor.Backend() {
+            public boolean folded() { return false; }
+            public void register(Consumer<Boolean> value) { callback[0] = value; }
+        }, () -> check(!Thread.holdsLock(observed[0]), "Fold refresh ran under the monitor lock"));
+        observed[0].current();
+        callback[0].accept(true);
         System.out.println("Fold subscription retry: " + checks + " checks passed");
     }
 }

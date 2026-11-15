@@ -5,19 +5,27 @@ import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
 import android.content.res.ColorStateList;
 import android.graphics.Bitmap;
+import android.graphics.BlendMode;
 import android.graphics.Canvas;
 import android.graphics.ColorFilter;
+import android.graphics.Matrix;
+import android.graphics.Paint;
+import android.graphics.Path;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
+import android.graphics.RadialGradient;
 import android.graphics.Rect;
 import android.graphics.RectF;
+import android.graphics.RenderNode;
 import android.graphics.Shader;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ImageView;
 import android.widget.TextView;
 
+import java.io.IOException;
 import java.lang.ref.WeakReference;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -30,15 +38,45 @@ final class MediaClockContrast {
     private static final Map<TextView, Saved> colors = new WeakHashMap<>();
     private static final Map<ViewGroup, Snapshot> samples = new WeakHashMap<>();
     private static final Map<ImageView, Icon> icons = new WeakHashMap<>();
-    private static final Map<ViewGroup, Set<View>> suspended = new WeakHashMap<>();
     private static final Set<Class<?>> customClasses =
             Collections.newSetFromMap(new WeakHashMap<>());
 
-    private record Snapshot(WeakReference<Bitmap> source, int generation, ArtworkSamples pixels) {}
+    record AuraSpec(
+            int textColor, int scrimColor, float blurAlpha, float scrimAlpha, float conflict) {}
+
+    private static final class Snapshot {
+        final WeakReference<Bitmap> source;
+        final int generation;
+        final ArtworkSamples pixels;
+        AuraSpec spec;
+        final RectF localBounds = new RectF();
+        final RectF auraBounds = new RectF();
+        final Matrix shaderMatrix = new Matrix();
+        final Paint layerPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        final Paint scrimPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        final Paint maskPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        final RadialGradient maskShader =
+                new RadialGradient(
+                        0f,
+                        0f,
+                        1f,
+                        new int[] {0xffffffff, 0xd8ffffff, 0x55ffffff, 0x00ffffff},
+                        new float[] {0f, .52f, .78f, 1f},
+                        Shader.TileMode.CLAMP);
+
+        Snapshot(WeakReference<Bitmap> source, int generation, ArtworkSamples pixels) {
+            this.source = source;
+            this.generation = generation;
+            this.pixels = pixels;
+            maskPaint.setBlendMode(BlendMode.DST_IN);
+            maskPaint.setShader(maskShader);
+        }
+    }
 
     private static final class Work {
         final RectF cover = new RectF();
         final Rect bounds = new Rect();
+        final Rect clockBounds = new Rect();
         final int[] origin = new int[2];
         final Set<TextView> visible = Collections.newSetFromMap(new java.util.IdentityHashMap<>());
         final Set<ImageView> weather = Collections.newSetFromMap(new java.util.IdentityHashMap<>());
@@ -69,6 +107,9 @@ final class MediaClockContrast {
         boolean closing;
         ValueAnimator animator;
         boolean initialized;
+        float emphasis;
+        float conflict;
+        int shadowColor = 0x99000000;
         final boolean custom;
         Bitmap bitmap;
         int generation;
@@ -106,22 +147,6 @@ final class MediaClockContrast {
         return value != null && value.initialized;
     }
 
-    static void depth(ViewGroup root, boolean active) {
-        if (!active) {
-            Set<View> previous = suspended.remove(root);
-            if (previous != null)
-                for (View clock : new ArrayList<>(previous))
-                    if (clock != null) MediaDepthTransition.restore(clock);
-            return;
-        }
-        Set<View> held =
-                suspended.computeIfAbsent(
-                        root, ignored -> Collections.newSetFromMap(new WeakHashMap<>()));
-        for (View clock : new ArrayList<>(clocks))
-            if (clock != null && clock.getWindowToken() == root.getWindowToken()) {
-                if (held.add(clock)) MediaDepthTransition.update(clock, true);
-            }
-    }
 
     static void install(DressroomModule module, ClassLoader loader)
             throws ReflectiveOperationException {
@@ -131,8 +156,7 @@ final class MediaClockContrast {
                         false,
                         loader);
         if (!customClasses.contains(custom)) {
-            java.lang.reflect.Field outlineColor = custom.getSuperclass().getDeclaredField("Q");
-            outlineColor.setAccessible(true);
+            final Field outlineColor = resolveOutlineField(custom.getSuperclass());
             Method draw = custom.getDeclaredMethod("onDraw", Canvas.class);
             module.hook(draw)
                     .setId("dressroom-advanced.media-clock-palette-draw")
@@ -144,18 +168,26 @@ final class MediaClockContrast {
                                 android.text.TextPaint paint = view.getPaint();
                                 Shader shader = paint.getShader();
                                 int color = paint.getColor();
-                                int outline = outlineColor.getInt(view);
+                                int nativeOutline =
+                                        outlineColor == null ? 0 : outlineColor.getInt(view);
+                                float radius = paint.getShadowLayerRadius();
+                                float dx = paint.getShadowLayerDx(), dy = paint.getShadowLayerDy();
+                                int shadow = paint.getShadowLayerColor();
                                 TextView previous = drawing.get();
                                 try {
                                     drawing.set(view);
                                     paint.setShader(null);
                                     paint.setColor(saved.color);
-                                    outlineColor.setInt(view, saved.color);
+                                    if (outlineColor != null)
+                                        outlineColor.setInt(view, saved.color);
+                                    shadow(view, saved);
                                     return chain.proceed();
                                 } finally {
                                     paint.setShader(shader);
                                     paint.setColor(color);
-                                    outlineColor.setInt(view, outline);
+                                    if (outlineColor != null)
+                                        outlineColor.setInt(view, nativeOutline);
+                                    paint.setShadowLayer(radius, dx, dy, shadow);
                                     if (previous == null) drawing.remove();
                                     else drawing.set(previous);
                                 }
@@ -164,6 +196,33 @@ final class MediaClockContrast {
             customClasses.add(custom);
         }
         if (installed) return;
+        Method textDraw = TextView.class.getDeclaredMethod("onDraw", Canvas.class);
+        module.hook(textDraw)
+                .setId("dressroom-advanced.media-clock-soft-shadow")
+                .intercept(
+                        chain -> {
+                            TextView view = (TextView) chain.getThisObject();
+                            Saved saved = colors.get(view);
+                            if (saved == null || !saved.initialized || saved.custom)
+                                return chain.proceed();
+                            android.text.TextPaint paint = view.getPaint();
+                            float radius = paint.getShadowLayerRadius();
+                            float dx = paint.getShadowLayerDx(), dy = paint.getShadowLayerDy();
+                            int color = paint.getShadowLayerColor();
+                            Shader shader = paint.getShader();
+                            int textColor = paint.getColor();
+                            try {
+                                paint.setShader(null);
+                                paint.setColor(saved.color);
+                                shadow(view, saved);
+                                return chain.proceed();
+                            } finally {
+                                paint.setShader(shader);
+                                paint.setColor(textColor);
+                                paint.setShadowLayer(radius, dx, dy, color);
+                            }
+                        });
+        module.deoptimize(textDraw);
         Method currentColor = TextView.class.getDeclaredMethod("getCurrentTextColor");
         module.hook(currentColor)
                 .setId("dressroom-advanced.media-clock-palette-color")
@@ -215,6 +274,101 @@ final class MediaClockContrast {
         installed = true;
     }
 
+    static AuraSpec computeAura(ArtworkSamples.Stats stats) {
+        boolean darkText = stats.mean() > .20;
+        int textColor = darkText ? 0xff17191c : 0xfffff9f2;
+        int scrimColor = darkText ? 0xfffff9f2 : 0xff000000;
+        float spread = clamp((float) ((stats.spread() - .02) / .18));
+        float conflict;
+        if (darkText) {
+            double darkSpot = Math.max(1.0 - stats.min(), (1.0 - stats.mean()) * .85);
+            conflict = clamp((float) ((darkSpot - .15) / .65));
+        } else {
+            double hotSpot = Math.max(stats.max(), stats.mean() * 1.5);
+            conflict = clamp((float) ((hotSpot - .03) / .55));
+        }
+        float scrimAlpha = conflict * (darkText ? .44f : .42f);
+        float blurAlpha = Math.max(scrimAlpha, clamp(Math.max(spread, conflict * .85f)));
+        return new AuraSpec(textColor, scrimColor, blurAlpha, scrimAlpha, conflict);
+    }
+
+    private static float clamp(float value) {
+        return Float.isFinite(value) ? Math.max(0f, Math.min(1f, value)) : 0f;
+    }
+
+    static boolean hasAura(ViewGroup root) {
+        if (root == null) return false;
+        Snapshot snapshot = samples.get(root);
+        return snapshot != null
+                && snapshot.spec != null
+                && snapshot.spec.blurAlpha() > .005f
+                && !snapshot.localBounds.isEmpty();
+    }
+
+    static void drawAura(
+            Canvas canvas,
+            ViewGroup root,
+            RenderNode blurredArt,
+            RectF destination,
+            Path clipOutline,
+            float progress) {
+        if (root == null
+                || canvas == null
+                || !canvas.isHardwareAccelerated()
+                || blurredArt == null
+                || !blurredArt.hasDisplayList()
+                || destination == null
+                || destination.isEmpty()) {
+            return;
+        }
+        Snapshot snapshot = samples.get(root);
+        if (snapshot == null
+                || snapshot.spec == null
+                || snapshot.spec.blurAlpha() <= .005f
+                || snapshot.localBounds.isEmpty()) {
+            return;
+        }
+        float emphasis = 0f;
+        for (Saved saved : colors.values()) {
+            if (saved != null && saved.initialized && saved.root.get() == root) {
+                emphasis = Math.max(emphasis, saved.emphasis);
+            }
+        }
+        if (emphasis <= .005f) return;
+        float reveal = clamp((progress - .25f) / .75f) * emphasis;
+        float layerAlpha = snapshot.spec.blurAlpha() * reveal;
+        if (layerAlpha <= .005f) return;
+        float density = root.getResources().getDisplayMetrics().density;
+        float padX = Math.max(28f * density, snapshot.localBounds.width() * .22f);
+        float padY = Math.max(24f * density, snapshot.localBounds.height() * .28f);
+        RectF aura = snapshot.auraBounds;
+        aura.set(
+                snapshot.localBounds.left - padX,
+                snapshot.localBounds.top - padY,
+                snapshot.localBounds.right + padX,
+                snapshot.localBounds.bottom + padY);
+        if (!aura.intersect(destination) || aura.isEmpty()) return;
+        int clip = canvas.save();
+        if (clipOutline != null) canvas.clipPath(clipOutline);
+        snapshot.layerPaint.setAlpha(Math.round(layerAlpha * 255f));
+        int layer = canvas.saveLayer(aura, snapshot.layerPaint);
+        canvas.drawRenderNode(blurredArt);
+        if (snapshot.spec.scrimAlpha() > .005f) {
+            float scrimRel = clamp(snapshot.spec.scrimAlpha() / Math.max(.005f, snapshot.spec.blurAlpha()));
+            snapshot.scrimPaint.setColor(
+                    (snapshot.spec.scrimColor() & 0xffffff)
+                            | (Math.round(scrimRel * 255f) << 24));
+            canvas.drawRect(aura, snapshot.scrimPaint);
+        }
+        snapshot.shaderMatrix.reset();
+        snapshot.shaderMatrix.setScale(aura.width() * .5f, aura.height() * .5f);
+        snapshot.shaderMatrix.postTranslate(aura.centerX(), aura.centerY());
+        snapshot.maskShader.setLocalMatrix(snapshot.shaderMatrix);
+        canvas.drawRect(aura, snapshot.maskPaint);
+        canvas.restoreToCount(layer);
+        canvas.restoreToCount(clip);
+    }
+
     static void clear(ViewGroup root) {
         samples.remove(root);
         if (colors.isEmpty() && icons.isEmpty()) return;
@@ -223,7 +377,7 @@ final class MediaClockContrast {
             if (saved != null && (saved.root.get() == root || saved.root.get() == null)) {
                 if (!saved.closing) {
                     if (saved.custom) saved.nativeColors = view.getTextColors();
-                    fade(view, saved, saved.nativeColors.getDefaultColor(), true);
+                    fade(view, saved, saved.nativeColors.getDefaultColor(), saved.conflict, true);
                 }
             }
         }
@@ -315,6 +469,38 @@ final class MediaClockContrast {
             }
             collect(clock, visible, weather);
         }
+        // Pick once for the whole clock, using the final fullscreen crop. Sampling
+        // each moving digit independently made a single time alternate black/white.
+        if (!visible.isEmpty()) {
+            work.clockBounds.setEmpty();
+            for (TextView view : visible)
+                if (view.getGlobalVisibleRect(work.bounds)) work.clockBounds.union(work.bounds);
+            for (ImageView view : weather)
+                if (view.getGlobalVisibleRect(work.bounds)) work.clockBounds.union(work.bounds);
+            if (!work.clockBounds.isEmpty()) {
+                snapshot.localBounds.set(
+                        work.clockBounds.left - work.origin[0],
+                        work.clockBounds.top - work.origin[1],
+                        work.clockBounds.right - work.origin[0],
+                        work.clockBounds.bottom - work.origin[1]);
+                if (snapshot.spec == null) {
+                    float finalScale =
+                            Math.max(
+                                    root.getWidth() / (float) image.getWidth(),
+                                    root.getHeight() / (float) image.getHeight());
+                    work.cover.set(
+                            work.origin[0] + (root.getWidth() - image.getWidth() * finalScale) / 2,
+                            work.origin[1] + (root.getHeight() - image.getHeight() * finalScale) / 2,
+                            work.origin[0] + (root.getWidth() + image.getWidth() * finalScale) / 2,
+                            work.origin[1] + (root.getHeight() + image.getHeight() * finalScale) / 2);
+                    snapshot.spec =
+                            computeAura(snapshot.pixels.analyze(work.cover, work.clockBounds));
+                }
+            }
+        }
+        if (snapshot.spec == null) return;
+        int playerColor = snapshot.spec.textColor();
+        float conflict = snapshot.spec.conflict();
         for (TextView view : visible) {
             Rect bounds = work.bounds;
             if (!view.getGlobalVisibleRect(bounds) || bounds.isEmpty()) continue;
@@ -329,16 +515,12 @@ final class MediaClockContrast {
                     && saved.generation == generation
                     && saved.cover.equals(cover)
                     && saved.bounds.equals(bounds)) continue;
-            double brightness = snapshot.pixels.sample(cover, bounds);
-            boolean dark = saved.initialized ? (saved.target & 0xffffff) == 0 : brightness > .179;
-            if (brightness > .22) dark = true;
-            else if (brightness < .14) dark = false;
             saved.initialized = true;
             saved.bitmap = image;
             saved.generation = generation;
             saved.cover.set(cover);
             saved.bounds.set(bounds);
-            fade(view, saved, dark ? 0xff000000 : 0xffffffff, false);
+            fade(view, saved, playerColor, conflict, false);
         }
         for (TextView view : colors.keySet()) work.texts.add(view);
         for (TextView view : work.texts) {
@@ -362,11 +544,7 @@ final class MediaClockContrast {
                 saved = new Icon(root, view);
                 icons.put(view, saved);
             }
-            double brightness = snapshot.pixels.sample(cover, bounds);
-            boolean dark = saved.filter == null ? brightness > .179 : saved.target == 0xff000000;
-            if (brightness > .22) dark = true;
-            else if (brightness < .14) dark = false;
-            int color = dark ? 0xff000000 : 0xffffffff;
+            int color = playerColor;
             if (saved.filter == null || color != saved.target || saved.closing)
                 fadeIcon(view, saved, color, false);
             if (view.getColorFilter() != saved.filter) writeIcon(view, saved.filter);
@@ -386,14 +564,32 @@ final class MediaClockContrast {
         }
     }
 
-    private static void fade(TextView view, Saved saved, int target, boolean closing) {
+    private static void fade(
+            TextView view, Saved saved, int target, float conflict, boolean closing) {
         if (saved.target == target
                 && saved.closing == closing
-                && (saved.animator != null || saved.color == target)) return;
+                && (closing || saved.conflict == conflict)
+                && (saved.animator != null
+                        || (saved.color == target && saved.emphasis == (closing ? 0f : 1f))))
+            return;
         if (saved.animator != null) {
             ValueAnimator previous = saved.animator;
             saved.animator = null;
             previous.cancel();
+        }
+        float startEmphasis = saved.emphasis;
+        int startColor = saved.color;
+        android.animation.ArgbEvaluator returnColor =
+                closing && !saved.custom ? new android.animation.ArgbEvaluator() : null;
+        if (!closing) {
+            saved.conflict = conflict;
+            if (target == 0xff17191c) {
+                int maxAlpha = Math.round(0x55 + (0xcc - 0x55) * conflict);
+                saved.shadowColor = (maxAlpha << 24) | 0xffffff;
+            } else {
+                int maxAlpha = Math.round(0x88 + (0xe0 - 0x88) * conflict);
+                saved.shadowColor = maxAlpha << 24;
+            }
         }
         saved.target = target;
         saved.closing = closing;
@@ -403,9 +599,20 @@ final class MediaClockContrast {
         animator.setInterpolator(new android.view.animation.AccelerateDecelerateInterpolator());
         animator.addUpdateListener(
                 value -> {
-                    saved.color = (Integer) value.getAnimatedValue();
-                    if (saved.custom) view.invalidate();
-                    else write(view, ColorStateList.valueOf(saved.color));
+                    // Native blur can update the temperature's text alpha during
+                    // the return. Follow that color before handing the view back.
+                    saved.color = returnColor == null
+                            ? (Integer) value.getAnimatedValue()
+                            : (Integer) returnColor.evaluate(value.getAnimatedFraction(),
+                                    startColor, saved.nativeColors.getDefaultColor());
+                    saved.emphasis =
+                            startEmphasis
+                                    + ((closing ? 0f : 1f) - startEmphasis)
+                                            * value.getAnimatedFraction();
+                    if (!saved.custom) write(view, ColorStateList.valueOf(saved.color));
+                    view.invalidate();
+                    ViewGroup owner = saved.root.get();
+                    if (owner != null) owner.invalidate();
                 });
         animator.addListener(
                 new AnimatorListenerAdapter() {
@@ -476,6 +683,20 @@ final class MediaClockContrast {
                 collect(group.getChildAt(i), found, weather);
     }
 
+    private static void shadow(TextView view, Saved saved) {
+        if (saved.emphasis <= 0) return;
+        float density = view.getResources().getDisplayMetrics().density;
+        int alpha = Math.round((saved.shadowColor >>> 24) * saved.emphasis);
+        float radius = (2.5f + 5.5f * saved.conflict) * density;
+        float dy = (.75f * (1f - .6f * saved.conflict)) * density;
+        view.getPaint()
+                .setShadowLayer(
+                        radius,
+                        0,
+                        dy,
+                        (saved.shadowColor & 0xffffff) | (alpha << 24));
+    }
+
     private static void write(TextView view, ColorStateList value) {
         boolean old = writing;
         writing = true;
@@ -503,5 +724,53 @@ final class MediaClockContrast {
         } catch (Exception ignored) {
             return null;
         }
+    }
+
+    static Field resolveOutlineField(Class<?> textClass) throws NoSuchFieldException {
+        if (textClass == null) return null;
+        try {
+            Method draw = textClass.getDeclaredMethod("onDraw", Canvas.class);
+            String desc = "L" + textClass.getName().replace('.', '/') + ";";
+            DexSignatures.Body body = DexSignatures.cached(() -> DexSignatures.body(draw));
+            DexSignatures.Member member = outlineMember(body, desc);
+            if (member == null) return null;
+            Field outline = member.field(textClass.getClassLoader());
+            if (outline.getType() != int.class) throw new NoSuchFieldException("Outline color");
+            outline.setAccessible(true);
+            return outline;
+        } catch (NoSuchMethodException ignored) {
+            return null;
+        } catch (NoSuchFieldException error) {
+            throw error;
+        } catch (ReflectiveOperationException | IOException error) {
+            throw (NoSuchFieldException)
+                    new NoSuchFieldException("Outline color field lookup failed").initCause(error);
+        } catch (Exception error) {
+            throw (NoSuchFieldException)
+                    new NoSuchFieldException("Outline color field lookup failed").initCause(error);
+        }
+    }
+
+    static DexSignatures.Member outlineMember(DexSignatures.Body body, String ownerDescriptor)
+            throws NoSuchFieldException {
+        Set<String> names = new java.util.LinkedHashSet<>();
+        DexSignatures.Member match = null;
+        for (var read : body.reads()) {
+            DexSignatures.Member member = read.field();
+            if (ownerDescriptor.equals(member.owner())
+                    && "I".equals(member.type())
+                    && names.add(member.name())) {
+                match = member;
+            }
+        }
+        if (names.isEmpty()) {
+            // Older providers draw text without this separate outline-color field.
+            return null;
+        }
+        if (names.size() > 1) {
+            throw new NoSuchFieldException(
+                    "Multiple int fields read in " + ownerDescriptor + ".onDraw: " + names);
+        }
+        return match;
     }
 }

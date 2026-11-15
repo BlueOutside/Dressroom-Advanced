@@ -39,7 +39,8 @@ final class ScreenIdentity {
             if (monitor == null) monitor = createMonitor();
             return monitor.current();
         } catch (Exception error) {
-            throw new IllegalStateException("Fold screen identity unavailable", error);
+            DressroomModule.note("Fold screen identity unavailable", error);
+            return 0;
         }
     }
 
@@ -67,7 +68,15 @@ final class ScreenIdentity {
                 register.invoke(manager, candidate, new android.os.Handler(android.os.Looper.getMainLooper()));
                 listener = candidate;
             }
-        }, () -> { for (Runnable observer : observers) observer.run(); });
+        }, () -> {
+            for (Runnable observer : observers) {
+                try {
+                    observer.run();
+                } catch (RuntimeException error) {
+                    DressroomModule.note("Fold screen observer failed", error);
+                }
+            }
+        });
     }
 
     static void observe(Runnable observer) {

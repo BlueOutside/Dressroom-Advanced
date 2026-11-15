@@ -33,3 +33,13 @@ The shared-background question was resolved by the physical 0.13.10 trace in `wo
 4. Preserve Samsung's height spring, the confirmed contrast fade/depth restoration, and gesture behavior. Do not hide the whole clock or disable blur to conceal the symptom.
 
 Targeted SystemUI sources read through JADX MCP are saved under `work/clock-audit/SystemUI.*.java`. No APK-wide method/code search is needed. The native AOD manager/strategy sources previously read through MCP remain in the same directory.
+# Fullscreen cover edges and foreground bridge
+
+The fullscreen cover radius reaches zero at full expansion. Samsung's framed
+card radius must not be used as a minimum; it exposes wallpaper in the screen
+corners. Returning artwork still rounds as it approaches the thumbnail.
+
+The foreground return layer draws only artwork, not the controls blur or clock
+matte. Its bounds are the intersection of the native moving artwork and the
+returning pill. Using the fullscreen-interpolated cover across the whole pill
+can paint a rectangular artwork strip over controls at the start of collapse.

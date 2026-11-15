@@ -7,11 +7,15 @@ import android.graphics.RectF;
 import android.view.View;
 import android.view.ViewOutlineProvider;
 
+import java.lang.reflect.Field;
+import java.util.Collections;
 import java.util.Map;
 import java.util.WeakHashMap;
 
 final class WidgetContentClip extends ViewOutlineProvider {
-    private static final Map<View, WidgetContentClip> clips = new WeakHashMap<>();
+    private static final Map<View, WidgetContentClip> clips =
+            Collections.synchronizedMap(new WeakHashMap<>());
+    private static final Field nativePath = outlinePathField();
     private ViewOutlineProvider original;
     private boolean originalClip;
 
@@ -76,16 +80,49 @@ final class WidgetContentClip extends ViewOutlineProvider {
             else outline.setEmpty();
             return;
         }
-        Path visible = new Path();
-        Rect nativeRect = new Rect();
         Outline nativeOutline = new Outline();
-        if (originalClip && original != null) original.getOutline(view, nativeOutline);
-        if (originalClip && nativeOutline.getRect(nativeRect)) {
-            float radius = Math.max(0, nativeOutline.getRadius());
-            visible.addRoundRect(new RectF(nativeRect), radius, radius, Path.Direction.CW);
-        } else visible.addRect(0, 0, view.getWidth(), view.getHeight(), Path.Direction.CW);
+        if (original != null) original.getOutline(view, nativeOutline);
+        composeOutline(view, outline, original == null ? null : nativeOutline,
+                originalClip, subject, cover);
+    }
+
+    static void composeOutline(View view, Outline outline, Outline nativeOutline,
+            boolean nativeClip, Path subject, Path cover) {
+        Path visible = nativeClip && nativeOutline != null ? copyShape(nativeOutline) : null;
+        if (visible == null) {
+            visible = new Path();
+            visible.addRect(0, 0, view.getWidth(), view.getHeight(), Path.Direction.CW);
+        }
         if (subject != null) visible = DepthGeometry.subtract(visible, subject);
         if (cover != null) visible = DepthGeometry.subtract(visible, cover);
         DepthGeometry.outline(outline, visible);
+        if (nativeOutline != null) outline.setAlpha(nativeOutline.getAlpha());
+    }
+
+    private static Field outlinePathField() {
+        try {
+            return NativeContract.findField(Outline.class, null, Path.class);
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+            return null;
+        }
+    }
+
+    private static Path copyShape(Outline outline) {
+        Rect rect = new Rect();
+        if (outline.getRect(rect)) {
+            Path path = new Path();
+            float radius = Math.max(0, outline.getRadius());
+            path.addRoundRect(new RectF(rect), radius, radius, Path.Direction.CW);
+            return path;
+        }
+        if (nativePath != null)
+            try {
+                // Samsung's smooth corners are a path, even when all radii
+                // match. Copy it before subtracting depth or the player cover.
+                Object path = nativePath.get(outline);
+                if (path instanceof Path shape && !shape.isEmpty()) return new Path(shape);
+            } catch (IllegalAccessException ignored) {
+            }
+        return null;
     }
 }

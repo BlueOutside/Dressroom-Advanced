@@ -59,9 +59,14 @@ final class WidgetBlurInfo {
         throw new NoSuchFieldException(name);
     }
 
-    Object clipped(Object original, Path path) throws ReflectiveOperationException {
+    Object copy(Object original) throws ReflectiveOperationException {
         Object copy = constructor.newInstance(0, null, 0, 0, 0f, 0f, 0f, 0f, 0);
         for (Field field : fields) field.set(copy, field.get(original));
+        return copy;
+    }
+
+    Object clipped(Object original, Path path) throws ReflectiveOperationException {
+        Object copy = copy(original);
         clip.set(copy, new Path(path));
         return copy;
     }

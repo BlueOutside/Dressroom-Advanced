@@ -9,7 +9,8 @@ import java.util.Map;
 import java.util.WeakHashMap;
 
 final class RuntimeClockData {
-    private record Entry(int type, int font, String path, int orientation, int screen, List<Float> heights) {}
+    private record Entry(
+            int type, int font, String path, int orientation, int screen, List<Float> heights) {}
 
     private static final Map<Object, Entry> sources =
             java.util.Collections.synchronizedMap(new WeakHashMap<>());
@@ -33,8 +34,9 @@ final class RuntimeClockData {
             throws ReflectiveOperationException {
         Context context = (Context) Reflect.field(provider, "context");
         try {
-            if (!ScreenIdentity.supported() && context.getDisplay() != null && context.getDisplay().getDisplayId() != 0)
-                return null;
+            if (!ScreenIdentity.supported()
+                    && context.getDisplay() != null
+                    && context.getDisplay().getDisplayId() != 0) return null;
         } catch (UnsupportedOperationException ignored) {
         } // Package contexts may not carry a Display.
 
@@ -54,7 +56,8 @@ final class RuntimeClockData {
                 || entry.type != type
                 || entry.font != id
                 || !entry.path.equals(path)
-                || entry.orientation != orientation || entry.screen != screen) {
+                || entry.orientation != orientation
+                || entry.screen != screen) {
             Bundle query = new Bundle();
             query.putInt("type", type);
             query.putInt("font", id);
@@ -126,5 +129,15 @@ final class RuntimeClockData {
         }
         android.util.Log.i(
                 DressroomModule.TAG, "Native clock font source/measurement sync installed");
+        if (clock.clockStyle && !clock.legacy) {
+            try {
+                ClockStyleWidgetPosition.install(module, loader);
+            } catch (ReflectiveOperationException
+                    | java.io.IOException
+                    | RuntimeException
+                    | LinkageError error) {
+                module.report("Clock Style widget position binding unavailable", error);
+            }
+        }
     }
 }

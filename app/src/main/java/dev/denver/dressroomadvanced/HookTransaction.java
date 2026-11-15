@@ -32,16 +32,17 @@ final class HookTransaction implements AutoCloseable {
         if (closed) return;
         closed = true;
         if (committed) return;
-        RuntimeException failure = null;
+        Throwable failure = null;
         for (int i = rollback.size() - 1; i >= 0; i--) {
             try {
                 rollback.get(i).run();
-            } catch (RuntimeException error) {
+            } catch (RuntimeException | LinkageError error) {
                 if (failure == null) failure = error;
-                else failure.addSuppressed(error);
+                else if (failure != error) failure.addSuppressed(error);
             }
         }
         rollback.clear();
-        if (failure != null) throw failure;
+        if (failure instanceof RuntimeException error) throw error;
+        if (failure instanceof LinkageError error) throw error;
     }
 }

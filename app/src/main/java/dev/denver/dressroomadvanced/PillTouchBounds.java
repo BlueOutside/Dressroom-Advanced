@@ -8,9 +8,10 @@ import android.view.ViewGroup;
 final class PillTouchBounds {
 
     static Boolean contains(ViewGroup root, int x, int y) throws ReflectiveOperationException {
-        if (Boolean.TRUE.equals(Reflect.call(root, "k"))
-                || Boolean.TRUE.equals(Reflect.call(root, "n"))
-                || Boolean.TRUE.equals(Reflect.field(root, "U"))) return null;
+        NowBarStackBinding.StackState state = NowBarStackBinding.StackState.of(root.getClass());
+        if (Boolean.TRUE.equals(state.expanded.invoke(root))
+                || Boolean.TRUE.equals(state.settingOpen.invoke(root))
+                || Boolean.TRUE.equals(state.expanding.get(root))) return null;
         int slop = ViewConfiguration.get(root.getContext()).getScaledTouchSlop();
         boolean measured = false;
         for (int i = 0; i < root.getChildCount(); i++) {
