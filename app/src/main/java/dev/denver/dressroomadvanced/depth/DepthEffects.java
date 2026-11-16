@@ -96,6 +96,7 @@ final class DepthEffects {
                 .setId("dressroom-advanced.depth-clock-draw")
                 .intercept(
                         chain -> {
+                            if (entries.isEmpty()) return chain.proceed();
                             Object target = chain.getThisObject();
                             if (!(target instanceof View)) return chain.proceed();
                             View view = (View) target;
@@ -128,6 +129,7 @@ final class DepthEffects {
                 .setId("dressroom-advanced.depth-whole-clock")
                 .intercept(
                         chain -> {
+                            if (entries.isEmpty()) return chain.proceed();
                             View view = (View) chain.getThisObject();
                             Entry entry = entries.get(view);
                             if (entry == null
@@ -156,6 +158,7 @@ final class DepthEffects {
                 .setId("dressroom-advanced.depth-digit-draw")
                 .intercept(
                         chain -> {
+                            if (entries.isEmpty() || drawingClock.get()) return chain.proceed();
                             View view = (View) chain.getThisObject();
                             Entry entry = entries.get(view);
                             if (entry == null) {
@@ -166,7 +169,6 @@ final class DepthEffects {
                                     || entry.mask == null
                                     || !entry.enabled
                                     || (entry.editor && sourcePending)
-                                    || drawingClock.get()
                                     || subjectSuppressed(view, entry)) return chain.proceed();
                             Canvas canvas = (Canvas) chain.getArg(0);
                             Matrix mask = visibleMask(canvas, view, entry);
@@ -311,6 +313,7 @@ final class DepthEffects {
     }
 
     private static Entry inheritedSubject(View view) {
+        if (entries.isEmpty()) return null;
         for (View current = view; current != null; ) {
             Entry entry = entries.get(current);
             if (entry != null && entry.enabled) return entry;

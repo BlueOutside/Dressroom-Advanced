@@ -61,6 +61,25 @@ Samsung finishes replacing its views and animator. Reopening replaces the old
 listener, and disabling the setting releases the retained texture immediately.
 The actual wallpaper/provider settings are not changed.
 
+AOD can retire the native artwork view after opening. Once a cover has been
+shown, keep that texture while Samsung reports the player expanded, and pick
+up a new bitmap if the native artwork becomes available again. Samsung can
+also publish the expanded state without starting a wallpaper animator. Use
+the settled opacity for that state.
+
+The expanded controls have a tinted image and a separate SemBlurInfo surface
+that Samsung uses during the transition. Fullscreen artwork uses an untinted
+window blur behind the controls for the whole expanded session. The framed
+player uses the same banner when Now Bar glass is enabled. Leave the native
+banner visible if the system cannot supply a window blur drawable.
+
+The on-device comparison showed the cover drawn at full opacity in the
+settled player. With Clock blur enabled, Samsung then submitted a clock blur
+region with full-screen bounds and animated its opacity to 1. With Clock blur
+off, the cover stayed visible. Hold the lockscreen clock blur submission while
+the fullscreen cover is visible. Replay the latest request once the cover
+has faded out, and keep the controls banner on its separate blur surface.
+
 ## Wallpaper blur over fullscreen artwork
 
 In AOD 8.9.32.95, MediaExpandStateObserver applies the wallpaper blur to the

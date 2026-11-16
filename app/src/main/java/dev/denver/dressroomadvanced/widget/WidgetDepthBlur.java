@@ -83,10 +83,15 @@ final class WidgetDepthBlur {
                                     if (original == null && (MediaWidgetFade.holdClear(view)
                                             || UnlockBlur.holdContainerClear(view)))
                                         return null;
-                                    if (!isBackground(view)) {
+                                    boolean widget = isBackground(view);
+                                    boolean clock = isClockBlurHost(view);
+                                    if (clock && OneUi85FullscreenArt.suppressClockBlur(view, original))
+                                        return chain.proceed(new Object[] {null});
+                                    String surface = BlurAppearance.surface(view, clock, widget);
+                                    if (!widget) {
                                         NowBarGlass.nativeRequest(view, original);
-                                        Object styled = BlurAppearance.submit(view, original, original);
-                                        if (isClockBlurHost(view)) {
+                                        Object styled = BlurAppearance.submit(view, original, original, surface);
+                                        if (clock) {
                                             // Keep the full-screen host measured while native blur is cleared.
                                             view.setVisibility(styled == null ? View.INVISIBLE : View.VISIBLE);
                                             if (styled != null && module.inEditorProcess()
@@ -102,7 +107,7 @@ final class WidgetDepthBlur {
                                                 : chain.proceed(new Object[] {styled});
                                         NowBarGlass.submitted(view, original);
                                         DepthBlurHooks.clockBlurSubmitted(view, styled);
-                                        UnlockBlur.submitted(view, styled != null);
+                                        UnlockBlur.submitted(view, styled != null, surface);
                                         return result;
                                     }
                                     if (original == null) originals.remove(view);
@@ -147,7 +152,7 @@ final class WidgetDepthBlur {
                                         module.report("Widget final blur clip unavailable", error);
                                     }
                                     if (blurOff(view)) submitted = null;
-                                    submitted = BlurAppearance.submit(view, submitted, original);
+                                    submitted = BlurAppearance.submit(view, submitted, original, surface);
                                     if (submitted != null && module.inEditorProcess()
                                             && EditorWidgetBlur.canvasView(view)) {
                                         if (previewLayout.add(view))
@@ -168,7 +173,7 @@ final class WidgetDepthBlur {
                                     if (!module.inEditorProcess() && submitted != null
                                             && BlurAppearance.hasWindowDrawable(view))
                                         rememberWindowOwner(view);
-                                    UnlockBlur.submitted(view, submitted != null);
+                                    UnlockBlur.submitted(view, submitted != null, surface);
                                     return result;
                                 })::unhook);
                     module.deoptimize(submit);

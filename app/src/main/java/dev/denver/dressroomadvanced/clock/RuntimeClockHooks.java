@@ -204,12 +204,12 @@ final class RuntimeClockHooks {
                                     chain -> {
                                         boolean previous = manual.get();
                                         try {
+                                            View view = (View) chain.getThisObject();
                                             Object requestedFont = chain.getArg(0);
+                                            ProfileRead loaded = null;
                                             try {
-                                                Bundle settings =
-                                                        read(
-                                                                (View) chain.getThisObject(),
-                                                                chain.getArg(0));
+                                                loaded = read(view, identity(view, requestedFont));
+                                                Bundle settings = loaded.settings();
                                                 if (settings != null)
                                                     profiles.put(
                                                             (View) chain.getThisObject(), settings);
@@ -258,7 +258,7 @@ final class RuntimeClockHooks {
                                                             ? chain.proceed()
                                                             : chain.proceed(
                                                                     new Object[] {requestedFont});
-                                            apply((View) chain.getThisObject());
+                                            apply(view, loaded);
                                             applyBlur((View) chain.getThisObject());
                                             if (binding.clockStyle && !binding.legacy)
                                                 DateEffects.prepareMeasurement(
@@ -494,42 +494,36 @@ final class RuntimeClockHooks {
         }
     }
 
-    private Bundle read(View view, Object font) {
-        try {
-            String category = String.valueOf(Reflect.call(view, "getCategory"));
-            if (!category.equals("LOCK_SCREEN") && !category.equals("AOD")) return null;
-            if (!ScreenIdentity.supported() && view.getDisplay() != null && view.getDisplay().getDisplayId() != 0) return null;
-            if (SettingsBridge.wallpaperId(view.getContext()) < 0)
-                throw new IllegalStateException("Wallpaper identity is not ready");
-            Bundle query = new Bundle();
-            query.putInt("type", ((Number) Reflect.call(view, "getClockType")).intValue());
-            query.putInt("font", ((Number) Reflect.call(font, "getFontType")).intValue());
+    private record ProfileIdentity(int type, int font, String path, int orientation, int screen) {}
+    private record ProfileRead(ProfileIdentity identity, Bundle settings) {}
+
+    private ProfileIdentity identity(View view, Object font) throws ReflectiveOperationException {
+        String category = String.valueOf(Reflect.call(view, "getCategory"));
+        if (!category.equals("LOCK_SCREEN") && !category.equals("AOD")) return null;
+        if (!ScreenIdentity.supported() && view.getDisplay() != null && view.getDisplay().getDisplayId() != 0) return null;
+        int type = ((Number) Reflect.call(view, "getClockType")).intValue();
+        int fontId = font == null ? ClockBinding.of(view).fontId(view)
+                : ((Number) Reflect.call(font, "getFontType")).intValue();
+        String path = "";
+        if (font != null) {
             try {
-                Object path = Reflect.call(font, "getFontPath");
-                if (path instanceof String && !((String) path).isEmpty())
-                    query.putString("fontPath", (String) path);
+                if (Reflect.call(font, "getFontPath") instanceof String value) path = value;
             } catch (Exception ignored) {
             }
-            return SettingsBridge.read(view.getContext(), query);
-        } catch (Exception e) {
-            throw new IllegalStateException("Runtime settings temporarily unavailable", e);
         }
+        return new ProfileIdentity(type, fontId, path, LayoutOrientation.current(view.getContext()),
+                ScreenIdentity.current());
     }
 
-    private Bundle read(View view, int font) {
-        try {
-            String category = String.valueOf(Reflect.call(view, "getCategory"));
-            if (!category.equals("LOCK_SCREEN") && !category.equals("AOD")) return null;
-            if (!ScreenIdentity.supported() && view.getDisplay() != null && view.getDisplay().getDisplayId() != 0) return null;
-            if (SettingsBridge.wallpaperId(view.getContext()) < 0)
-                throw new IllegalStateException("Wallpaper identity is not ready");
-            Bundle query = new Bundle();
-            query.putInt("type", ((Number) Reflect.call(view, "getClockType")).intValue());
-            query.putInt("font", font);
-            return SettingsBridge.read(view.getContext(), query);
-        } catch (Exception e) {
-            throw new IllegalStateException("Runtime settings temporarily unavailable", e);
-        }
+    private ProfileRead read(View view, ProfileIdentity identity) {
+        if (identity == null) return new ProfileRead(null, null);
+        Bundle query = new Bundle();
+        query.putInt("type", identity.type());
+        query.putInt("font", identity.font());
+        if (!identity.path().isEmpty()) query.putString("fontPath", identity.path());
+        query.putInt(LayoutOrientation.FIELD, identity.orientation());
+        if (identity.screen() != 0) query.putInt(ScreenIdentity.FIELD, identity.screen());
+        return new ProfileRead(identity, SettingsBridge.readRuntimeClock(view.getContext(), query));
     }
 
     private void restoreAfterMedia(View clock) {
@@ -619,17 +613,21 @@ final class RuntimeClockHooks {
     }
 
     private void apply(View view) {
+        apply(view, null);
+    }
+
+    private void apply(View view, ProfileRead loaded) {
         boolean providerReady = false;
         try {
             Object clockFont = ClockBinding.of(view).font(view);
-            Bundle settings =
-                    clockFont != null
-                            ? read(view, clockFont)
-                            : read(view, ClockBinding.of(view).fontId(view));
+            ProfileIdentity identity = identity(view, clockFont);
+            Bundle settings = loaded != null && java.util.Objects.equals(loaded.identity(), identity)
+                    ? loaded.settings() : read(view, identity).settings();
             providerReady = true;
             VariableFonts.configure(module, view, settings);
-            if (settings != null) settingsRetries.remove(view);
-            if (settings == null && ClockBinding.of(view).fontId(view) == 0) {
+            boolean waitingForFont = identity != null && identity.font() == 0;
+            if (settings != null || !waitingForFont) settingsRetries.remove(view);
+            if (settings == null && waitingForFont) {
                 Bundle previous = profiles.get(view);
                 if (previous != null
                         && previous.getInt("wallpaperId", -1)
@@ -643,7 +641,7 @@ final class RuntimeClockHooks {
                 if (effects.remove(view)) ShadowEffects.apply(view, false, 0, 0, 0, 0);
                 applyDepth(view, null);
                 int attempt = settingsRetries.getOrDefault(view, 0);
-                if (attempt < 4 && view.isAttachedToWindow()) {
+                if (waitingForFont && attempt < 4 && view.isAttachedToWindow()) {
                     settingsRetries.put(view, attempt + 1);
                     WeakReference<View> reference = new WeakReference<>(view);
                     main.postDelayed(

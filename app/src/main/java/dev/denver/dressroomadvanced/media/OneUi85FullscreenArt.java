@@ -30,13 +30,22 @@ final class OneUi85FullscreenArt {
     private static final Map<ViewGroup, WeakReference<Layer>> layers = new WeakHashMap<>();
     private static final Set<ClassLoader> installed =
             Collections.newSetFromMap(new WeakHashMap<>());
+    private static final Set<java.lang.reflect.Method> captureTraces = new java.util.HashSet<>();
+    private static final String TRACE = "DR85Cover";
+    private static DressroomModule traceModule;
 
     private OneUi85FullscreenArt() {}
+
+    private static void traceLog(String message) {
+        if (traceModule != null)
+            traceModule.log(android.util.Log.WARN, DressroomModule.TAG, TRACE + " " + message);
+    }
 
     static synchronized void install(DressroomModule module, Class<?> base)
             throws ReflectiveOperationException {
         ClassLoader loader = base.getClassLoader();
         if (installed.contains(loader)) return;
+        traceModule = module;
         OneUi85ArtworkBinding binding = new OneUi85ArtworkBinding(base);
         OneUi85WallpaperFadeBinding wallpaper = new OneUi85WallpaperFadeBinding(base);
         MediaBlurHost.install(module);
@@ -45,6 +54,7 @@ final class OneUi85FullscreenArt {
         } catch (ReflectiveOperationException | LinkageError error) {
             module.report("Optional legacy wallpaper blur override unavailable", error);
         }
+        installCaptureTrace(module, loader);
         try {
             MediaClockContrast.install(module, loader);
         } catch (ReflectiveOperationException | LinkageError error) {
@@ -92,12 +102,39 @@ final class OneUi85FullscreenArt {
                     for (var reference : layers.values()) {
                         Layer layer = reference.get();
                         if (layer != null) {
+                            layer.clearBanner();
                             layer.update();
                             layer.invalidate();
                         }
                     }
                 });
-        android.util.Log.i(DressroomModule.TAG, "8.5 fullscreen artwork source installed");
+        traceLog("8.5 fullscreen artwork trace ready");
+    }
+
+    private static void installCaptureTrace(DressroomModule module, ClassLoader loader) {
+        try {
+            Class<?> callbacks = Class.forName(
+                    "com.android.systemui.facewidget.plugin.PluginFaceWidgetManager", false, loader);
+            var apply = NativeContract.method(callbacks, "applyBlur", void.class, int.class);
+            if (captureTraces.contains(apply)) return;
+            module.hook(apply).setId("dressroom-advanced.85-cover-capture-trace")
+                    .intercept(chain -> {
+                        int amount = (int) chain.getArg(0);
+                        for (var reference : layers.values()) {
+                            Layer layer = reference.get();
+                            if (layer != null && (layer.nativeExpanded || layer.nativeFade)
+                                    && layer.trace && layer.lastCapture != amount) {
+                                layer.lastCapture = amount;
+                                traceLog("SystemUI captured blur amount=" + amount
+                                        + " expanded=" + layer.nativeExpanded);
+                            }
+                        }
+                        return chain.proceed();
+                    });
+            captureTraces.add(apply);
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+            traceLog("SystemUI captured blur trace unavailable");
+        }
     }
 
     private static void register(View item) {
@@ -127,8 +164,20 @@ final class OneUi85FullscreenArt {
         ensure(view);
     }
 
+    static boolean suppressClockBlur(View host, Object request) {
+        if (layers.isEmpty()) return false;
+        WeakReference<Layer> reference = layers.get(host.getRootView());
+        Layer layer = reference == null ? null : reference.get();
+        if (layer == null || !layer.clockBlurHeld || layer.clearingClockBlur
+                || !("lock_clock_blur".equals(host.getTag()) || "lock_clock_blur".equals(name(host))))
+            return false;
+        layer.clockBlurRequests.put(host, request);
+        if (layer.clockBlurHosts.add(host)) MediaBlurHost.hold(host);
+        return true;
+    }
+
     static void wallpaperFade(View host, ValueAnimator animator, boolean expanded) {
-        if (host == null || animator == null) return;
+        if (host == null) return;
         Layer layer = ensure(host);
         if (layer != null) {
             View previous = layer.wallpaperHost.get();
@@ -192,7 +241,7 @@ final class OneUi85FullscreenArt {
     }
 
     private static final class Source {
-        final WeakReference<View> item, frame, background;
+        final WeakReference<View> item, frame, background, controls, tint, nativeBannerBlur;
         final WeakReference<ImageView> image;
         final Rect visible = new Rect();
 
@@ -200,6 +249,9 @@ final class OneUi85FullscreenArt {
             this.item = new WeakReference<>(item);
             this.frame = new WeakReference<>(frame);
             this.background = new WeakReference<>(find(item, "nowbar_expandview_background"));
+            this.controls = new WeakReference<>(find(item, "facewidget_music_container_expand_Player"));
+            this.tint = new WeakReference<>(find(item, "facewidget_music_page_controller_background"));
+            this.nativeBannerBlur = new WeakReference<>(find(item, "facewidget_music_page_controller_blur_view"));
             this.image = new WeakReference<>(image);
         }
 
@@ -267,7 +319,7 @@ final class OneUi85FullscreenArt {
         @Override
         public void onAnimationEnd(Animator animation) {
             Layer view = layer.get();
-            if (view != null && animation instanceof ValueAnimator value) view.sample(value);
+            if (view != null && animation instanceof ValueAnimator value) view.finishFade(value);
         }
     }
 
@@ -276,8 +328,11 @@ final class OneUi85FullscreenArt {
         final RectF paletteBounds = new RectF();
         WeakReference<ViewTreeObserver> observer = new WeakReference<>(null);
         final Set<View> held = Collections.newSetFromMap(new WeakHashMap<>());
+        final Set<View> clockBlurHosts = Collections.newSetFromMap(new WeakHashMap<>());
+        final Map<View, Object> clockBlurRequests = new WeakHashMap<>();
         final Map<View, Blank> backgrounds = new WeakHashMap<>();
         final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+        final Paint fadePaint = new Paint(paint);
         final RectF bounds = new RectF(), crop = new RectF();
         final android.graphics.RenderNode blurredArt =
                 new android.graphics.RenderNode("Dressroom 8.5 media clock aura");
@@ -287,8 +342,14 @@ final class OneUi85FullscreenArt {
         WeakReference<ValueAnimator> fadeAnimator = new WeakReference<>(null);
         WeakReference<View> wallpaperHost = new WeakReference<>(null);
         FadeListener fadeListener;
-        boolean nativeFade, nativeExpanded;
+        Source bannerSource;
+        View bannerBlur;
+        boolean nativeFade, nativeExpanded, mediaStateKnown, clockBlurHeld;
+        boolean clearingClockBlur;
+        boolean trace, tracedSettled, tracedDraw;
+        int lastCapture = -1;
         float nativeAlpha;
+        float coverAlpha = 1f;
 
         Layer(ViewGroup root) {
             super(root.getContext());
@@ -324,8 +385,13 @@ final class OneUi85FullscreenArt {
         protected void onDetachedFromWindow() {
             ViewGroup parent = root.get();
             if (parent != null) MediaClockContrast.clear(parent);
+            clearBanner();
             clearFade();
+            nativeExpanded = false;
+            mediaStateKnown = false;
+            nativeAlpha = 0f;
             restore();
+            releaseClockBlur();
             current = null;
             bitmap = null;
             blurredArt.discardDisplayList();
@@ -349,16 +415,22 @@ final class OneUi85FullscreenArt {
         void update(boolean enabled) {
             ViewGroup parent = root.get();
             if (parent == null) return;
+            trace = enabled;
+            updateBanner(parent, enabled);
             // The native artwork is hidden before the wallpaper-return fade finishes.
             // Keep its last texture until that native fade reaches zero.
             if (enabled
-                    && nativeFade
                     && !nativeExpanded
+                    && nativeFade
                     && bitmap != null
                     && !bitmap.isRecycled()) {
                 MediaClockContrast.clear(parent);
                 present(nativeAlpha);
                 if (nativeAlpha <= 0) hide();
+                return;
+            }
+            if (mediaStateKnown && !nativeExpanded) {
+                hide();
                 return;
             }
             Source best = null;
@@ -389,8 +461,7 @@ final class OneUi85FullscreenArt {
                     if (nativeFade) {
                         value = nativeAlpha;
                     } else if (nativeExpanded) {
-                        float itemOpacity = opacity(item, parent);
-                        value = itemOpacity > 0 ? itemOpacity : (nativeAlpha > 0 ? nativeAlpha : 1f);
+                        value = 1f;
                     } else {
                         value = opacity(frame != null ? frame : item, parent);
                     }
@@ -402,6 +473,12 @@ final class OneUi85FullscreenArt {
                     }
                 }
             if (best == null) {
+                // AOD can hide or detach the artwork view once the page has opened.
+                // Keep the last valid texture until the native expanded state clears.
+                if (enabled && nativeExpanded && bitmap != null && !bitmap.isRecycled()) {
+                    present(nativeFade ? nativeAlpha : 1f);
+                    return;
+                }
                 hide();
                 return;
             }
@@ -428,13 +505,58 @@ final class OneUi85FullscreenArt {
         }
 
         void present(float alpha) {
-            if (alpha > 0) MediaWallpaperBlur.hold(wallpaperHost.get());
-            else MediaWallpaperBlur.release(wallpaperHost.get(), 0);
-            if (getAlpha() != alpha) setAlpha(alpha);
-            setVisibility(alpha > 0 ? VISIBLE : INVISIBLE);
+            if (alpha > 0) {
+                MediaWallpaperBlur.hold(wallpaperHost.get());
+                ViewGroup parent = root.get();
+                if (!clockBlurHeld && parent != null) {
+                    clockBlurHeld = true;
+                    View host = parent.findViewWithTag("lock_clock_blur");
+                    if (host == null) host = find(parent, "lock_clock_blur");
+                    if (host != null) holdClockBlur(host);
+                }
+            } else {
+                MediaWallpaperBlur.release(wallpaperHost.get(), 0);
+                releaseClockBlur();
+            }
+            if (coverAlpha != alpha) {
+                coverAlpha = alpha;
+                invalidate();
+            }
+            int visibility = alpha > 0 ? VISIBLE : INVISIBLE;
+            if (getVisibility() != visibility) setVisibility(visibility);
+            traceSettled();
+        }
+
+        void holdClockBlur(View host) {
+            if (clockBlurHosts.add(host)) MediaBlurHost.hold(host);
+            clockBlurRequests.put(host, BlurAppearance.nativeRequest(host));
+            // Samsung also animates the blur drawable's own compositor opacity.
+            // Clear the existing region and retain later glyph requests for the return.
+            clearingClockBlur = true;
+            try {
+                BlurAppearance.submitClockRequest(host, null);
+            } finally {
+                clearingClockBlur = false;
+            }
+        }
+
+        void releaseClockBlur() {
+            if (!clockBlurHeld) return;
+            clockBlurHeld = false;
+            for (View host : clockBlurHosts) {
+                MediaBlurHost.release(host);
+                if (host.isAttachedToWindow()) {
+                    Object request = clockBlurRequests.get(host);
+                    if (request != null) BlurAppearance.submitClockRequest(host, request);
+                }
+            }
+            clockBlurHosts.clear();
+            clockBlurRequests.clear();
         }
 
         void hide() {
+            releaseClockBlur();
+            if (bitmap == null && current == null && getVisibility() == INVISIBLE) return;
             ViewGroup parent = root.get();
             if (parent != null) MediaClockContrast.clear(parent);
             restore();
@@ -443,6 +565,62 @@ final class OneUi85FullscreenArt {
             blurredArt.discardDisplayList();
             blurDirty = true;
             setVisibility(INVISIBLE);
+            traceSettled();
+        }
+
+        void traceSettled() {
+            if (!trace || !nativeExpanded || nativeFade || tracedSettled) return;
+            tracedSettled = true;
+            View host = wallpaperHost.get();
+            Drawable background = host == null ? null : host.getBackground();
+            Rect visible = new Rect();
+            boolean inClip = getGlobalVisibleRect(visible);
+            traceLog("settled alpha=" + coverAlpha + " viewAlpha=" + getAlpha()
+                    + " visibility=" + getVisibility()
+                    + " bitmap=" + (bitmap != null && !bitmap.isRecycled())
+                    + " size=" + getWidth() + "x" + getHeight()
+                    + " shown=" + isShown() + " inClip=" + inClip + " clockBlurHosts=" + clockBlurHosts.size()
+                    + " hostBackground=" + (background == null ? "none" : background.getClass().getSimpleName())
+                    + " capturedAmount=" + lastCapture);
+        }
+
+        void updateBanner(ViewGroup parent, boolean fullscreen) {
+            boolean enabled = fullscreen || RuntimeExtras.enabled(getContext(), NowBarGlass.KEY);
+            if (!enabled || (!nativeExpanded && nativeAlpha <= 0)) {
+                clearBanner();
+                return;
+            }
+            if (bannerSource != null) {
+                View controls = bannerSource.controls.get();
+                if (controls != null && controls.getRootView() == parent) return;
+                clearBanner();
+            }
+            if (!nativeExpanded) return;
+            for (Source source : sources.values()) {
+                if (!(source.controls.get() instanceof FrameLayout controls)
+                        || controls.getRootView() != parent || !controls.isShown()
+                        || source.tint.get() == null) continue;
+                bannerSource = source;
+                bannerBlur = BannerBlur.attach(controls);
+                if (bannerBlur != null) {
+                    MediaBlurHost.hold(source.tint.get());
+                    View nativeBlur = source.nativeBannerBlur.get();
+                    if (nativeBlur != null) MediaBlurHost.hold(nativeBlur);
+                }
+                return;
+            }
+        }
+
+        void clearBanner() {
+            if (bannerSource != null && bannerBlur != null) {
+                View tint = bannerSource.tint.get();
+                if (tint != null) MediaBlurHost.release(tint);
+                View nativeBlur = bannerSource.nativeBannerBlur.get();
+                if (nativeBlur != null) MediaBlurHost.release(nativeBlur);
+                if (bannerBlur.getParent() instanceof ViewGroup group) group.removeView(bannerBlur);
+            }
+            bannerSource = null;
+            bannerBlur = null;
         }
 
         void invalidateWindow() {
@@ -463,15 +641,22 @@ final class OneUi85FullscreenArt {
 
         void bindFade(ValueAnimator animation, boolean expanded) {
             ValueAnimator old = fadeAnimator.get();
-            if (!animation.isStarted()) {
-                Object value = animation.getAnimatedValue();
-                if (!(value instanceof Number number)
-                        || !Float.isFinite(number.floatValue())
-                        || (expanded ? number.floatValue() < 255 : number.floatValue() > 0)) {
-                    clearFade();
-                    invalidateWindow();
-                    return;
-                }
+            boolean changed = nativeExpanded != expanded;
+            if (!mediaStateKnown || changed) {
+                tracedSettled = false;
+                tracedDraw = false;
+                lastCapture = -1;
+                if (trace) traceLog("native expanded=" + expanded
+                        + " fadeStarted=" + (animation != null && animation.isStarted())
+                        + " retainedBitmap=" + (bitmap != null));
+            }
+            mediaStateKnown = true;
+            nativeExpanded = expanded;
+            if (animation == null || !animation.isStarted() || (changed && old == animation)) {
+                clearFade();
+                nativeAlpha = expanded ? 1f : 0f;
+                invalidateWindow();
+                return;
             }
             if (old != animation) {
                 clearFade();
@@ -480,7 +665,6 @@ final class OneUi85FullscreenArt {
                 animation.addUpdateListener(fadeListener);
                 animation.addListener(fadeListener);
             }
-            nativeExpanded = expanded;
             nativeFade = true;
             sample(animation);
         }
@@ -494,6 +678,19 @@ final class OneUi85FullscreenArt {
             // Do not inspect/remove sources inside Samsung's observer dispatch. Its view tree
             // and replacement animator are only consistent when that dispatch has finished.
             invalidateWindow();
+        }
+
+        void finishFade(ValueAnimator animation) {
+            if (fadeAnimator.get() != animation) return;
+            // The wallpaper animator can be cancelled or reset by Samsung. The media
+            // state still owns the settled cover, so don't keep its last sampled fraction.
+            nativeAlpha = nativeExpanded ? 1f : 0f;
+            clearFade();
+            if (trace) traceLog("fade completed expanded=" + nativeExpanded);
+            // Parent invalidation alone can reuse the cover's previous display list.
+            // Submit the fully opaque frame from the cover itself, after this traversal.
+            if (nativeExpanded && isAttachedToWindow()) postInvalidateOnAnimation();
+            else invalidateWindow();
         }
 
         void collect(Source source) {
@@ -548,7 +745,14 @@ final class OneUi85FullscreenArt {
         protected void onDraw(Canvas canvas) {
             if (bitmap == null || bitmap.isRecycled()) return;
             bounds.set(0, 0, getWidth(), getHeight());
-            NativeArtworkReveal.bitmap(canvas, bitmap, bounds, 1, 1, paint, crop);
+            // Keep the view opaque in HWUI. Changing View.alpha at 1 can switch off
+            // its compositing layer exactly when the native blur regions settle.
+            fadePaint.setAlpha(Math.round(coverAlpha * 255));
+            NativeArtworkReveal.bitmap(canvas, bitmap, bounds, 1, 1, fadePaint, crop);
+            if (trace && nativeExpanded && !nativeFade && !tracedDraw) {
+                tracedDraw = true;
+                traceLog("settled cover drawn hardware=" + canvas.isHardwareAccelerated());
+            }
             ViewGroup parent = root.get();
             if (canvas.isHardwareAccelerated() && MediaClockContrast.hasAura(parent)) {
                 if (blurDirty
@@ -560,8 +764,43 @@ final class OneUi85FullscreenArt {
                     blurredArt.endRecording();
                     blurDirty = false;
                 }
-                MediaClockContrast.drawAura(canvas, parent, blurredArt, bounds, null, 1f);
+                MediaClockContrast.drawAura(canvas, parent, blurredArt, bounds, null, coverAlpha);
             }
+        }
+    }
+
+    static final class BannerBlur extends View {
+        private BannerBlur(android.content.Context context) {
+            super(context);
+            setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
+        }
+
+        static View attach(FrameLayout controls) {
+            var context = controls.getContext();
+            if (!BlurAppearance.liveWindowBlurAllowed(context)) return null;
+            BannerBlur layer = new BannerBlur(context);
+            try {
+                int dimension = controls.getResources().getIdentifier(
+                        "now_bar_music_page_controller_radius", "dimen", "com.samsung.android.app.aodservice");
+                if (dimension == 0) dimension = controls.getResources().getIdentifier(
+                        "now_bar_music_page_controller_radius", "dimen", "com.samsung.android.app.clockpack");
+                if (dimension == 0) return null;
+                Class<?> info = Class.forName("android.view.SemBlurInfo");
+                Class<?> builder = Class.forName("android.view.SemBlurInfo$Builder");
+                Object request = builder.getConstructor(int.class).newInstance(0);
+                builder.getMethod("setRadius", int.class).invoke(request, 127);
+                builder.getMethod("setBackgroundCornerRadius", float.class)
+                        .invoke(request, controls.getResources().getDimension(dimension));
+                builder.getMethod("setBackgroundColor", int.class).invoke(request, 0);
+                controls.addView(layer, 0, new FrameLayout.LayoutParams(-1, -1));
+                View.class.getMethod("semSetBlurInfo", info)
+                        .invoke(layer, builder.getMethod("build").invoke(request));
+                if (BlurAppearance.hasWindowDrawable(layer)) return layer;
+            } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+                DressroomModule.note("8.5 media controls blur unavailable", error);
+            }
+            controls.removeView(layer);
+            return null;
         }
     }
 }

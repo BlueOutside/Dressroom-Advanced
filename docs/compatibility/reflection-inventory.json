@@ -1372,43 +1372,43 @@
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/depth/DepthEffects.java",
-      "line": 127,
+      "line": 128,
       "kind": "declared-method",
       "target": "draw"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/depth/DepthEffects.java",
-      "line": 155,
+      "line": 157,
       "kind": "declared-method",
       "target": "onDraw"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/depth/DepthEffects.java",
-      "line": 833,
+      "line": 836,
       "kind": "class",
       "target": "com.samsung.android.app.dressroom.presentation.preview.widget.CropImageView"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/depth/DepthEffects.java",
-      "line": 837,
+      "line": 840,
       "kind": "declared-method",
       "target": "onDraw"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/depth/DepthEffects.java",
-      "line": 857,
+      "line": 860,
       "kind": "class",
       "target": "com.samsung.android.app.dressroom.editorcomponent.component.wallpaper.image.effects.weather.WeatherSurfaceView"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/depth/DepthEffects.java",
-      "line": 865,
+      "line": 868,
       "kind": "declared-method",
       "target": "surfaceCreated"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/depth/DepthEffects.java",
-      "line": 867,
+      "line": 870,
       "kind": "declared-method",
       "target": "surfaceChanged"
     },
@@ -1893,6 +1893,66 @@
       "target": "currentApplication"
     },
     {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/media/OneUi85FullscreenArt.java",
+      "line": 116,
+      "kind": "class",
+      "target": "com.android.systemui.facewidget.plugin.PluginFaceWidgetManager"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/media/OneUi85FullscreenArt.java",
+      "line": 783,
+      "kind": "resource",
+      "target": "now_bar_music_page_controller_radius"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/media/OneUi85FullscreenArt.java",
+      "line": 785,
+      "kind": "resource",
+      "target": "now_bar_music_page_controller_radius"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/media/OneUi85FullscreenArt.java",
+      "line": 788,
+      "kind": "class",
+      "target": "android.view.SemBlurInfo"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/media/OneUi85FullscreenArt.java",
+      "line": 789,
+      "kind": "class",
+      "target": "android.view.SemBlurInfo$Builder"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/media/OneUi85FullscreenArt.java",
+      "line": 791,
+      "kind": "public-method",
+      "target": "setRadius"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/media/OneUi85FullscreenArt.java",
+      "line": 792,
+      "kind": "public-method",
+      "target": "setBackgroundCornerRadius"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/media/OneUi85FullscreenArt.java",
+      "line": 794,
+      "kind": "public-method",
+      "target": "setBackgroundColor"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/media/OneUi85FullscreenArt.java",
+      "line": 796,
+      "kind": "public-method",
+      "target": "semSetBlurInfo"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/media/OneUi85FullscreenArt.java",
+      "line": 797,
+      "kind": "public-method",
+      "target": "build"
+    },
+    {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/widget/EditorWidgets.java",
       "line": 84,
       "kind": "class",
@@ -2086,7 +2146,7 @@
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/widget/WidgetDepthBlur.java",
-      "line": 183,
+      "line": 188,
       "kind": "class",
       "target": "com.samsung.android.uniform.widget.clock.AbsClockView"
     },

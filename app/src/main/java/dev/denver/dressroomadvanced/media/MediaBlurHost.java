@@ -25,6 +25,7 @@ final class MediaBlurHost {
                 .setId("dressroom-advanced.live-clock-blur-host")
                 .intercept(
                         chain -> {
+                            if (held.isEmpty()) return chain.proceed();
                             View view = (View) chain.getThisObject();
                             float requested = ((Number) chain.getArg(0)).floatValue();
                             float actual = nativeAlpha(view, requested);
@@ -38,7 +39,7 @@ final class MediaBlurHost {
 
     static float nativeAlpha(View view, float value) {
         Opacity state = held.get(view);
-        if (!Boolean.TRUE.equals(writing.get()) && state != null) {
+        if (state != null && !Boolean.TRUE.equals(writing.get())) {
             state.nativeAlpha = value;
             return value * state.factor;
         }

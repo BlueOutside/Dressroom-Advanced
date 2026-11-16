@@ -22,14 +22,31 @@ final class SettingsBridge {
     }
 
     static Bundle read(Context context, Bundle identity) {
+        return read(context, identity, false);
+    }
+
+    static Bundle readRuntimeClock(Context context, Bundle identity) {
+        return read(context, identity, true);
+    }
+
+    private static Bundle read(Context context, Bundle identity, boolean runtimeClock) {
         Bundle query = new Bundle(identity);
         LayoutOrientation.stamp(context, query);
-        query.putInt("wallpaperId", wallpaperId(context, ScreenIdentity.value(query)));
-        query.putInt("legacyWallpaperId", wallpaperId(context, 0));
-        if (query.getInt("wallpaperId", -1) < 0) return null;
-        return DepthStorage.unpack(
-                context,
-                context.getContentResolver().call(SettingsProvider.URI, "read", null, query));
+        int screen = ScreenIdentity.value(query);
+        int wallpaper = wallpaperId(context, screen);
+        if (wallpaper < 0) {
+            if (runtimeClock) throw new IllegalStateException("Wallpaper identity is not ready");
+            return null;
+        }
+        query.putInt("wallpaperId", wallpaper);
+        query.putInt("legacyWallpaperId", screen == 0 ? wallpaper : wallpaperId(context, 0));
+        Bundle packed = context.getContentResolver().call(SettingsProvider.URI,
+                runtimeClock ? "readRuntimeClock" : "read", null, query);
+        if (runtimeClock) {
+            if (packed == null) throw new IllegalStateException("Runtime settings provider is not ready");
+            if (packed.isEmpty()) return null;
+        }
+        return DepthStorage.unpack(context, packed);
     }
 
     static Bundle commit(Context context, Bundle snapshot) {

@@ -28,6 +28,10 @@ public final class MediaReturnProbe {
         var type = Class.forName("dev.denver.dressroomadvanced.OneUi85FullscreenArt$Layer");
         var constructor = type.getDeclaredConstructor(android.view.ViewGroup.class);constructor.setAccessible(true);
         View layer = (View) constructor.newInstance(root);
+        View clockBlur = new View(context);
+        clockBlur.setTag("lock_clock_blur");
+        clockBlur.setAlpha(.7f);
+        root.addView(clockBlur);
         android.graphics.drawable.ColorDrawable background = new android.graphics.drawable.ColorDrawable(android.graphics.Color.RED);
         View card = new View(context);card.setBackground(background);
         Reflect.call(layer, "suppressBackground", card);
@@ -51,13 +55,18 @@ public final class MediaReturnProbe {
         Reflect.call(layer, "update", true);
         check(layer.getVisibility() == View.VISIBLE && Reflect.field(layer, "bitmap") == image,
                 "Native source removal drops art before the wallpaper fade");
+        check(clockBlur.getAlpha() == 0f, "Native clock blur covers the fullscreen artwork");
         fade.setCurrentFraction(.5f);Reflect.call(layer, "update", true);
-        check(layer.getAlpha() > .4f && layer.getAlpha() < .6f,
+        output.eraseColor(android.graphics.Color.TRANSPARENT);
+        Reflect.call(layer, "onDraw", new android.graphics.Canvas(output));
+        int fadedPixelAlpha = android.graphics.Color.alpha(output.getPixel(0, 0));
+        check(layer.getAlpha() == 1f && fadedPixelAlpha > 102 && fadedPixelAlpha < 153,
                 "Artwork ignores the native wallpaper return progress");
         check(Reflect.field(layer, "bitmap") == image, "Fade loses its retained native texture");
         fade.end();Reflect.call(layer, "update", true);
         check(layer.getVisibility() == View.INVISIBLE && Reflect.field(layer, "bitmap") == null,
                 "Completed wallpaper fade retains fullscreen art");
+        check(clockBlur.getAlpha() == .7f, "Native clock blur stays hidden after the cover closes");
         ValueAnimator opening = ValueAnimator.ofInt(0, 255);opening.setDuration(300);opening.start();
         opening.setCurrentFraction(.5f);Reflect.call(layer, "bindFade", opening, true);
         float openingAlpha = ((Number) Reflect.field(layer, "nativeAlpha")).floatValue();
@@ -65,15 +74,29 @@ public final class MediaReturnProbe {
         Reflect.call(layer, "sample", fade);
         check(((Number) Reflect.field(layer, "nativeAlpha")).floatValue() == openingAlpha,
                 "Old closing animator overwrites the reopened scene");
+        opening.cancel();
+        Reflect.set(layer, "bitmap", image);
+        Reflect.call(layer, "update", true);
+        check(layer.getVisibility() == View.VISIBLE && layer.getAlpha() == 1f
+                        && Reflect.field(layer, "bitmap") == image,
+                "Cancelled wallpaper fade leaves an expanded player with partial or missing art");
         opening.end();Reflect.call(layer, "bindFade", opening, true);
         check(((Number) Reflect.field(layer, "nativeAlpha")).floatValue() == 1,
                 "Already-completed opening loses its final opacity");
+        Reflect.set(layer, "bitmap", image);
+        Reflect.call(layer, "update", true);
+        check(layer.getVisibility() == View.VISIBLE && layer.getAlpha() == 1f
+                        && Reflect.field(layer, "bitmap") == image,
+                "Settled 8.5 player drops the cover when Samsung removes the artwork view");
         Reflect.call(layer, "bindFade", opening, false);
         check(Boolean.FALSE.equals(Reflect.field(layer, "nativeFade")),
                 "Missing replacement wallpaper animator retains stale opacity forever");
         Reflect.call(layer, "bindFade", opening, false);
         check(Boolean.FALSE.equals(Reflect.field(layer, "nativeFade")),
                 "Repeated native notification rebinds a stale expanded endpoint");
+        Reflect.call(layer, "update", true);
+        check(layer.getVisibility() == View.INVISIBLE && Reflect.field(layer, "bitmap") == null,
+                "8.5 collapse without a new wallpaper animator retains the cover");
         ValueAnimator closing = ValueAnimator.ofInt(255, 0);closing.setDuration(200);closing.start();
         Reflect.set(layer, "bitmap", image);Reflect.call(layer, "bindFade", closing, false);
         Reflect.call(layer, "update", false);

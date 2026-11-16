@@ -220,7 +220,8 @@ public final class SettingsProvider extends ContentProvider {
                 result.putBoolean("saved", true);
                 return result;
             }
-            if (!"read".equals(method) || extras == null)
+            boolean runtimeRead = "readRuntimeClock".equals(method);
+            if ((!runtimeRead && !"read".equals(method)) || extras == null)
                 throw new IllegalArgumentException("Unsupported operation");
             String legacy = "shadow_" + extras.getInt("type", -1) + "_" + extras.getInt("font", -1);
             String migrated =
@@ -242,11 +243,11 @@ public final class SettingsProvider extends ContentProvider {
                         throw new IllegalStateException("Could not migrate clock settings");
                 }
             }
-            if (saved == null) return null;
+            if (saved == null) return runtimeRead ? Bundle.EMPTY : null;
             JSONObject json = new JSONObject(saved);
             String scene = extras.getString("scene", "");
             String storedScene = json.optString("scene", "");
-            if (!SettingsScope.sceneMatches(scene, storedScene)) return null;
+            if (!SettingsScope.sceneMatches(scene, storedScene)) return runtimeRead ? Bundle.EMPTY : null;
             Bundle result = new Bundle();
             result.putInt("type", extras.getInt("type", -1));
             result.putInt("font", extras.getInt("font", -1));

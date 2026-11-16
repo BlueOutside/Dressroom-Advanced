@@ -197,10 +197,10 @@ final class UnlockBlur {
                                     .intercept(
                                             chain -> {
                                                 View view = (View) chain.getThisObject();
-                                                float requested =
-                                                        ((Number) chain.getArg(0)).floatValue();
-                                                if (!Boolean.TRUE.equals(writing.get())
-                                                        && clockAlpha.containsKey(view)) {
+                                                if (clockAlpha.containsKey(view)
+                                                        && !Boolean.TRUE.equals(writing.get())) {
+                                                    float requested =
+                                                            ((Number) chain.getArg(0)).floatValue();
                                                     clockAlpha.put(view, requested);
                                                     if (active)
                                                         return chain.proceed(
@@ -556,10 +556,10 @@ final class UnlockBlur {
         result.addPath(transformed);
     }
 
-    static void submitted(View view, boolean present) {
+    static void submitted(View view, boolean present, String surface) {
         if (!installed) return;
         heldClears.remove(view);
-        if (WidgetDepthBlur.isClockBlurHost(view)) {
+        if ("clockBlur".equals(surface)) {
             // A native clear can be immediately followed by a rebuild on the
             // same host. Retain its unfaded alpha across that handoff.
             if (!present) return;
@@ -573,11 +573,7 @@ final class UnlockBlur {
                         .getName()
                         .equals("com.android.internal.graphics.drawable.BackgroundBlurDrawable"))
             return;
-        boolean surface =
-                WidgetDepthBlur.isClockBlurHost(view)
-                        || WidgetDepthBlur.isBackground(view)
-                        || BlurAppearance.isNowBarCard(view);
-        if (surface && !backgrounds.containsKey(background))
+        if (surface != null && !backgrounds.containsKey(background))
             backgrounds.put(background, new Background(view, background.getAlpha()));
     }
 

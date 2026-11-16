@@ -30,7 +30,10 @@ final class ClockTransitionBinding {
             };
 
     static ClockTransitionBinding of(Class<?> type) {
-        return bindings.get(type);
+        for (Class<?> base = type; base != null; base = base.getSuperclass())
+            if (base.getName().equals("com.samsung.android.uniform.widget.clock.AbsClockView"))
+                return bindings.get(base);
+        throw new IllegalStateException("Clock transition owner unavailable: " + type.getName());
     }
 
     static ClockTransitionBinding of(Object clock) {
@@ -38,10 +41,6 @@ final class ClockTransitionBinding {
     }
 
     private ClockTransitionBinding(Class<?> base) throws ReflectiveOperationException {
-        while (!base.getName().equals("com.samsung.android.uniform.widget.clock.AbsClockView")) {
-            base = base.getSuperclass();
-            if (base == null) throw new ClassNotFoundException("Clock transition owner");
-        }
         ClassLoader loader = base.getClassLoader();
         String baseDesc = DexSignatures.descriptor(base);
         transition = findTransition(base);

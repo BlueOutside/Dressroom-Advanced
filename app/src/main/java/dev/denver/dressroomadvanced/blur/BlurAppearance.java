@@ -161,26 +161,47 @@ final class BlurAppearance {
         }
     }
 
-    static Object submit(View view, Object submitted, Object nativeInfo) {
+    static Object nativeRequest(View view) {
+        Submission value = submissions.get(view);
+        return value == null ? null : value.nativeInfo;
+    }
+
+    static void submitClockRequest(View view, Object request) {
+        if (setter == null) return;
+        try {
+            setter.invoke(view, request);
+        } catch (ReflectiveOperationException | RuntimeException error) {
+            DressroomModule.note("8.5 clock blur restore unavailable", error);
+        }
+    }
+
+    static Object submit(View view, Object submitted, Object nativeInfo, String surface) {
         if (setter == null) return submitted;
         try {
-            String surface = surface(view);
             if (surface == null) {
                 submissions.remove(view);
                 return submitted;
             }
             if (nativeInfo == null) submissions.remove(view);
-            else submissions.put(view, new Submission(
-                    nativeInfo, surface, view.getWidth(), view.getHeight()));
+            else {
+                Submission previous = submissions.get(view);
+                int width = view.getWidth(), height = view.getHeight();
+                if (previous == null || previous.nativeInfo != nativeInfo
+                        || !previous.surface.equals(surface)
+                        || previous.width != width || previous.height != height) {
+                    submissions.put(view, new Submission(nativeInfo, surface, width, height));
+                }
+            }
             if (submitted == null || reducedTransparency(view.getContext())
                     || systemBlurDisabled(view.getContext())) return submitted;
             int backend = mode.getInt(submitted);
             if (backend == 0 && !windowBlur(view.getContext()) && !hasWindowDrawable(view))
                 return submitted;
-            Bundle b = previews.get(ScreenIdentity.current());
+            int screen = ScreenIdentity.current();
+            Bundle b = previews.get(screen);
             if (b == null) {
                 b = RuntimeExtras.get(view.getContext());
-                committed.put(ScreenIdentity.current(), new Bundle(b));
+                if (!committed.containsKey(screen)) committed.put(screen, new Bundle(b));
             }
             String profile = surface;
             if (surface.equals("widgetBlur") && backend == 0
@@ -284,8 +305,13 @@ final class BlurAppearance {
     }
 
     private static String surface(View view) {
-        if (WidgetDepthBlur.isClockBlurHost(view)) return "clockBlur";
-        if (WidgetDepthBlur.isBackground(view)) return "widgetBlur";
+        return surface(view, WidgetDepthBlur.isClockBlurHost(view), WidgetDepthBlur.isBackground(view));
+    }
+
+    static String surface(View view, boolean clock, boolean widget) {
+        if (view instanceof OneUi85FullscreenArt.BannerBlur) return null;
+        if (clock) return "clockBlur";
+        if (widget) return "widgetBlur";
         return isNowBarCard(view) ? "nowBarBlur" : null;
     }
 
