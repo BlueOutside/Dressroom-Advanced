@@ -541,6 +541,11 @@ final class MediaClockContrast {
         obtainSamples(image, image.getGenerationId(), null, null, null);
     }
 
+    static ArtworkSamples requestSamples(Bitmap image) {
+        if (image == null || image.isRecycled()) return null;
+        return obtainSamples(image, image.getGenerationId(), null, null, null);
+    }
+
     private static ArtworkSamples obtainSamples(
             Bitmap image, int generation, ViewGroup root, RectF destination, View overlay) {
         SampleEntry existing;
@@ -627,6 +632,7 @@ final class MediaClockContrast {
     }
 
     private static void clearPendingFor(Bitmap image, int generation) {
+        MediaStatusBarContrast.clearPendingFor(image, generation);
         if (pendingSamples.isEmpty()) return;
         for (var entry : new ArrayList<>(pendingSamples.entrySet())) {
             ViewGroup root = entry.getKey();
@@ -640,7 +646,9 @@ final class MediaClockContrast {
     }
 
     private static void onSamplesReady(Bitmap image, int generation, ArtworkSamples computed) {
-        if (pendingSamples.isEmpty() || image == null || image.isRecycled()) return;
+        if (image == null || image.isRecycled()) return;
+        MediaStatusBarContrast.onSamplesReady(image, generation, computed);
+        if (pendingSamples.isEmpty()) return;
         for (var entry : new ArrayList<>(pendingSamples.entrySet())) {
             ViewGroup root = entry.getKey();
             PendingSample pending = entry.getValue();

@@ -163,6 +163,14 @@ final class ArtworkBlurFilter {
 
     static final float TOP_SOFT_RADIUS_DP = 36f;
     static final float TOP_MEDIUM_RADIUS_DP = 105f;
+    static final int TOP_CROP_PAD_PX = 20;
+
+    static int topCropHeight(int cacheHeight, float localEnd, int padPx) {
+        if (cacheHeight <= 0 || !Float.isFinite(localEnd) || localEnd <= 0f) return 0;
+        int needed = (int) Math.ceil(localEnd) + Math.max(0, padPx);
+        int quantized = ((needed + 15) / 16) * 16;
+        return Math.max(1, Math.min(cacheHeight, quantized));
+    }
 
     static ArtworkBlurFilter fullscreen(View owner) {
         return tinted(owner, 300f);
@@ -230,42 +238,62 @@ final class ArtworkBlurFilter {
             final ArtworkBlurFilter filter;
             int revision = -1;
 
-            Tier(String filteredName, String cachedName, ArtworkBlurFilter filter) {
+            Tier(
+                    String filteredName,
+                    String cachedName,
+                    ArtworkBlurFilter filter,
+                    boolean useCacheLayer) {
                 this.filtered = new RenderNode(filteredName);
-                this.cached = new RenderNode(cachedName);
-                this.cached.setUseCompositingLayer(true, null);
+                this.cached = useCacheLayer ? new RenderNode(cachedName) : null;
+                if (this.cached != null) this.cached.setUseCompositingLayer(true, null);
                 this.filter = filter;
             }
 
             RenderNode ensure(
                     RenderNode source, int viewportWidth, int viewportHeight, int sourceRevision) {
-                int width = source.getWidth(), height = source.getHeight();
+                return ensureCropped(
+                        source, viewportWidth, viewportHeight, sourceRevision, source.getHeight());
+            }
+
+            RenderNode ensureCropped(
+                    RenderNode source,
+                    int viewportWidth,
+                    int viewportHeight,
+                    int sourceRevision,
+                    int maxHeight) {
+                int width = source.getWidth();
+                int sourceHeight = source.getHeight();
+                int height = Math.max(1, Math.min(sourceHeight, maxHeight));
                 if (revision != sourceRevision
                         || !filtered.hasDisplayList()
                         || filtered.getWidth() != width
                         || filtered.getHeight() != height
-                        || !cached.hasDisplayList()
-                        || cached.getWidth() != width
-                        || cached.getHeight() != height) {
-                    float radiusScale = cacheScale(viewportWidth, viewportHeight, width, height);
+                        || (cached != null
+                                && (!cached.hasDisplayList()
+                                        || cached.getWidth() != width
+                                        || cached.getHeight() != height))) {
+                    float radiusScale =
+                            cacheScale(viewportWidth, viewportHeight, width, sourceHeight);
                     filter.resize(filtered, width, height, radiusScale);
                     filtered.setPosition(0, 0, width, height);
                     Canvas record = filtered.beginRecording();
                     record.drawRenderNode(source);
                     filter.finishRecording(filtered, record);
 
-                    cached.setPosition(0, 0, width, height);
-                    Canvas cachedRecord = cached.beginRecording();
-                    cachedRecord.drawRenderNode(filtered);
-                    cached.endRecording();
+                    if (cached != null) {
+                        cached.setPosition(0, 0, width, height);
+                        Canvas cachedRecord = cached.beginRecording();
+                        cachedRecord.drawRenderNode(filtered);
+                        cached.endRecording();
+                    }
                     revision = sourceRevision;
                 }
-                return cached;
+                return cached != null ? cached : filtered;
             }
 
             void discard() {
                 filtered.discardDisplayList();
-                cached.discardDisplayList();
+                if (cached != null) cached.discardDisplayList();
                 revision = -1;
             }
 
@@ -281,7 +309,8 @@ final class ArtworkBlurFilter {
                     new Tier(
                             "Fullscreen media blur",
                             "Fullscreen media blur cache",
-                            fullscreen(owner));
+                            fullscreen(owner),
+                            true);
             fadedBand.setUseCompositingLayer(true, null);
             topBand.setUseCompositingLayer(true, null);
             bandFadePaint.setBlendMode(BlendMode.DST_IN);
@@ -329,26 +358,30 @@ final class ArtworkBlurFilter {
             return controlsTier.ensure(source, viewportWidth, viewportHeight, revision);
         }
 
-        private RenderNode ensureTopSoft() {
+        private RenderNode ensureTopSoft(int cropHeight) {
             if (topSoftTier == null) {
                 topSoftTier =
                         new Tier(
                                 "Fullscreen media top soft blur",
-                                "Fullscreen media top soft blur cache",
-                                topSoft(owner));
+                                null,
+                                topSoft(owner),
+                                false);
             }
-            return topSoftTier.ensure(source, viewportWidth, viewportHeight, revision);
+            return topSoftTier.ensureCropped(
+                    source, viewportWidth, viewportHeight, revision, cropHeight);
         }
 
-        private RenderNode ensureTopMedium() {
+        private RenderNode ensureTopMedium(int cropHeight) {
             if (topMediumTier == null) {
                 topMediumTier =
                         new Tier(
                                 "Fullscreen media top medium blur",
-                                "Fullscreen media top medium blur cache",
-                                topMedium(owner));
+                                null,
+                                topMedium(owner),
+                                false);
             }
-            return topMediumTier.ensure(source, viewportWidth, viewportHeight, revision);
+            return topMediumTier.ensureCropped(
+                    source, viewportWidth, viewportHeight, revision, cropHeight);
         }
 
         void draw(Canvas canvas, RectF destination) {
@@ -433,20 +466,21 @@ final class ArtworkBlurFilter {
                     || !hasBlurred()) {
                 return;
             }
-            RenderNode softNode = ensureTopSoft();
-            RenderNode mediumNode = ensureTopMedium();
-            int w = softNode.getWidth(), h = softNode.getHeight();
-            if (w <= 0
-                    || h <= 0
-                    || !softNode.hasDisplayList()
-                    || !mediumNode.hasDisplayList()) {
-                return;
-            }
+            int w = cacheWidth, h = cacheHeight;
+            if (w <= 0 || h <= 0) return;
             float scaleY = h / destination.height();
             float localSolid = Math.max(0f, (solid - destination.top) * scaleY);
             float localEnd = Math.min(h, (end - destination.top) * scaleY);
             if (localEnd <= localSolid + 0.25f) return;
-            ensureTopBandNode(softNode, mediumNode, w, h, localSolid, localEnd);
+            int cropH = topCropHeight(h, localEnd, TOP_CROP_PAD_PX);
+            if (cropH <= 0) return;
+            RenderNode softNode = ensureTopSoft(cropH);
+            RenderNode mediumNode = ensureTopMedium(cropH);
+            if (!softNode.hasDisplayList() || !mediumNode.hasDisplayList()) {
+                return;
+            }
+            int bandH = Math.min(cropH, Math.max(1, (int) Math.ceil(localEnd) + 1));
+            ensureTopBandNode(softNode, mediumNode, w, bandH, localSolid, localEnd);
             topBand.setAlpha(Math.max(0f, Math.min(1f, opacity)));
             int coverClip = canvas.save();
             if (clip != null) canvas.clipPath(clip);
