@@ -326,6 +326,331 @@ public final class LiveCoverContractsTest {
                 "Null video and frozen frames should return null closing frame");
     }
 
+    private static void verifySpotifyCanvasUriAndTrackId() {
+        check(
+                "4uLU6hMCjMI75M1A2tKUQC"
+                        .equals(
+                                SpotifyCanvasResolver.extractSpotifyTrackId(
+                                        "spotify:track:4uLU6hMCjMI75M1A2tKUQC")),
+                "Should extract track ID from spotify:track URI");
+        check(
+                "4uLU6hMCjMI75M1A2tKUQC"
+                        .equals(
+                                SpotifyCanvasResolver.extractSpotifyTrackId(
+                                        "spotify://track/4uLU6hMCjMI75M1A2tKUQC")),
+                "Should extract track ID from spotify://track URI");
+        check(
+                "4uLU6hMCjMI75M1A2tKUQC"
+                        .equals(
+                                SpotifyCanvasResolver.extractSpotifyTrackId(
+                                        "https://open.spotify.com/track/4uLU6hMCjMI75M1A2tKUQC?si=xyz")),
+                "Should extract track ID from open.spotify.com URL");
+        check(
+                "4uLU6hMCjMI75M1A2tKUQC"
+                        .equals(
+                                SpotifyCanvasResolver.extractSpotifyTrackId(
+                                        "https://open.spotify.com/intl-fr/track/4uLU6hMCjMI75M1A2tKUQC")),
+                "Should extract track ID from localized open.spotify.com URL");
+        check(
+                SpotifyCanvasResolver.extractSpotifyTrackId("4uLU6hMCjMI75M1A2tKUQC").isEmpty()
+                        && SpotifyCanvasResolver.extractSpotifyTrackId("spotify:track:short")
+                                .isEmpty()
+                        && SpotifyCanvasResolver.extractSpotifyTrackId(
+                                        "spotify:album:4uLU6hMCjMI75M1A2tKUQC")
+                                .isEmpty(),
+                "Non-track or bare IDs must not match as Spotify track IDs");
+
+        check(
+                "https://canvaz.scdn.co/upload/artist/abc/video/def.cnvs.mp4"
+                        .equals(
+                                SpotifyCanvasResolver.unwrapCanvasMediaUri(
+                                        "content://com.spotify.music.provider/canvas/upload/artist/abc/video/def.cnvs.mp4?cdn=canvaz.scdn.co")),
+                "Should unwrap Spotify MediaSession content:// canvas URI");
+        check(
+                "https://canvaz.scdn.co/upload/artist/abc/video/def.cnvs.mp4"
+                        .equals(
+                                SpotifyCanvasResolver.unwrapCanvasMediaUri(
+                                        "content://com.spotify.music.provider/canvas/upload/artist/abc/video/def.cnvs.mp4")),
+                "Missing cdn query param should default to canvaz.scdn.co");
+        check(
+                "https://canvaz.scdn.co/upload/artist/abc/video/def.cnvs.mp4"
+                        .equals(
+                                SpotifyCanvasResolver.unwrapCanvasMediaUri(
+                                        "https://canvaz.scdn.co/upload/artist/abc/video/def.cnvs.mp4")),
+                "Direct https .cnvs.mp4 URI should pass through");
+        check(
+                SpotifyCanvasResolver.unwrapCanvasMediaUri(
+                                        "content://com.spotify.music.provider/canvas/upload/a.jpg?cdn=canvaz.scdn.co")
+                                .isEmpty()
+                        && SpotifyCanvasResolver.unwrapCanvasMediaUri(
+                                        "https://canvaz.scdn.co/upload/a.png")
+                                .isEmpty(),
+                "Still-image canvas URLs must be rejected");
+        check(
+                SpotifyCanvasResolver.unwrapCanvasMediaUri(
+                                        "content://com.spotify.music.provider/canvas/../secret.cnvs.mp4?cdn=canvaz.scdn.co")
+                                .isEmpty()
+                        && SpotifyCanvasResolver.unwrapCanvasMediaUri(
+                                        "content://com.spotify.music.provider/canvas/a/b.cnvs.mp4?cdn=evil.example.com")
+                                .isEmpty(),
+                "Traversal and untrusted CDN hosts must be rejected");
+    }
+
+    private static void verifySpotifyTotpAndAuthParsing() {
+        check(
+                "934995"
+                        .equals(
+                                SpotifyCanvasResolver.computeTotp(
+                                        SpotifyCanvasResolver.FALLBACK_TOTP_SECRET, 1760000000L)),
+                "TOTP calculation did not match golden vector");
+
+        SpotifyCanvasResolver.TotpSecret secret =
+                SpotifyCanvasResolver.parseLatestSecret(
+                        "{\"59\":[1,2,3],\"bad\":\"ignored\",\"0\":[9],\"61\":[44,55,47]}");
+        check(
+                secret != null
+                        && secret.version() == 61
+                        && Arrays.equals(secret.secretBytes(), new int[] {44, 55, 47}),
+                "parseLatestSecret should choose highest positive numeric version");
+        check(
+                SpotifyCanvasResolver.parseLatestSecret("{}") == null,
+                "Empty secret dictionary should return null");
+
+        check(
+                SpotifyCanvasResolver.parseServerTimeSeconds("{\"serverTime\":1760000123}")
+                        == 1760000123L,
+                "Failed to parse Spotify serverTime");
+        check(
+                SpotifyCanvasResolver.parseServerTimeSeconds("{\"bad\":1}") == -1L,
+                "Missing serverTime should return -1");
+
+        SpotifyCanvasResolver.AnonymousToken token =
+                SpotifyCanvasResolver.parseAnonymousToken(
+                        "{\"accessToken\":\"tok123\",\"accessTokenExpirationTimestampMs\":2000000,\"isAnonymous\":true}",
+                        1000000L);
+        check(
+                token != null
+                        && "tok123".equals(token.accessToken())
+                        && token.expiresAtMs() == 2000000L,
+                "Failed to parse anonymous Spotify token");
+        check(
+                SpotifyCanvasResolver.parseAnonymousToken("{\"isAnonymous\":true}", 1000000L)
+                        == null,
+                "Missing accessToken should return null");
+    }
+
+    private static void verifySpotifySearchAndCanvasParsing() {
+        String body =
+                SpotifyCanvasResolver.buildPathfinderSearchRequestBody(
+                        "The Weeknd \"Blinding\"\\Lights", 5);
+        check(
+                body.contains("\\\"Blinding\\\"\\\\Lights")
+                        && body.contains(SpotifyCanvasResolver.SEARCH_DESKTOP_HASH),
+                "Pathfinder search request body missing escaped term or persisted query hash");
+
+        String pathfinderJson =
+                "{\"data\":{\"searchV2\":{\"tracksV2\":{\"items\":["
+                        + "{\"item\":{\"data\":{\"id\":\"1111111111111111111111\","
+                        + "\"name\":\"Blinding Lights (Sped Up)\","
+                        + "\"albumOfTrack\":{\"name\":\"Blinding Lights - Single\"},"
+                        + "\"artists\":{\"items\":[{\"profile\":{\"name\":\"The Weeknd\"}}]}}}},"
+                        + "{\"item\":{\"data\":{\"id\":\"2222222222222222222222\","
+                        + "\"name\":\"Alone Again\","
+                        + "\"albumOfTrack\":{\"name\":\"After Hours\"},"
+                        + "\"artists\":{\"items\":[{\"profile\":{\"name\":\"The Weeknd\"}}]}}}},"
+                        + "{\"item\":{\"data\":{\"id\":\"3333333333333333333333\","
+                        + "\"name\":\"Blinding Lights\","
+                        + "\"albumOfTrack\":{\"name\":\"After Hours\"},"
+                        + "\"artists\":{\"items\":[{\"profile\":{\"name\":\"The Weeknd\"}}]}}}},"
+                        + "{\"item\":{\"data\":{\"uri\":\"spotify:track:3333333333333333333333\","
+                        + "\"name\":\"Blinding Lights\","
+                        + "\"albumOfTrack\":{\"name\":\"After Hours (Deluxe)\"},"
+                        + "\"artists\":{\"items\":[{\"profile\":{\"name\":\"The Weeknd\"}}]}}}},"
+                        + "{\"item\":{\"data\":{\"id\":\"4444444444444444444444\","
+                        + "\"name\":\"Blinding Lights - Chromatics Remix\","
+                        + "\"albumOfTrack\":{\"name\":\"After Hours (Remix)\"},"
+                        + "\"artists\":{\"items\":[{\"profile\":{\"name\":\"The Weeknd\"}}]}}}}"
+                        + "]}}}}";
+        var query =
+                new AnimatedCoverProvider.TrackQuery(
+                        "The Weeknd", "Blinding Lights", "After Hours", "pkg", "", 1080);
+        List<SpotifyCanvasResolver.TrackCandidate> candidates =
+                SpotifyCanvasResolver.parseSearchTrackCandidates(pathfinderJson, query);
+        check(
+                candidates.size() == 3
+                        && "3333333333333333333333".equals(candidates.get(0).trackId()),
+                "Expected exact original track ranked first and duplicate/wrong song excluded");
+        for (SpotifyCanvasResolver.TrackCandidate candidate : candidates) {
+            check(
+                    !"2222222222222222222222".equals(candidate.trackId()),
+                    "Same-album different song must be rejected in per-track Canvas search");
+        }
+
+        String canvasJson =
+                "{\"canvasesList\":["
+                        + "{\"id\":\"img1\",\"canvasUrl\":\"https://canvaz.scdn.co/upload/still.jpg\",\"trackUri\":\"spotify:track:3333333333333333333333\"},"
+                        + "{\"id\":\"cnv99\",\"canvasUrl\":\"https://canvaz.scdn.co/upload/artist/x/video/loop.cnvs.mp4\",\"trackUri\":\"spotify:track:3333333333333333333333\"}"
+                        + "]}";
+        SpotifyCanvasResolver.CanvasVideo parsedCanvas =
+                SpotifyCanvasResolver.parseCanvasResponse(canvasJson);
+        check(
+                parsedCanvas != null
+                        && "cnv99".equals(parsedCanvas.canvasId())
+                        && "https://canvaz.scdn.co/upload/artist/x/video/loop.cnvs.mp4"
+                                .equals(parsedCanvas.videoUrl()),
+                "parseCanvasResponse should skip image URLs and extract .cnvs.mp4");
+        check(
+                SpotifyCanvasResolver.parseCanvasResponse("{\"canvasesList\":[]}") == null,
+                "Empty canvasesList should return null");
+
+        var remixQuery =
+                new AnimatedCoverProvider.TrackQuery(
+                        "The Weeknd", "Blinding Lights (Remix)", "After Hours", "pkg", "", 1080);
+        check(
+                !SpotifyCanvasResolver.trackCacheKey(query)
+                        .equals(SpotifyCanvasResolver.trackCacheKey(remixQuery)),
+                "Spotify trackCacheKey should distinguish variant versions such as Remix");
+    }
+
+    private static void verifyMultiProviderPolicyAndCacheIsolation() throws IOException {
+        check(
+                LiveCoverController.clampSource(-1) == LiveCoverController.SOURCE_SPOTIFY_FIRST
+                        && LiveCoverController.clampSource(4)
+                                == LiveCoverController.SOURCE_SPOTIFY_FIRST
+                        && LiveCoverController.clampSource(LiveCoverController.SOURCE_APPLE_ONLY)
+                                == LiveCoverController.SOURCE_APPLE_ONLY,
+                "clampSource bounds check failed");
+
+        check(
+                List.of("spotify_canvas", "apple_music")
+                        .equals(
+                                LiveCoverController.providersForSource(
+                                                LiveCoverController.SOURCE_SPOTIFY_FIRST)
+                                        .stream()
+                                        .map(AnimatedCoverProvider::id)
+                                        .toList()),
+                "SOURCE_SPOTIFY_FIRST provider order mismatch");
+        check(
+                List.of("apple_music", "spotify_canvas")
+                        .equals(
+                                LiveCoverController.providersForSource(
+                                                LiveCoverController.SOURCE_APPLE_FIRST)
+                                        .stream()
+                                        .map(AnimatedCoverProvider::id)
+                                        .toList()),
+                "SOURCE_APPLE_FIRST provider order mismatch");
+        check(
+                List.of("spotify_canvas")
+                        .equals(
+                                LiveCoverController.providersForSource(
+                                                LiveCoverController.SOURCE_SPOTIFY_ONLY)
+                                        .stream()
+                                        .map(AnimatedCoverProvider::id)
+                                        .toList()),
+                "SOURCE_SPOTIFY_ONLY provider order mismatch");
+        check(
+                List.of("apple_music")
+                        .equals(
+                                LiveCoverController.providersForSource(
+                                                LiveCoverController.SOURCE_APPLE_ONLY)
+                                        .stream()
+                                        .map(AnimatedCoverProvider::id)
+                                        .toList()),
+                "SOURCE_APPLE_ONLY provider order mismatch");
+
+        String albumKey = "album|the weeknd|after hours";
+        check(
+                !LiveCoverController.canReuseAlbumAsset(
+                        LiveCoverController.SOURCE_SPOTIFY_FIRST, "apple_music", albumKey, albumKey),
+                "SOURCE_SPOTIFY_FIRST must never reuse previous track cover on album switch");
+        check(
+                !LiveCoverController.canReuseAlbumAsset(
+                        LiveCoverController.SOURCE_SPOTIFY_ONLY,
+                        "spotify_canvas",
+                        albumKey,
+                        albumKey),
+                "SOURCE_SPOTIFY_ONLY must never reuse previous track cover");
+        check(
+                LiveCoverController.canReuseAlbumAsset(
+                                LiveCoverController.SOURCE_APPLE_FIRST,
+                                "apple_music",
+                                albumKey,
+                                albumKey)
+                        && !LiveCoverController.canReuseAlbumAsset(
+                                LiveCoverController.SOURCE_APPLE_FIRST,
+                                "spotify_canvas",
+                                albumKey,
+                                albumKey),
+                "SOURCE_APPLE_FIRST should reuse album cover only when active asset is Apple Music");
+        check(
+                LiveCoverController.canReuseAlbumAsset(
+                        LiveCoverController.SOURCE_APPLE_ONLY, "apple_music", albumKey, albumKey),
+                "SOURCE_APPLE_ONLY should reuse album cover across same-album tracks");
+
+        var t1 =
+                new AnimatedCoverProvider.TrackQuery(
+                        "The Weeknd", "Blinding Lights", "After Hours", "pkg", "", 1080);
+        var t2 =
+                new AnimatedCoverProvider.TrackQuery(
+                        "The Weeknd", "Alone Again", "After Hours", "pkg", "", 1080);
+        check(
+                !LiveCoverController.requestFlightKey(t1, LiveCoverController.SOURCE_SPOTIFY_FIRST, true)
+                        .equals(
+                                LiveCoverController.requestFlightKey(
+                                        t2, LiveCoverController.SOURCE_SPOTIFY_FIRST, true)),
+                "Same-album tracks must have distinct flight keys when Spotify Canvas is enabled");
+        check(
+                !LiveCoverController.requestFlightKey(t1, LiveCoverController.SOURCE_APPLE_FIRST, true)
+                        .equals(
+                                LiveCoverController.requestFlightKey(
+                                        t2, LiveCoverController.SOURCE_APPLE_FIRST, true)),
+                "SOURCE_APPLE_FIRST must keep distinct flight keys for Spotify fallback");
+        check(
+                !LiveCoverController.requestFlightKey(t1, LiveCoverController.SOURCE_SPOTIFY_ONLY, true)
+                        .equals(
+                                LiveCoverController.requestFlightKey(
+                                        t2, LiveCoverController.SOURCE_SPOTIFY_ONLY, true)),
+                "SOURCE_SPOTIFY_ONLY must keep distinct flight keys");
+        check(
+                LiveCoverController.requestFlightKey(t1, LiveCoverController.SOURCE_APPLE_ONLY, true)
+                        .equals(
+                                LiveCoverController.requestFlightKey(
+                                        t2, LiveCoverController.SOURCE_APPLE_ONLY, true)),
+                "SOURCE_APPLE_ONLY should deduplicate in-flight requests per album");
+
+        Path tempDir = Files.createTempDirectory("dressroom-provider-isolation-test");
+        try {
+            AnimatedCoverCache cache = new AnimatedCoverCache(tempDir.toFile());
+            byte[] dummy = new byte[4096];
+            File tmpApple = cache.createTempFile();
+            Files.write(tmpApple.toPath(), dummy);
+            cache.commitAsset(
+                    AppleMusicAnimatedCoverProvider.PROVIDER_ID,
+                    "apple_music:1",
+                    tmpApple,
+                    "https://x/a.mp4",
+                    664,
+                    886,
+                    true);
+            String appleTrackAlias = AppleMusicAnimatedCoverProvider.PROVIDER_ID + "|" + t1.normalizedTrackKey();
+            String spotifyTrackAlias = SpotifyCanvasResolver.trackCacheKey(t1);
+            cache.putAlias(appleTrackAlias, "apple_music:1");
+            cache.markNegative(spotifyTrackAlias);
+            check(
+                    cache.getByAlias(appleTrackAlias) != null
+                            && cache.getByAlias(spotifyTrackAlias) == null
+                            && !cache.isNegative(appleTrackAlias)
+                            && cache.isNegative(spotifyTrackAlias),
+                    "Provider-namespaced cache aliases and negative entries must stay isolated");
+        } finally {
+            try (var walk = Files.walk(tempDir)) {
+                for (Path path : walk.sorted(Comparator.reverseOrder()).toList()) {
+                    Files.deleteIfExists(path);
+                }
+            }
+        }
+    }
+
     public static void main(String[] args) throws Exception {
         verifyLatestCoverRequests();
         verifyHtmlEditorialVideoExtraction();
@@ -334,6 +659,10 @@ public final class LiveCoverContractsTest {
         verifyCenterCropTransformMath();
         verifyDiskCacheLruAndNegativeTtl();
         verifyTrackNormalizationAndPreferences();
+        verifySpotifyCanvasUriAndTrackId();
+        verifySpotifyTotpAndAuthParsing();
+        verifySpotifySearchAndCanvasParsing();
+        verifyMultiProviderPolicyAndCacheIsolation();
         verifyBlurCaptureAndClosingPolicies();
         System.out.println("Live album cover contracts: " + checks + " checks passed");
     }

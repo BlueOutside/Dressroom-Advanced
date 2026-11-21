@@ -6,7 +6,7 @@
     "Constructors, method signatures, enum values and behavioral contracts",
     "Resource names matched by traversal rather than getIdentifier literals"
   ],
-  "sourceFiles": 217,
+  "sourceFiles": 219,
   "entries": [
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/DressroomModule.java",
@@ -2152,25 +2152,25 @@
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/media/LiveCoverController.java",
-      "line": 678,
+      "line": 688,
       "kind": "class",
       "target": "android.graphics.TextureLayer"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/media/LiveCoverController.java",
-      "line": 679,
+      "line": 689,
       "kind": "class",
       "target": "android.graphics.RecordingCanvas"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/media/LiveCoverController.java",
-      "line": 680,
+      "line": 690,
       "kind": "declared-method",
       "target": "getTextureLayer"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/media/LiveCoverController.java",
-      "line": 683,
+      "line": 693,
       "kind": "declared-method",
       "target": "drawTextureLayer"
     },
@@ -2230,7 +2230,7 @@
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/media/MediaArtworkUncap.java",
-      "line": 383,
+      "line": 396,
       "kind": "declared-method",
       "target": "getBitmap"
     },
@@ -3070,19 +3070,19 @@
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/widget/WidgetPanel.java",
-      "line": 919,
+      "line": 933,
       "kind": "class",
       "target": "androidx.appcompat.widget.SeslSeekBar$OnSeekBarChangeListener"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/widget/WidgetPanel.java",
-      "line": 984,
+      "line": 998,
       "kind": "resource",
       "target": "clock_panel_item_divider"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/widget/WidgetPanel.java",
-      "line": 1025,
+      "line": 1039,
       "kind": "resource",
       "target": "clock_panel_layout"
     },

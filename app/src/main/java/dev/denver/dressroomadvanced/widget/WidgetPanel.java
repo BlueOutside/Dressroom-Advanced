@@ -537,8 +537,22 @@ final class WidgetPanel {
         extraToggle(b, "Full-screen album artwork", "fullscreenArt");
         if (b.getBoolean("fullscreenArt")) {
             extraToggle(b, "Live animated artwork", LiveCoverController.KEY);
-            note("Uses motion covers from music catalogs when available.");
+            note("Uses per-track Spotify Canvas and Apple Music motion covers when available.");
             if (b.getBoolean(LiveCoverController.KEY)) {
+                choice(
+                        "Artwork source",
+                        new String[] {
+                            "Spotify Canvas, then Apple Music",
+                            "Apple Music, then Spotify Canvas",
+                            "Spotify Canvas only",
+                            "Apple Music only"
+                        },
+                        LiveCoverController.clampSource(
+                                b.getInt(
+                                        LiveCoverController.SOURCE,
+                                        LiveCoverController.SOURCE_SPOTIFY_FIRST)),
+                        (next, value) -> next.putInt(LiveCoverController.SOURCE, value),
+                        false);
                 boolean wifiOnly = b.getBoolean(LiveCoverController.WIFI_ONLY, true);
                 toggle(
                         "Only download on Wi-Fi",
