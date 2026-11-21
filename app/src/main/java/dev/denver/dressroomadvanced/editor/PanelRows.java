@@ -1,9 +1,16 @@
 package dev.denver.dressroomadvanced;
 
+import android.animation.AnimatorInflater;
+import android.animation.AnimatorSet;
+import android.animation.ObjectAnimator;
+import android.animation.StateListAnimator;
+import android.animation.TimeInterpolator;
 import android.content.Context;
 import android.content.res.ColorStateList;
+import android.content.res.Resources;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.RippleDrawable;
 import android.text.SpannableString;
@@ -13,10 +20,18 @@ import android.text.style.RelativeSizeSpan;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.ViewGroup;
+import android.view.animation.LinearInterpolator;
+import android.view.animation.PathInterpolator;
 import android.widget.TextView;
+
+import java.lang.reflect.Constructor;
+import java.util.WeakHashMap;
 
 /** Shared spacing and text hierarchy for rows inside Samsung's editor panels. */
 final class PanelRows {
+    private static final Object MISSING_RECOIL = new Object();
+    private static final WeakHashMap<ClassLoader, Object> recoilConstructors = new WeakHashMap<>();
+
     private PanelRows() {}
 
     static int color(Context context, int attribute) {
@@ -25,7 +40,7 @@ final class PanelRows {
         return value.resourceId == 0 ? value.data : context.getColor(value.resourceId);
     }
 
-    private static int dp(Context context, int value) {
+    static int dp(Context context, int value) {
         return Math.round(value * context.getResources().getDisplayMetrics().density);
     }
 
@@ -112,6 +127,139 @@ final class PanelRows {
         view.setPaddingRelative(dp(context, 16), dp(context, 12), dp(context, 16), dp(context, 12));
         view.setClickable(true);
         view.setFocusable(true);
+        buttonAccessibility(view, false);
+        int foreground = color(context, android.R.attr.textColorPrimary);
+        view.setBackground(glassBackground(context, foreground, 0x10000000, 0x18000000, 0x20000000));
+        applyRecoilAnimator(view, true);
+        if (view.getLayoutParams() instanceof ViewGroup.MarginLayoutParams margins) {
+            margins.topMargin = dp(context, 6);
+            margins.bottomMargin = dp(context, 6);
+            view.setLayoutParams(margins);
+        }
+        actionText(view, title, summary);
+    }
+
+    static void tabButton(TextView view, boolean selected) {
+        Context context = view.getContext();
+        int foreground = color(context, android.R.attr.textColorPrimary);
+        int secondary = color(context, android.R.attr.textColorSecondary);
+        view.setMinHeight(dp(context, 40));
+        view.setMinimumHeight(dp(context, 40));
+        view.setPaddingRelative(dp(context, 10), dp(context, 8), dp(context, 10), dp(context, 8));
+        view.setGravity(Gravity.CENTER);
+        view.setSingleLine(true);
+        view.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        view.setAllCaps(false);
+        view.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        view.setTypeface(Typeface.DEFAULT, selected ? Typeface.BOLD : Typeface.NORMAL);
+        view.setTextColor(selected ? foreground : secondary);
+        view.setSelected(selected);
+        view.setClickable(true);
+        view.setFocusable(true);
+        view.setBackground(
+                glassBackground(
+                        context,
+                        foreground,
+                        selected ? 0x24000000 : 0x0D000000,
+                        selected ? 0x40000000 : 0x18000000,
+                        selected ? 0x28000000 : 0x20000000));
+        applyRecoilAnimator(view, false);
+        buttonAccessibility(view, true);
+    }
+
+    private static Drawable glassBackground(
+            Context context, int foreground, int fillAlpha, int strokeAlpha, int rippleAlpha) {
+        GradientDrawable fill = new GradientDrawable();
+        fill.setCornerRadius(dp(context, 16));
+        fill.setColor((foreground & 0x00ffffff) | fillAlpha);
+        fill.setStroke(dp(context, 1), (foreground & 0x00ffffff) | strokeAlpha);
+        GradientDrawable mask = new GradientDrawable();
+        mask.setCornerRadius(dp(context, 16));
+        mask.setColor(Color.WHITE);
+        int recoilColor = (foreground & 0x00ffffff) | rippleAlpha;
+        Constructor<?> ctor = recoilConstructor(context.getClassLoader());
+        if (ctor != null) {
+            try {
+                return (Drawable) ctor.newInstance(recoilColor, new Drawable[] {fill}, mask);
+            } catch (ReflectiveOperationException | RuntimeException ignored) {
+            }
+        }
+        return new RippleDrawable(ColorStateList.valueOf(recoilColor), fill, mask);
+    }
+
+    private static Constructor<?> recoilConstructor(ClassLoader loader) {
+        if (loader == null) return null;
+        synchronized (recoilConstructors) {
+            if (recoilConstructors.containsKey(loader)) {
+                Object cached = recoilConstructors.get(loader);
+                return cached instanceof Constructor<?> ctor ? ctor : null;
+            }
+        }
+        Object resolved = MISSING_RECOIL;
+        try {
+            Class<?> type =
+                    Class.forName(
+                            "androidx.appcompat.graphics.drawable.SeslRecoilDrawable",
+                            false,
+                            loader);
+            Constructor<?> ctor =
+                    type.getConstructor(int.class, Drawable[].class, Drawable.class);
+            ctor.setAccessible(true);
+            resolved = ctor;
+        } catch (ReflectiveOperationException | LinkageError ignored) {
+        }
+        synchronized (recoilConstructors) {
+            Object existing = recoilConstructors.putIfAbsent(loader, resolved);
+            Object value = existing != null ? existing : resolved;
+            return value instanceof Constructor<?> ctor ? ctor : null;
+        }
+    }
+
+    private static void applyRecoilAnimator(TextView view, boolean card) {
+        if (view.getStateListAnimator() != null) return;
+        Context context = view.getContext();
+        Resources res = context.getResources();
+        String pkg = context.getPackageName();
+        int id =
+                card
+                        ? res.getIdentifier("sesl_recoil_card_selector", "animator", pkg)
+                        : res.getIdentifier("sesl_recoil_button_selector", "animator", pkg);
+        if (id != 0) {
+            try {
+                StateListAnimator nativeAnimator =
+                        AnimatorInflater.loadStateListAnimator(context, id);
+                if (nativeAnimator != null) {
+                    view.setStateListAnimator(nativeAnimator);
+                    return;
+                }
+            } catch (RuntimeException ignored) {
+            }
+        }
+        float scale = card ? 0.98f : 0.96f;
+        StateListAnimator animator = new StateListAnimator();
+        animator.addState(
+                new int[] {android.R.attr.state_pressed},
+                scaleAnimator(view, scale, 100L, new LinearInterpolator()));
+        animator.addState(
+                new int[0],
+                scaleAnimator(view, 1f, 350L, new PathInterpolator(0.22f, 0.25f, 0f, 1f)));
+        view.setStateListAnimator(animator);
+    }
+
+    private static AnimatorSet scaleAnimator(
+            TextView view, float target, long durationMs, TimeInterpolator interpolator) {
+        AnimatorSet set = new AnimatorSet();
+        ObjectAnimator sx = ObjectAnimator.ofFloat(view, "scaleX", target);
+        ObjectAnimator sy = ObjectAnimator.ofFloat(view, "scaleY", target);
+        sx.setDuration(durationMs);
+        sy.setDuration(durationMs);
+        sx.setInterpolator(interpolator);
+        sy.setInterpolator(interpolator);
+        set.playTogether(sx, sy);
+        return set;
+    }
+
+    private static void buttonAccessibility(TextView view, boolean selectable) {
         view.setAccessibilityDelegate(
                 new android.view.View.AccessibilityDelegate() {
                     @Override
@@ -120,22 +268,9 @@ final class PanelRows {
                             android.view.accessibility.AccessibilityNodeInfo info) {
                         super.onInitializeAccessibilityNodeInfo(host, info);
                         info.setClassName(android.widget.Button.class.getName());
+                        if (selectable) info.setSelected(host.isSelected());
                     }
                 });
-        int foreground = color(context, android.R.attr.textColorPrimary);
-        GradientDrawable fill = new GradientDrawable();
-        fill.setCornerRadius(dp(context, 16));
-        fill.setColor((foreground & 0x00ffffff) | 0x10000000);
-        fill.setStroke(dp(context, 1), (foreground & 0x00ffffff) | 0x18000000);
-        GradientDrawable mask = new GradientDrawable();
-        mask.setCornerRadius(dp(context, 16));
-        mask.setColor(Color.WHITE);
-        view.setBackground(
-                new RippleDrawable(
-                        ColorStateList.valueOf((foreground & 0x00ffffff) | 0x20000000),
-                        fill,
-                        mask));
-        actionText(view, title, summary);
     }
 
     static void actionText(TextView view, String title, String summary) {

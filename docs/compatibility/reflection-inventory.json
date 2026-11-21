@@ -634,55 +634,55 @@
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/NativeClockPanel.java",
-      "line": 1082,
+      "line": 1088,
       "kind": "class",
       "target": "com.samsung.android.clockpack.plugins.clock.extension."
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/NativeClockPanel.java",
-      "line": 1118,
+      "line": 1124,
       "kind": "class",
       "target": "kotlin.jvm.functions.Function1"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/NativeClockPanel.java",
-      "line": 1403,
+      "line": 1409,
       "kind": "class",
       "target": "com.samsung.android.clockpack.plugins.clock.ShadowStyle"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/NativeClockPanel.java",
-      "line": 1438,
+      "line": 1444,
       "kind": "class",
       "target": "com.samsung.android.lockscreen.editor.item.domain.entity.item.clock.ClockDataKt"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/NativeClockPanel.java",
-      "line": 1441,
+      "line": 1447,
       "kind": "declared-method",
       "target": "deepCopy"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/NativeClockPanel.java",
-      "line": 1730,
+      "line": 1736,
       "kind": "class",
       "target": "androidx.appcompat.widget.SeslSeekBar$OnSeekBarChangeListener"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/NativeClockPanel.java",
-      "line": 1834,
+      "line": 1836,
       "kind": "class",
       "target": "androidx.picker3.app.SeslColorPickerDialog$OnColorSetListener"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/NativeClockPanel.java",
-      "line": 1855,
+      "line": 1857,
       "kind": "class",
       "target": "androidx.picker3.app.SeslColorPickerDialog"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/NativeClockPanel.java",
-      "line": 1864,
+      "line": 1866,
       "kind": "class",
       "target": "androidx.picker3.widget.SeslColorPicker$OnColorChangedListener"
     },
@@ -2049,6 +2049,42 @@
       "target": "p"
     },
     {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/editor/NativeTabs.java",
+      "line": 110,
+      "kind": "resource",
+      "target": "clock_panel_unselected_tab_text_color"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/editor/NativeTabs.java",
+      "line": 115,
+      "kind": "resource",
+      "target": "clock_panel_selected_tab_text_color"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/editor/NativeTabs.java",
+      "line": 120,
+      "kind": "resource",
+      "target": "clock_panel_selected_tab_background_color"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/editor/PanelRows.java",
+      "line": 201,
+      "kind": "class",
+      "target": "androidx.appcompat.graphics.drawable.SeslRecoilDrawable"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/editor/PanelRows.java",
+      "line": 225,
+      "kind": "resource",
+      "target": "sesl_recoil_card_selector"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/editor/PanelRows.java",
+      "line": 226,
+      "kind": "resource",
+      "target": "sesl_recoil_button_selector"
+    },
+    {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/media/ArtworkBlurFilter.java",
       "line": 38,
       "kind": "class",
@@ -2860,19 +2896,19 @@
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/widget/WidgetPanel.java",
-      "line": 911,
+      "line": 919,
       "kind": "class",
       "target": "androidx.appcompat.widget.SeslSeekBar$OnSeekBarChangeListener"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/widget/WidgetPanel.java",
-      "line": 976,
+      "line": 984,
       "kind": "resource",
       "target": "clock_panel_item_divider"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/widget/WidgetPanel.java",
-      "line": 1017,
+      "line": 1025,
       "kind": "resource",
       "target": "clock_panel_layout"
     },

@@ -151,15 +151,20 @@ final class NativeClockPanel {
         advanced = new LinearLayout(context);
         advanced.setOrientation(LinearLayout.VERTICAL);
         advanced.setVisibility(View.GONE);
-        View pageStrip = nativeView(EditorBinding.Row.TABS);
-        advanced.addView(pageStrip);
+        int tabInset =
+                context.getResources()
+                        .getDimensionPixelSize(
+                                resource(
+                                        "clock_panel_horizontal_clock_list_horizontal_padding_start",
+                                        "dimen"));
         pages =
                 new PanelTabs(
-                        pageStrip,
-                        loader,
+                        context,
                         new String[] {"Layout", "Effects", "Depth", "Date"},
                         0,
+                        tabInset,
                         page -> scroll.post(() -> scroll.scrollTo(0, 0)));
+        advanced.addView(pages.strip());
         scroll.setVisibility(View.VISIBLE);
         advanced.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
         root.addView(advanced, new LinearLayout.LayoutParams(-1, panelHeight()));
@@ -183,6 +188,7 @@ final class NativeClockPanel {
                         });
         nativeTabs.listen(tabs, listener);
         nativeTabs.add(tabs, "Advanced", false);
+        nativeTabs.applyClockStyle(context, tabs, false);
         scroll.addOnAttachStateChangeListener(
                 new View.OnAttachStateChangeListener() {
                     @Override
@@ -1812,10 +1818,6 @@ final class NativeClockPanel {
     private TextView action(String title, String summary) {
         TextView row = label(title, 15, false);
         PanelRows.action(row, title, summary);
-        LinearLayout.LayoutParams layout = (LinearLayout.LayoutParams) row.getLayoutParams();
-        layout.topMargin = dp(4);
-        layout.bottomMargin = dp(8);
-        row.setLayoutParams(layout);
         return row;
     }
 

@@ -101,6 +101,42 @@ final class NativeTabs {
         style.invoke(strip);
     }
 
+    void applyClockStyle(
+            android.content.Context context, Object strip, boolean enableSubTab)
+            throws ReflectiveOperationException {
+        if (enableSubTab) subTabs(strip);
+        android.content.res.Resources res = context.getResources();
+        int unselectedId =
+                res.getIdentifier(
+                        "clock_panel_unselected_tab_text_color",
+                        "color",
+                        "com.samsung.android.app.dressroom");
+        int selectedId =
+                res.getIdentifier(
+                        "clock_panel_selected_tab_text_color",
+                        "color",
+                        "com.samsung.android.app.dressroom");
+        int indicatorId =
+                res.getIdentifier(
+                        "clock_panel_selected_tab_background_color",
+                        "color",
+                        "com.samsung.android.app.dressroom");
+        if (unselectedId != 0 && selectedId != 0) {
+            int unselected = context.getColor(unselectedId);
+            int selected = context.getColor(selectedId);
+            android.content.res.ColorStateList colors =
+                    new android.content.res.ColorStateList(
+                            new int[][] {
+                                new int[] {android.R.attr.state_selected}, new int[0]
+                            },
+                            new int[] {selected, unselected});
+            Reflect.call(strip, "setTabTextColors", colors);
+        }
+        if (indicatorId != 0) {
+            Reflect.call(strip, "setSelectedTabIndicatorColor", context.getColor(indicatorId));
+        }
+    }
+
     void listen(Object strip, Object callback) throws ReflectiveOperationException {
         listen.invoke(strip, callback);
     }
