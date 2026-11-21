@@ -180,8 +180,11 @@ final class PanelRows {
         Constructor<?> ctor = recoilConstructor(context.getClassLoader());
         if (ctor != null) {
             try {
+                mask.setTint(0);
+                mask.setTintBlendMode(android.graphics.BlendMode.SRC_IN);
                 return (Drawable) ctor.newInstance(recoilColor, new Drawable[] {fill}, mask);
             } catch (ReflectiveOperationException | RuntimeException ignored) {
+                mask.setTintList(null);
             }
         }
         return new RippleDrawable(ColorStateList.valueOf(recoilColor), fill, mask);
