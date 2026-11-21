@@ -3,7 +3,9 @@ package dev.denver.dressroomadvanced.lyrics;
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.content.Context;
+import android.graphics.Bitmap;
 import android.graphics.Color;
+import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.GradientDrawable;
 import android.media.MediaMetadata;
 import android.media.session.MediaController;
@@ -17,6 +19,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewParent;
 import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.TextView;
 
 import java.lang.ref.WeakReference;
@@ -98,6 +101,7 @@ public final class LyricsController {
         this.lyricsView = new LyricsView(context);
         this.lyricsView.setVisibility(View.GONE);
         this.lyricsView.setAlpha(0f);
+        this.lyricsView.setOnCloseListener(this::hideLyrics);
 
         // Seek when a user clicks a line
         this.lyricsView.setOnLyricSeekListener(timestampMs -> {
@@ -128,11 +132,11 @@ public final class LyricsController {
 
         this.toggleButton.setOnClickListener(v -> toggleLyricsVisibility());
 
-        // Attach toggle button to the top right of controlHost
+        // Attach toggle button to the top right of controlHost (positioned next to output switcher)
         FrameLayout.LayoutParams btnLp = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         btnLp.gravity = Gravity.TOP | Gravity.END;
-        btnLp.setMargins(0, dpToPx(10), dpToPx(16), 0);
+        btnLp.setMargins(0, dpToPx(10), dpToPx(56), 0);
         if (toggleButton.getParent() == null) {
             controlHost.addView(toggleButton, btnLp);
         }
@@ -205,8 +209,7 @@ public final class LyricsController {
         }
         FrameLayout.LayoutParams lyricsLp = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
-        int margin = dpToPx(6);
-        lyricsLp.setMargins(margin, margin, margin, margin);
+        lyricsLp.setMargins(0, 0, 0, 0);
         container.addView(lyricsView, lyricsLp);
         container.addOnLayoutChangeListener(layoutListener);
         android.util.Log.i("DressroomLyrics", "lyricsView attached to: " + container.getClass().getName());
@@ -242,10 +245,13 @@ public final class LyricsController {
         ViewGroup.LayoutParams lp = lyricsView.getLayoutParams();
         if (lp instanceof ViewGroup.MarginLayoutParams mlp) {
             int desiredBottomMargin = hostHeight;
-            if (mlp.bottomMargin != desiredBottomMargin || mlp.height != ViewGroup.LayoutParams.MATCH_PARENT) {
+            if (mlp.bottomMargin != desiredBottomMargin || mlp.height != ViewGroup.LayoutParams.MATCH_PARENT
+                    || mlp.leftMargin != 0 || mlp.rightMargin != 0 || mlp.topMargin != 0) {
                 mlp.width = ViewGroup.LayoutParams.MATCH_PARENT;
                 mlp.height = ViewGroup.LayoutParams.MATCH_PARENT;
+                mlp.leftMargin = 0;
                 mlp.topMargin = 0;
+                mlp.rightMargin = 0;
                 mlp.bottomMargin = desiredBottomMargin;
                 if (mlp instanceof FrameLayout.LayoutParams flp) {
                     flp.gravity = Gravity.TOP;
@@ -325,6 +331,7 @@ public final class LyricsController {
         GradientDrawable activeBg = new GradientDrawable();
         activeBg.setColor(Color.argb(200, 255, 255, 255));
         activeBg.setCornerRadius(dpToPx(12));
+        toggleButton.bringToFront();
         toggleButton.setBackground(activeBg);
         toggleButton.setTextColor(Color.BLACK);
 
@@ -390,6 +397,17 @@ public final class LyricsController {
 
         String trackKey = artist + "|" + title;
         android.util.Log.i("DressroomLyrics", "onTrackChanged: trackKey=" + trackKey);
+
+        Bitmap cover = null;
+        if (metadata != null) {
+            cover = metadata.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART);
+            if (cover == null) cover = metadata.getBitmap(MediaMetadata.METADATA_KEY_ART);
+        }
+        if (cover == null && albumArtRef.get() instanceof ImageView iv && iv.getDrawable() instanceof BitmapDrawable bd) {
+            cover = bd.getBitmap();
+        }
+        lyricsView.setTrackInfo(title, artist, cover);
+
         if (trackKey.equals(currentTrackKey)) return;
         currentTrackKey = trackKey;
 
