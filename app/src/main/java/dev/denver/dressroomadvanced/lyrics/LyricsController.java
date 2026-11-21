@@ -125,58 +125,61 @@ public final class LyricsController {
         // Toggle button: subtle pill with text "LYRICS"
         this.toggleButton = new TextView(context);
         this.toggleButton.setText("LYRICS");
-        this.toggleButton.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
+        this.toggleButton.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
         this.toggleButton.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
         this.toggleButton.setTextColor(Color.WHITE);
         this.toggleButton.setGravity(Gravity.CENTER);
 
-        int padH = dpToPx(8);
-        int padV = dpToPx(3);
+        int padH = dpToPx(12);
+        int padV = dpToPx(6);
         this.toggleButton.setPadding(padH, padV, padH, padV);
+        this.toggleButton.setMinimumWidth(dpToPx(64));
+        this.toggleButton.setMinimumHeight(dpToPx(36));
 
         GradientDrawable btnBg = new GradientDrawable();
         btnBg.setColor(Color.argb(120, 255, 255, 255));
-        btnBg.setCornerRadius(dpToPx(12));
+        btnBg.setCornerRadius(dpToPx(14));
         this.toggleButton.setBackground(btnBg);
-
-        View.OnTouchListener disallowTouchListener = (v, event) -> {
-            int action = event.getActionMasked();
-            if (action == MotionEvent.ACTION_DOWN) {
-                ViewParent p = v.getParent();
-                while (p != null) {
-                    p.requestDisallowInterceptTouchEvent(true);
-                    p = p.getParent();
-                }
-                return true;
-            } else if (action == MotionEvent.ACTION_UP) {
-                v.performClick();
-                toggleLyricsVisibility();
-                return true;
-            }
-            return false;
-        };
 
         this.toggleButton.setClickable(true);
         this.toggleButton.setFocusable(true);
         this.toggleButton.setElevation(100f);
+        this.toggleButton.setOnTouchListener((v, event) -> {
+            ViewParent p = v.getParent();
+            if (p != null) p.requestDisallowInterceptTouchEvent(true);
+            return false;
+        });
         this.toggleButton.setOnClickListener(v -> {
             android.util.Log.i("DressroomLyrics", "toggleButton clicked!");
             toggleLyricsVisibility();
         });
-        this.toggleButton.setOnTouchListener(disallowTouchListener);
 
         if (titleArtist != null) {
             titleArtist.setClickable(true);
+            titleArtist.setFocusable(true);
+            titleArtist.setOnTouchListener((v, event) -> {
+                ViewParent p = v.getParent();
+                if (p != null) p.requestDisallowInterceptTouchEvent(true);
+                return false;
+            });
             titleArtist.setOnClickListener(v -> {
                 android.util.Log.i("DressroomLyrics", "titleArtist clicked!");
                 toggleLyricsVisibility();
             });
-            titleArtist.setOnTouchListener(disallowTouchListener);
         }
 
         if (albumArt != null) {
             albumArt.setClickable(true);
-            albumArt.setOnTouchListener(disallowTouchListener);
+            albumArt.setFocusable(true);
+            albumArt.setOnTouchListener((v, event) -> {
+                ViewParent p = v.getParent();
+                if (p != null) p.requestDisallowInterceptTouchEvent(true);
+                return false;
+            });
+            albumArt.setOnClickListener(v -> {
+                android.util.Log.i("DressroomLyrics", "albumArt clicked!");
+                toggleLyricsVisibility();
+            });
         }
 
         // Register debug broadcast receiver so lyrics can be toggled via ADB
@@ -433,7 +436,15 @@ public final class LyricsController {
         lyricsView.setTextSizeSp(textSizeSp);
     }
 
+    private long lastToggleMs = 0L;
+
     public void toggleLyricsVisibility() {
+        long now = SystemClock.uptimeMillis();
+        if (now - lastToggleMs < 350L) {
+            android.util.Log.i("DressroomLyrics", "toggleLyricsVisibility debounced (" + (now - lastToggleMs) + "ms)");
+            return;
+        }
+        lastToggleMs = now;
         if (isVisible) {
             hideLyrics();
         } else {

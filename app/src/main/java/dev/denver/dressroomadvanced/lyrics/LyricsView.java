@@ -138,20 +138,15 @@ public final class LyricsView extends FrameLayout {
         closeBg.setShape(GradientDrawable.OVAL);
         closeBg.setColor(Color.argb(140, 0, 0, 0));
         headerCloseBtn.setBackground(closeBg);
+        headerCloseBtn.setClickable(true);
+        headerCloseBtn.setFocusable(true);
+        headerCloseBtn.setOnTouchListener((v, event) -> {
+            ViewParent p = v.getParent();
+            if (p != null) p.requestDisallowInterceptTouchEvent(true);
+            return false;
+        });
         headerCloseBtn.setOnClickListener(v -> {
             if (closeListener != null) closeListener.run();
-        });
-        headerCloseBtn.setOnTouchListener((v, event) -> {
-            if (event.getAction() == android.view.MotionEvent.ACTION_DOWN) {
-                ViewParent p = v.getParent();
-                if (p != null) p.requestDisallowInterceptTouchEvent(true);
-                return true;
-            } else if (event.getAction() == android.view.MotionEvent.ACTION_UP) {
-                v.performClick();
-                if (closeListener != null) closeListener.run();
-                return true;
-            }
-            return false;
         });
         headerLayout.addView(headerCloseBtn);
 
