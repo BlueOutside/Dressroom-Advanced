@@ -147,7 +147,20 @@ final class OneUi85FullscreenArt {
                 : "now_bar_media_album_art_vi_container");
         View image = find(item, "facewidget_album_art_background");
         if (frame == null || !(image instanceof ImageView art)) return;
-        sources.put(frame, new Source(item, frame, art, holder, binding));
+        Source source = new Source(item, frame, art, holder, binding);
+        sources.put(frame, source);
+        try {
+            View controlsView = source.controls.get();
+            if (controlsView instanceof ViewGroup hostGroup) {
+                var lyricsCtrl = dev.denver.dressroomadvanced.lyrics.LyricsController.bind(hostGroup);
+                if (lyricsCtrl != null) {
+                    boolean lyricsEnabled = RuntimeExtras.enabled(hostGroup.getContext(), "lockscreenLyrics");
+                    boolean autoScroll = RuntimeExtras.enabled(hostGroup.getContext(), "lyricsSyncedHighlight");
+                    int textSize = RuntimeExtras.get(hostGroup.getContext()).getInt("lyricsTextSize", 16);
+                    lyricsCtrl.setPreferences(lyricsEnabled, autoScroll, textSize);
+                }
+            }
+        } catch (Exception ignored) {}
         frame.addOnAttachStateChangeListener(
                 new View.OnAttachStateChangeListener() {
                     @Override

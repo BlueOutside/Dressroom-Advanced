@@ -38,6 +38,10 @@ final class LiveMediaTracker {
 
     private LiveMediaTracker() {}
 
+    public static MediaController activeController() {
+        return activeController;
+    }
+
     private static final MediaSessionManager.OnActiveSessionsChangedListener sessionsListener =
             controllers -> refreshFromControllers(controllers);
 

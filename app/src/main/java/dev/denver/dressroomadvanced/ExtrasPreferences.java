@@ -17,7 +17,7 @@ final class ExtrasPreferences {
     };
 
     static final String[] DEFAULT_TRUE_FLAGS = {
-        ClockInlineSeconds.KEY, LiveCoverController.WIFI_ONLY
+        ClockInlineSeconds.KEY, LiveCoverController.WIFI_ONLY, "lockscreenLyrics", "lyricsSyncedHighlight"
     };
 
     private ExtrasPreferences() {}
@@ -39,6 +39,9 @@ final class ExtrasPreferences {
         b.putInt(
                 "stackCards",
                 Math.max(3, Math.min(8, input == null ? 3 : input.getInt("stackCards", 3))));
+        b.putInt(
+                "lyricsTextSize",
+                Math.max(12, Math.min(28, input == null ? 16 : input.getInt("lyricsTextSize", 16))));
         b.putString("title", text(input == null ? null : input.getString("title"), 80));
         b.putString("message", text(input == null ? null : input.getString("message"), 180));
         BlurAppearanceSettings.clean(input, b);
@@ -103,6 +106,7 @@ final class ExtrasPreferences {
             for (String flag : FLAGS) json.put(flag, b.getBoolean(flag));
             for (String flag : DEFAULT_TRUE_FLAGS) json.put(flag, b.getBoolean(flag, true));
             json.put("stackCards", b.getInt("stackCards", 3));
+            json.put("lyricsTextSize", b.getInt("lyricsTextSize", 16));
             json.put("title", b.getString("title"));
             json.put("message", b.getString("message"));
             BlurAppearanceSettings.write(b, json);
@@ -118,6 +122,7 @@ final class ExtrasPreferences {
         for (String flag : FLAGS) b.putBoolean(flag, json.optBoolean(flag));
         for (String flag : DEFAULT_TRUE_FLAGS) b.putBoolean(flag, json.optBoolean(flag, true));
         b.putInt("stackCards", json.optInt("stackCards", 3));
+        b.putInt("lyricsTextSize", json.optInt("lyricsTextSize", 16));
         b.putString("title", json.optString("title"));
         b.putString("message", json.optString("message"));
         BlurAppearanceSettings.read(json, b);

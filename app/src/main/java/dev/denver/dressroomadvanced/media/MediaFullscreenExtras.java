@@ -1546,6 +1546,20 @@ final class MediaFullscreenExtras {
                                         } catch (Exception error) {
                                             owner.report("Media touch binding unavailable", error);
                                         }
+                                        try {
+                                            View controlHost = (View) OneUi9MediaBinding.read(contract.controlHost(), object);
+                                            if (controlHost instanceof ViewGroup hostGroup) {
+                                                var lyricsCtrl = dev.denver.dressroomadvanced.lyrics.LyricsController.bind(hostGroup);
+                                                if (lyricsCtrl != null) {
+                                                    boolean lyricsEnabled = RuntimeExtras.enabled(hostGroup.getContext(), "lockscreenLyrics");
+                                                    boolean autoScroll = RuntimeExtras.enabled(hostGroup.getContext(), "lyricsSyncedHighlight");
+                                                    int textSize = RuntimeExtras.get(hostGroup.getContext()).getInt("lyricsTextSize", 16);
+                                                    lyricsCtrl.setPreferences(lyricsEnabled, autoScroll, textSize);
+                                                }
+                                            }
+                                        } catch (Exception err) {
+                                            owner.report("Lyrics binding skipped", err);
+                                        }
                                         view.addOnLayoutChangeListener(
                                                 (v, l, t, r, b, ol, ot, or, ob) ->
                                                         markCandidatesDirty());
@@ -1594,6 +1608,7 @@ final class MediaFullscreenExtras {
                             backdrop.overlayLayer.invalidate();
                             ViewGroup root = backdrop.root.get();
                             if (root != null) root.invalidate();
+                            dev.denver.dressroomadvanced.lyrics.LyricsController.updateAllPreferences(backdrop.getContext());
                         }
                     }
                 });
