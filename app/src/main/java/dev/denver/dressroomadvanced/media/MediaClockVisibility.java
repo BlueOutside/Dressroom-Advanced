@@ -9,7 +9,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.WeakHashMap;
 
-final class MediaClockVisibility {
+public final class MediaClockVisibility {
     static final String KEY = "hideClockInExpandedPlayer";
     private static final String BLUR_TAG = "lock_clock_blur";
     private static final Map<View, Window> windows = new WeakHashMap<>();
@@ -18,6 +18,17 @@ final class MediaClockVisibility {
     private static final Set<View> dozing = Collections.newSetFromMap(new WeakHashMap<>());
     private static final Set<View> tracked = Collections.newSetFromMap(new WeakHashMap<>());
     private static boolean observing;
+    private static boolean lyricsMode;
+
+    public static void setLyricsMode(boolean active) {
+        if (lyricsMode == active) return;
+        lyricsMode = active;
+        refreshAll();
+    }
+
+    public static boolean isLyricsMode() {
+        return lyricsMode;
+    }
 
     private static final class Window {
         final Set<View> clocks = Collections.newSetFromMap(new WeakHashMap<>());
@@ -115,9 +126,10 @@ final class MediaClockVisibility {
     private static void refresh(View root, Window window) {
         View owner = window.owner.get();
         boolean wasHidden = window.hidden;
-        window.hidden = owner != null && !window.clocks.isEmpty()
-                && RuntimeExtras.enabled(root.getContext(), KEY)
-                && (!dozing.contains(owner) || WallpaperAod.shown(root.getContext()));
+        window.hidden = lyricsMode
+                || (owner != null && !window.clocks.isEmpty()
+                    && RuntimeExtras.enabled(root.getContext(), KEY)
+                    && (!dozing.contains(owner) || WallpaperAod.shown(root.getContext())));
         if (window.hidden) {
             View tagged = root.findViewWithTag(BLUR_TAG);
             if (tagged != null) window.blurHosts.add(tagged);

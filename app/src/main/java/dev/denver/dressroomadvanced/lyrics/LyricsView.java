@@ -13,6 +13,7 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewOutlineProvider;
+import android.view.ViewParent;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -46,7 +47,7 @@ public final class LyricsView extends FrameLayout {
     private int activeLineIndex = -1;
     private boolean isSynced = false;
     private boolean autoScrollEnabled = true;
-    private int textSizeSp = 22;
+    private int textSizeSp = 24;
     private boolean userInteracting = false;
     private long lastUserScrollMs = 0L;
 
@@ -60,14 +61,8 @@ public final class LyricsView extends FrameLayout {
     public LyricsView(Context context) {
         super(context);
 
-        // Apple Music style frosted backdrop: deep translucent tint over artwork
-        // Top corners rounded to match FaceWidgetMusicPage, bottom corners flat
-        GradientDrawable bg = new GradientDrawable();
-        bg.setColor(Color.argb(180, 12, 12, 18));
-        float topRadius = dpToPx(26);
-        bg.setCornerRadii(new float[]{topRadius, topRadius, topRadius, topRadius, 0, 0, 0, 0});
-        setBackground(bg);
-        setClipToOutline(true);
+        // Apple Music style: transparent container, floating directly above fullscreen blurred cover
+        setBackgroundColor(Color.TRANSPARENT);
 
         // Main vertical structure: Header bar on top, lyrics ScrollView below
         LinearLayout rootLayout = new LinearLayout(context);
@@ -78,8 +73,8 @@ public final class LyricsView extends FrameLayout {
         headerLayout = new LinearLayout(context);
         headerLayout.setOrientation(LinearLayout.HORIZONTAL);
         headerLayout.setGravity(Gravity.CENTER_VERTICAL);
-        int padH = dpToPx(22);
-        int padTop = dpToPx(20);
+        int padH = dpToPx(24);
+        int padTop = dpToPx(38);
         int padBottom = dpToPx(12);
         headerLayout.setPadding(padH, padTop, padH, padBottom);
 
@@ -111,7 +106,7 @@ public final class LyricsView extends FrameLayout {
 
         headerTitleView = new TextView(context);
         headerTitleView.setTextColor(Color.WHITE);
-        headerTitleView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        headerTitleView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17);
         headerTitleView.setTypeface(Typeface.DEFAULT_BOLD);
         headerTitleView.setSingleLine(true);
         headerTitleView.setEllipsize(TextUtils.TruncateAt.END);
@@ -119,8 +114,8 @@ public final class LyricsView extends FrameLayout {
         textCol.addView(headerTitleView);
 
         headerArtistView = new TextView(context);
-        headerArtistView.setTextColor(Color.argb(190, 255, 255, 255));
-        headerArtistView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        headerArtistView.setTextColor(Color.argb(200, 255, 255, 255));
+        headerArtistView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
         headerArtistView.setSingleLine(true);
         headerArtistView.setEllipsize(TextUtils.TruncateAt.END);
         headerArtistView.setShadowLayer(4f, 0f, 2f, Color.argb(160, 0, 0, 0));
@@ -136,15 +131,27 @@ public final class LyricsView extends FrameLayout {
         headerCloseBtn.setTypeface(Typeface.DEFAULT_BOLD);
         headerCloseBtn.setTextColor(Color.WHITE);
         headerCloseBtn.setGravity(Gravity.CENTER);
-        int closeSize = dpToPx(32);
+        int closeSize = dpToPx(36);
         LinearLayout.LayoutParams closeLp = new LinearLayout.LayoutParams(closeSize, closeSize);
         headerCloseBtn.setLayoutParams(closeLp);
         GradientDrawable closeBg = new GradientDrawable();
         closeBg.setShape(GradientDrawable.OVAL);
-        closeBg.setColor(Color.argb(90, 255, 255, 255));
+        closeBg.setColor(Color.argb(140, 0, 0, 0));
         headerCloseBtn.setBackground(closeBg);
         headerCloseBtn.setOnClickListener(v -> {
             if (closeListener != null) closeListener.run();
+        });
+        headerCloseBtn.setOnTouchListener((v, event) -> {
+            if (event.getAction() == android.view.MotionEvent.ACTION_DOWN) {
+                ViewParent p = v.getParent();
+                if (p != null) p.requestDisallowInterceptTouchEvent(true);
+                return true;
+            } else if (event.getAction() == android.view.MotionEvent.ACTION_UP) {
+                v.performClick();
+                if (closeListener != null) closeListener.run();
+                return true;
+            }
+            return false;
         });
         headerLayout.addView(headerCloseBtn);
 
@@ -182,6 +189,8 @@ public final class LyricsView extends FrameLayout {
             switch (event.getAction()) {
                 case android.view.MotionEvent.ACTION_DOWN:
                 case android.view.MotionEvent.ACTION_MOVE:
+                    ViewParent p = v.getParent();
+                    if (p != null) p.requestDisallowInterceptTouchEvent(true);
                     userInteracting = true;
                     lastUserScrollMs = System.currentTimeMillis();
                     break;
@@ -197,7 +206,7 @@ public final class LyricsView extends FrameLayout {
         linesContainer = new LinearLayout(context);
         linesContainer.setOrientation(LinearLayout.VERTICAL);
         linesContainer.setGravity(Gravity.START);
-        linesContainer.setPadding(dpToPx(24), dpToPx(30), dpToPx(24), dpToPx(130));
+        linesContainer.setPadding(dpToPx(28), dpToPx(20), dpToPx(28), dpToPx(130));
 
         plainLyricsView = new TextView(context);
         plainLyricsView.setTextColor(Color.WHITE);
@@ -220,9 +229,9 @@ public final class LyricsView extends FrameLayout {
         attributionView = new TextView(context);
         attributionView.setTextColor(Color.argb(130, 255, 255, 255));
         attributionView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
-        attributionView.setGravity(Gravity.END | Gravity.BOTTOM);
-        attributionView.setPadding(0, 0, dpToPx(14), dpToPx(6));
-        contentContainer.addView(attributionView, new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT, Gravity.END | Gravity.BOTTOM));
+        attributionView.setGravity(Gravity.START | Gravity.BOTTOM);
+        attributionView.setPadding(dpToPx(24), 0, 0, dpToPx(6));
+        contentContainer.addView(attributionView, new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT, Gravity.START | Gravity.BOTTOM));
     }
 
     public void setOnLyricSeekListener(OnLyricSeekListener listener) {
@@ -302,7 +311,7 @@ public final class LyricsView extends FrameLayout {
                 lineTv.setAlpha(0.32f);
                 lineTv.setLineSpacing(dpToPx(4), 1.15f);
                 lineTv.setGravity(Gravity.START);
-                lineTv.setPadding(0, linePadding, 0, linePadding);
+                lineTv.setPadding(dpToPx(4), linePadding, dpToPx(4), linePadding);
 
                 final int lineIndex = i;
                 lineTv.setOnClickListener(v -> {

@@ -2,6 +2,7 @@ package dev.denver.dressroomadvanced;
 
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
+import android.graphics.Color;
 import android.graphics.ColorFilter;
 import android.graphics.Matrix;
 import android.graphics.Paint;
@@ -16,6 +17,8 @@ import android.view.ViewParent;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 
+import dev.denver.dressroomadvanced.lyrics.LyricsController;
+
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -25,7 +28,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.WeakHashMap;
 
-final class MediaFullscreenExtras {
+public final class MediaFullscreenExtras {
     private static final Map<View, Art> art = new WeakHashMap<>();
     private static final Map<View, Art> collapsing = new WeakHashMap<>();
     private static final Map<View, Art> maskOwners = new WeakHashMap<>();
@@ -73,6 +76,28 @@ final class MediaFullscreenExtras {
             backdrop.candidatesDirty = true;
             backdrop.hiddenDirty = true;
         }
+    }
+
+    public static ViewGroup getNotificationShadeWindowView() {
+        for (ViewGroup root : hosts.keySet()) {
+            if (root != null) return root;
+        }
+        return null;
+    }
+
+    public static void invalidateAllHosts() {
+        Main.HANDLER.post(() -> {
+            for (WeakReference<Backdrop> ref : hosts.values()) {
+                Backdrop host = ref == null ? null : ref.get();
+                if (host != null) {
+                    host.candidatesDirty = true;
+                    host.blurDirty = true;
+                    host.invalidate();
+                    if (host.overlayLayer != null) host.overlayLayer.invalidate();
+                    if (host.returnLayer != null) host.returnLayer.invalidate();
+                }
+            }
+        });
     }
 
     static boolean shouldCloseAmbient(
@@ -495,6 +520,7 @@ final class MediaFullscreenExtras {
                         @Override
                         protected void onDraw(Canvas canvas) {
                             if (!showing || current == null || current.small.get() == null) return;
+                            if (LyricsController.isLyricsActive()) return;
                             if (returnBounds.isEmpty() && returnTitleBounds.isEmpty()) return;
                             int save = canvas.save();
                             returnClip.rewind();
@@ -1286,6 +1312,7 @@ final class MediaFullscreenExtras {
         }
 
         private void drawArtwork(Canvas canvas) {
+            if (LyricsController.isLyricsActive()) return;
             Bitmap image = bitmap;
             if (!showing || image == null || image.isRecycled() || destination.isEmpty()) return;
             float scale =
@@ -1398,12 +1425,48 @@ final class MediaFullscreenExtras {
                     * .5f * (1 - current.progress());
         }
 
+        private void ensureArtworkBlurRecorded(ViewGroup parent) {
+            if (artworkBlur == null) return;
+            if (destination.isEmpty() && getWidth() > 0 && getHeight() > 0) {
+                destination.set(0, 0, getWidth(), getHeight());
+            }
+            if (destination.isEmpty()) return;
+            if (blurDirty || liveBlurDirty || artworkBlur.needsRecording(getWidth(), getHeight())) {
+                Canvas record = artworkBlur.beginRecording(getWidth(), getHeight());
+                RectF blurRect = artworkBlur.sourceBounds();
+                boolean skipStatic = liveCover.coversBlurSource();
+                if (!skipStatic) drawBlurPixels(record, blurRect);
+                boolean drewLive =
+                        parent != null && liveCover.drawBlurFrames(
+                                record, parent, blurRect, destination, paint);
+                if (skipStatic && !drewLive) drawBlurPixels(record, blurRect);
+                artworkBlur.endRecording();
+                blurDirty = false;
+                liveBlurDirty = false;
+            }
+        }
+
         @Override
         protected void onDraw(Canvas canvas) {
+            if (LyricsController.isLyricsActive()) {
+                ViewGroup parent = root.get();
+                ensureArtworkBlurRecorded(parent);
+                if (artworkBlur != null && !destination.isEmpty()) {
+                    artworkBlur.draw(canvas, destination);
+                } else if (bitmap != null && !bitmap.isRecycled()) {
+                    if (destination.isEmpty()) destination.set(0, 0, getWidth(), getHeight());
+                    canvas.drawBitmap(bitmap, null, destination, paint);
+                }
+                canvas.drawColor(Color.argb(85, 0, 0, 0));
+                return;
+            }
             if (!liveCover.drawAmbient(canvas, root.get(), this)) drawArtwork(canvas);
         }
 
         private void drawForegroundBlur(Canvas canvas) {
+            if (LyricsController.isLyricsActive()) {
+                return;
+            }
             ViewGroup parent = root.get();
             boolean topBlurDisabled =
                     isTopBlurDisabled(
@@ -1445,21 +1508,7 @@ final class MediaFullscreenExtras {
                 boolean showClock = parent != null && !MediaClockVisibility.hidden(parent);
                 boolean glass = current != null && MediaClockContrast.hasGlass(parent);
                 if (band || topBand || glass || (showClock && (clockMaskDirty || !clockMask.isEmpty()))) {
-                    if (blurDirty
-                            || liveBlurDirty
-                            || artworkBlur.needsRecording(getWidth(), getHeight())) {
-                        Canvas record = artworkBlur.beginRecording(getWidth(), getHeight());
-                        RectF blurRect = artworkBlur.sourceBounds();
-                        boolean skipStatic = liveCover.coversBlurSource();
-                        if (!skipStatic) drawBlurPixels(record, blurRect);
-                        boolean drewLive =
-                                liveCover.drawBlurFrames(
-                                        record, parent, blurRect, destination, paint);
-                        if (skipStatic && !drewLive) drawBlurPixels(record, blurRect);
-                        artworkBlur.endRecording();
-                        blurDirty = false;
-                        liveBlurDirty = false;
-                    }
+                    ensureArtworkBlurRecorded(parent);
                     if (showClock && clockMaskDirty) {
                         clockMask.reset();
                         maskParent.reset();
