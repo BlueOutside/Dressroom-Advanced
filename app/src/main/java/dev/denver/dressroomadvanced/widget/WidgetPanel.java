@@ -566,9 +566,9 @@ final class WidgetPanel {
                     false);
             slider(
                     "Lyrics text size",
-                    12,
-                    24,
-                    b.getInt("lyricsTextSize", 16),
+                    18,
+                    36,
+                    b.getInt("lyricsTextSize", 28),
                     " sp",
                     (next, value) -> next.putInt("lyricsTextSize", value),
                     false);

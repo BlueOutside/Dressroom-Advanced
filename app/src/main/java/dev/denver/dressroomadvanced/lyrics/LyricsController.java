@@ -416,7 +416,7 @@ public final class LyricsController {
             boolean lyricsEnabled = (Boolean) enabledMethod.invoke(null, context, "lockscreenLyrics");
             boolean autoScroll = (Boolean) enabledMethod.invoke(null, context, "lyricsSyncedHighlight");
             android.os.Bundle b = (android.os.Bundle) getMethod.invoke(null, context);
-            int textSize = b != null ? b.getInt("lyricsTextSize", 16) : 16;
+            int textSize = b != null ? b.getInt("lyricsTextSize", 28) : 28;
             for (LyricsController ctrl : BOUND_CONTROLLERS.values()) {
                 if (ctrl != null) {
                     ctrl.setPreferences(lyricsEnabled, autoScroll, textSize);

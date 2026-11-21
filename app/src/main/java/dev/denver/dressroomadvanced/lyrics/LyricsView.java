@@ -47,7 +47,7 @@ public final class LyricsView extends FrameLayout {
     private int activeLineIndex = -1;
     private boolean isSynced = false;
     private boolean autoScrollEnabled = true;
-    private int textSizeSp = 24;
+    private int textSizeSp = 28;
     private boolean userInteracting = false;
     private long lastUserScrollMs = 0L;
 
@@ -206,11 +206,11 @@ public final class LyricsView extends FrameLayout {
         plainLyricsView = new TextView(context);
         plainLyricsView.setTextColor(Color.WHITE);
         plainLyricsView.setTextSize(TypedValue.COMPLEX_UNIT_SP, textSizeSp);
-        plainLyricsView.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD));
-        plainLyricsView.setShadowLayer(5f, 0f, 2f, Color.argb(180, 0, 0, 0));
-        plainLyricsView.setLineSpacing(dpToPx(8), 1.0f);
+        plainLyricsView.setTypeface(getLyricsTypeface());
+        plainLyricsView.setShadowLayer(8f, 0f, 3f, Color.argb(160, 0, 0, 0));
+        plainLyricsView.setLineSpacing(dpToPx(8), 1.25f);
         plainLyricsView.setGravity(Gravity.START);
-        plainLyricsView.setPadding(0, dpToPx(10), 0, dpToPx(10));
+        plainLyricsView.setPadding(0, dpToPx(16), 0, dpToPx(16));
         plainLyricsView.setVisibility(GONE);
 
         linesContainer.addView(plainLyricsView, new LinearLayout.LayoutParams(
@@ -259,7 +259,7 @@ public final class LyricsView extends FrameLayout {
     }
 
     public void setTextSizeSp(int sizeSp) {
-        this.textSizeSp = Math.max(14, Math.min(32, sizeSp));
+        this.textSizeSp = Math.max(16, Math.min(36, sizeSp));
         plainLyricsView.setTextSize(TypedValue.COMPLEX_UNIT_SP, textSizeSp);
         for (TextView tv : lineViews) {
             tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, textSizeSp);
@@ -294,17 +294,17 @@ public final class LyricsView extends FrameLayout {
             attributionView.setText(src);
 
             Context ctx = getContext();
-            int linePadding = dpToPx(13);
+            int linePadding = dpToPx(16);
             for (int i = 0; i < lyricLines.size(); i++) {
                 LyricLine line = lyricLines.get(i);
                 TextView lineTv = new TextView(ctx);
                 lineTv.setText(line.text());
                 lineTv.setTextSize(TypedValue.COMPLEX_UNIT_SP, textSizeSp);
-                lineTv.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD));
+                lineTv.setTypeface(getLyricsTypeface());
                 lineTv.setTextColor(Color.WHITE);
-                lineTv.setShadowLayer(6f, 0f, 2f, Color.argb(160, 0, 0, 0));
-                lineTv.setAlpha(0.32f);
-                lineTv.setLineSpacing(dpToPx(4), 1.15f);
+                lineTv.setShadowLayer(8f, 0f, 3f, Color.argb(160, 0, 0, 0));
+                lineTv.setAlpha(0.38f);
+                lineTv.setLineSpacing(dpToPx(6), 1.18f);
                 lineTv.setGravity(Gravity.START);
                 lineTv.setPadding(dpToPx(4), linePadding, dpToPx(4), linePadding);
 
@@ -349,12 +349,14 @@ public final class LyricsView extends FrameLayout {
         // Highlight active line and dim others
         if (oldIndex >= 0 && oldIndex < lineViews.size()) {
             TextView oldTv = lineViews.get(oldIndex);
-            oldTv.animate().alpha(0.35f).scaleX(1.0f).scaleY(1.0f).setDuration(220).start();
+            oldTv.animate().alpha(0.38f).scaleX(1.0f).scaleY(1.0f).setDuration(220).start();
         }
 
         if (newIndex >= 0 && newIndex < lineViews.size()) {
             TextView newTv = lineViews.get(newIndex);
-            newTv.animate().alpha(1.0f).scaleX(1.03f).scaleY(1.03f).setDuration(220).start();
+            newTv.setPivotX(0f);
+            newTv.setPivotY(newTv.getHeight() / 2f);
+            newTv.animate().alpha(1.0f).scaleX(1.04f).scaleY(1.04f).setDuration(220).start();
 
             // Auto-scroll so active line is positioned around 35% from the top (Apple Music style)
             long now = System.currentTimeMillis();
@@ -366,6 +368,14 @@ public final class LyricsView extends FrameLayout {
                     scrollView.smoothScrollTo(0, Math.max(0, targetY));
                 });
             }
+        }
+    }
+
+    private static Typeface getLyricsTypeface() {
+        if (android.os.Build.VERSION.SDK_INT >= 28) {
+            return Typeface.create(Typeface.SANS_SERIF, 800, false);
+        } else {
+            return Typeface.create("sans-serif", Typeface.BOLD);
         }
     }
 

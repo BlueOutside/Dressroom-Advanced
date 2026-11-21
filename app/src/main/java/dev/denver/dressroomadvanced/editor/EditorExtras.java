@@ -60,7 +60,7 @@ final class EditorExtras {
         if (!BlurAppearanceSettings.same(draft, saved)) return;
         if (!ExtrasPreferences.sameFlags(draft, saved)) return;
         if (draft.getInt("stackCards", 3) != saved.getInt("stackCards", 3)) return;
-        if (draft.getInt("lyricsTextSize", 16) != saved.getInt("lyricsTextSize", 16)) return;
+        if (draft.getInt("lyricsTextSize", 28) != saved.getInt("lyricsTextSize", 28)) return;
         if (!draft.getString("title", "").equals(saved.getString("title", ""))
                 || !draft.getString("message", "").equals(saved.getString("message", ""))) return;
         dirty = false;
@@ -81,7 +81,7 @@ final class EditorExtras {
         if (!BlurAppearanceSettings.same(a, b)) return false;
         if (!ExtrasPreferences.sameFlags(a, b)) return false;
         return a.getInt("stackCards", 3) == b.getInt("stackCards", 3)
-                && a.getInt("lyricsTextSize", 16) == b.getInt("lyricsTextSize", 16)
+                && a.getInt("lyricsTextSize", 28) == b.getInt("lyricsTextSize", 28)
                 && a.getString("title", "").equals(b.getString("title", ""))
                 && a.getString("message", "").equals(b.getString("message", ""));
     }

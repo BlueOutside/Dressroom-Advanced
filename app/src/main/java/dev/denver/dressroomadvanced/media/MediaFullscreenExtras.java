@@ -1621,7 +1621,7 @@ public final class MediaFullscreenExtras {
                                                 if (lyricsCtrl != null) {
                                                     boolean lyricsEnabled = RuntimeExtras.enabled(hostGroup.getContext(), "lockscreenLyrics");
                                                     boolean autoScroll = RuntimeExtras.enabled(hostGroup.getContext(), "lyricsSyncedHighlight");
-                                                    int textSize = RuntimeExtras.get(hostGroup.getContext()).getInt("lyricsTextSize", 16);
+                                                    int textSize = RuntimeExtras.get(hostGroup.getContext()).getInt("lyricsTextSize", 28);
                                                     lyricsCtrl.setPreferences(lyricsEnabled, autoScroll, textSize);
                                                 }
                                             }
