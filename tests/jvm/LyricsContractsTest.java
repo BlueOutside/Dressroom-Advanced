@@ -62,6 +62,13 @@ public final class LyricsContractsTest {
         check("Chorus line repeated twice".equals(lines.get(3).text()), "Chorus text mismatch");
         check("Chorus line repeated twice".equals(lines.get(4).text()), "Chorus text mismatch");
 
+        // Enhanced LRC with inline word-level tags
+        String enhancedLrc = "[01:51.01]<01:51.01>Never <01:51.35>gonna <01:51.65>make <01:52.05>you <01:52.42>cry";
+        List<LyricLine> enhancedLines = LrcParser.parse(enhancedLrc);
+        check(enhancedLines.size() == 1, "Expected 1 line from enhanced LRC");
+        check("Never gonna make you cry".equals(enhancedLines.get(0).text()),
+                "Enhanced LRC inline tags not cleanly stripped: " + enhancedLines.get(0).text());
+
         // Empty input
         check(LrcParser.parse(null).isEmpty(), "Null input must return empty list");
         check(LrcParser.parse("   \n\t").isEmpty(), "Blank input must return empty list");

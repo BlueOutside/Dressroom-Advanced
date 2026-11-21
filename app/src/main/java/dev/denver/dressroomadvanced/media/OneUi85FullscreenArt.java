@@ -151,8 +151,12 @@ final class OneUi85FullscreenArt {
         sources.put(frame, source);
         try {
             View controlsView = source.controls.get();
+            View titleArtist = find(item, "facewidget_music_page_title_artist_container");
+            if (titleArtist == null) titleArtist = find(item, "facewidget_music_page_title");
+            ViewGroup pageContainer = item instanceof ViewGroup itemGroup ? itemGroup : null;
             if (controlsView instanceof ViewGroup hostGroup) {
-                var lyricsCtrl = dev.denver.dressroomadvanced.lyrics.LyricsController.bind(hostGroup);
+                var lyricsCtrl = dev.denver.dressroomadvanced.lyrics.LyricsController.bind(
+                        pageContainer, hostGroup, titleArtist, frame);
                 if (lyricsCtrl != null) {
                     boolean lyricsEnabled = RuntimeExtras.enabled(hostGroup.getContext(), "lockscreenLyrics");
                     boolean autoScroll = RuntimeExtras.enabled(hostGroup.getContext(), "lyricsSyncedHighlight");

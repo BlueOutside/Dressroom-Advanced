@@ -50,8 +50,8 @@ public final class LyricsView extends FrameLayout {
 
         // Semi-translucent dark background with rounded corners for adaptive contrast
         GradientDrawable bg = new GradientDrawable();
-        bg.setColor(Color.argb(160, 12, 12, 18));
-        bg.setCornerRadius(dpToPx(20));
+        bg.setColor(Color.argb(195, 12, 12, 18));
+        bg.setCornerRadius(dpToPx(24));
         setBackground(bg);
         setClipToOutline(true);
 
@@ -247,6 +247,11 @@ public final class LyricsView extends FrameLayout {
                 });
             }
         }
+    }
+
+    @Override
+    public boolean onTouchEvent(android.view.MotionEvent event) {
+        return true;
     }
 
     private int dpToPx(int dp) {

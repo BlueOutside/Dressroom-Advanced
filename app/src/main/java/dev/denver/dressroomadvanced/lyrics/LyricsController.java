@@ -24,7 +24,8 @@ import java.util.WeakHashMap;
 
 /**
  * Controller linking SystemUI's active media session with {@link LyricsView}.
- * Drives the high-frequency playback position clock (~120ms) only when lyrics are visible.
+ * Positions the lyrics view over the track title and album art area while keeping
+ * bottom media controls (seekbar, play/pause, prev/next) unobstructed.
  */
 public final class LyricsController {
     private static final class Main {
@@ -32,7 +33,11 @@ public final class LyricsController {
     }
     private static final Map<View, LyricsController> BOUND_CONTROLLERS = new WeakHashMap<>();
 
-    private final WeakReference<ViewGroup> hostContainerRef;
+    private final WeakReference<ViewGroup> pageContainerRef;
+    private final WeakReference<ViewGroup> controlHostRef;
+    private final WeakReference<View> titleArtistRef;
+    private final WeakReference<View> albumArtRef;
+
     private final LyricsView lyricsView;
     private final TextView toggleButton;
     private final Context context;
@@ -40,6 +45,9 @@ public final class LyricsController {
     private boolean isVisible = false;
     private boolean trackingActive = false;
     private String currentTrackKey = "";
+
+    private final View.OnLayoutChangeListener layoutListener =
+            (v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> updateLyricsBounds();
 
     private final Runnable tickRunnable = new Runnable() {
         @Override
@@ -73,9 +81,13 @@ public final class LyricsController {
         }
     }
 
-    public LyricsController(ViewGroup hostContainer) {
-        this.hostContainerRef = new WeakReference<>(hostContainer);
-        this.context = hostContainer.getContext();
+    public LyricsController(ViewGroup pageContainer, ViewGroup controlHost, View titleArtist, View albumArt) {
+        ViewGroup targetPage = pageContainer != null ? pageContainer : controlHost;
+        this.pageContainerRef = new WeakReference<>(targetPage);
+        this.controlHostRef = new WeakReference<>(controlHost);
+        this.titleArtistRef = new WeakReference<>(titleArtist);
+        this.albumArtRef = new WeakReference<>(albumArt);
+        this.context = targetPage.getContext();
 
         this.lyricsView = new LyricsView(context);
         this.lyricsView.setVisibility(View.GONE);
@@ -94,35 +106,42 @@ public final class LyricsController {
         // Toggle button: subtle pill with text "LYRICS"
         this.toggleButton = new TextView(context);
         this.toggleButton.setText("LYRICS");
-        this.toggleButton.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        this.toggleButton.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
         this.toggleButton.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
         this.toggleButton.setTextColor(Color.WHITE);
         this.toggleButton.setGravity(Gravity.CENTER);
 
-        int padH = dpToPx(10);
-        int padV = dpToPx(5);
+        int padH = dpToPx(8);
+        int padV = dpToPx(3);
         this.toggleButton.setPadding(padH, padV, padH, padV);
 
         GradientDrawable btnBg = new GradientDrawable();
         btnBg.setColor(Color.argb(120, 255, 255, 255));
-        btnBg.setCornerRadius(dpToPx(14));
+        btnBg.setCornerRadius(dpToPx(12));
         this.toggleButton.setBackground(btnBg);
 
         this.toggleButton.setOnClickListener(v -> toggleLyricsVisibility());
 
-        // Layout parameters
-        FrameLayout.LayoutParams lyricsLp = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
-        int margin = dpToPx(8);
-        lyricsLp.setMargins(margin, margin, margin, margin);
-
+        // Attach toggle button to the top right of controlHost
         FrameLayout.LayoutParams btnLp = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         btnLp.gravity = Gravity.TOP | Gravity.END;
-        btnLp.setMargins(0, dpToPx(12), dpToPx(12), 0);
+        btnLp.setMargins(0, dpToPx(10), dpToPx(16), 0);
+        controlHost.addView(toggleButton, btnLp);
 
-        hostContainer.addView(lyricsView, lyricsLp);
-        hostContainer.addView(toggleButton, btnLp);
+        // Attach lyrics view to pageContainer (covering album art + titleArtist)
+        FrameLayout.LayoutParams lyricsLp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+        int margin = dpToPx(6);
+        lyricsLp.setMargins(margin, margin, margin, margin);
+        targetPage.addView(lyricsView, lyricsLp);
+
+        targetPage.addOnLayoutChangeListener(layoutListener);
+        if (controlHost != null && controlHost != targetPage) {
+            controlHost.addOnLayoutChangeListener(layoutListener);
+        }
+
+        updateLyricsBounds();
 
         // Listen for media track updates
         try {
@@ -138,13 +157,66 @@ public final class LyricsController {
     }
 
     public static LyricsController bind(ViewGroup container) {
-        if (container == null) return null;
-        LyricsController existing = BOUND_CONTROLLERS.get(container);
+        return bind(container, container, null, null);
+    }
+
+    public static LyricsController bind(ViewGroup pageContainer, ViewGroup controlHost, View titleArtist, View albumArt) {
+        ViewGroup target = controlHost != null ? controlHost : pageContainer;
+        if (target == null) return null;
+        LyricsController existing = BOUND_CONTROLLERS.get(target);
         if (existing != null) return existing;
 
-        LyricsController controller = new LyricsController(container);
-        BOUND_CONTROLLERS.put(container, controller);
+        LyricsController controller = new LyricsController(pageContainer, controlHost != null ? controlHost : pageContainer, titleArtist, albumArt);
+        BOUND_CONTROLLERS.put(target, controller);
         return controller;
+    }
+
+    private void updateLyricsBounds() {
+        ViewGroup page = pageContainerRef.get();
+        if (page == null) return;
+        View controlHost = controlHostRef.get();
+        View albumArt = albumArtRef.get();
+
+        int top = 0;
+        if (albumArt != null && albumArt.getParent() == page) {
+            top = albumArt.getTop();
+        } else if (albumArt != null) {
+            int[] artLoc = new int[2];
+            int[] pageLoc = new int[2];
+            albumArt.getLocationInWindow(artLoc);
+            page.getLocationInWindow(pageLoc);
+            top = Math.max(0, artLoc[1] - pageLoc[1]);
+        }
+
+        int bottom = page.getHeight();
+        if (controlHost != null && controlHost.getParent() == page) {
+            bottom = controlHost.getTop();
+        } else if (controlHost != null) {
+            int[] ctrlLoc = new int[2];
+            int[] pageLoc = new int[2];
+            controlHost.getLocationInWindow(ctrlLoc);
+            page.getLocationInWindow(pageLoc);
+            int relCtrlTop = ctrlLoc[1] - pageLoc[1];
+            if (relCtrlTop > top) {
+                bottom = relCtrlTop;
+            }
+        }
+
+        int h = bottom - top;
+        if (h > dpToPx(80)) {
+            ViewGroup.LayoutParams lp = lyricsView.getLayoutParams();
+            if (lp instanceof ViewGroup.MarginLayoutParams mlp) {
+                if (mlp.height != h || mlp.topMargin != top) {
+                    mlp.width = ViewGroup.LayoutParams.MATCH_PARENT;
+                    mlp.height = h;
+                    mlp.topMargin = top;
+                    if (mlp instanceof FrameLayout.LayoutParams flp) {
+                        flp.gravity = Gravity.TOP;
+                    }
+                    lyricsView.setLayoutParams(mlp);
+                }
+            }
+        }
     }
 
     public LyricsView lyricsView() {
@@ -191,6 +263,8 @@ public final class LyricsController {
     public void showLyrics() {
         if (isVisible) return;
         isVisible = true;
+        updateLyricsBounds();
+        lyricsView.bringToFront();
         lyricsView.setVisibility(View.VISIBLE);
         lyricsView.animate()
                 .alpha(1f)
@@ -198,9 +272,18 @@ public final class LyricsController {
                 .setListener(null)
                 .start();
 
+        View titleArtist = titleArtistRef.get();
+        if (titleArtist != null) {
+            titleArtist.animate().alpha(0f).setDuration(180).start();
+        }
+        View albumArt = albumArtRef.get();
+        if (albumArt != null) {
+            albumArt.animate().alpha(0.12f).setDuration(180).start();
+        }
+
         GradientDrawable activeBg = new GradientDrawable();
         activeBg.setColor(Color.argb(200, 255, 255, 255));
-        activeBg.setCornerRadius(dpToPx(14));
+        activeBg.setCornerRadius(dpToPx(12));
         toggleButton.setBackground(activeBg);
         toggleButton.setTextColor(Color.BLACK);
 
@@ -221,9 +304,18 @@ public final class LyricsController {
                 })
                 .start();
 
+        View titleArtist = titleArtistRef.get();
+        if (titleArtist != null) {
+            titleArtist.animate().alpha(1f).setDuration(200).start();
+        }
+        View albumArt = albumArtRef.get();
+        if (albumArt != null) {
+            albumArt.animate().alpha(1f).setDuration(200).start();
+        }
+
         GradientDrawable defaultBg = new GradientDrawable();
         defaultBg.setColor(Color.argb(120, 255, 255, 255));
-        defaultBg.setCornerRadius(dpToPx(14));
+        defaultBg.setCornerRadius(dpToPx(12));
         toggleButton.setBackground(defaultBg);
         toggleButton.setTextColor(Color.WHITE);
 

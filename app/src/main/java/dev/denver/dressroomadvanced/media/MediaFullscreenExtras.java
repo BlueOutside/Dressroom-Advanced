@@ -1548,8 +1548,20 @@ final class MediaFullscreenExtras {
                                         }
                                         try {
                                             View controlHost = (View) OneUi9MediaBinding.read(contract.controlHost(), object);
+                                            View titleArtist = (View) OneUi9MediaBinding.read(contract.titleArtist(), object);
+                                            ViewGroup pageContainer = null;
+                                            if (controlHost != null && controlHost.getParent() instanceof ViewGroup parentGroup) {
+                                                pageContainer = parentGroup;
+                                            } else if (view != null && view.getParent() instanceof ViewGroup parentGroup) {
+                                                pageContainer = parentGroup;
+                                            } else if (chain.getArg(1) instanceof ViewGroup itemGroup) {
+                                                pageContainer = itemGroup;
+                                            } else if (chain.getArg(2) instanceof ViewGroup pageGroup) {
+                                                pageContainer = pageGroup;
+                                            }
                                             if (controlHost instanceof ViewGroup hostGroup) {
-                                                var lyricsCtrl = dev.denver.dressroomadvanced.lyrics.LyricsController.bind(hostGroup);
+                                                var lyricsCtrl = dev.denver.dressroomadvanced.lyrics.LyricsController.bind(
+                                                        pageContainer, hostGroup, titleArtist, view);
                                                 if (lyricsCtrl != null) {
                                                     boolean lyricsEnabled = RuntimeExtras.enabled(hostGroup.getContext(), "lockscreenLyrics");
                                                     boolean autoScroll = RuntimeExtras.enabled(hostGroup.getContext(), "lyricsSyncedHighlight");

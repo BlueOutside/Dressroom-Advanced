@@ -12,6 +12,8 @@ import java.util.regex.Pattern;
 public final class LrcParser {
     private static final Pattern TIME_TAG_PATTERN =
             Pattern.compile("\\[(\\d{1,2}):(\\d{2})(?:[.:](\\d{1,3}))?\\]");
+    private static final Pattern INLINE_TAG_PATTERN =
+            Pattern.compile("<[^>]+>");
     private static final Pattern OFFSET_TAG_PATTERN =
             Pattern.compile("\\[offset:\\s*([+-]?\\d+)\\]", Pattern.CASE_INSENSITIVE);
 
@@ -66,8 +68,13 @@ public final class LrcParser {
 
             if (!timestamps.isEmpty()) {
                 String lyricText = trimmed.substring(lastTagEnd).trim();
-                for (long timestamp : timestamps) {
-                    result.add(new LyricLine(timestamp, lyricText));
+                // Strip enhanced-LRC word timestamps like <01:51.01>
+                lyricText = INLINE_TAG_PATTERN.matcher(lyricText).replaceAll("").trim();
+                lyricText = lyricText.replaceAll("\\s+", " ").trim();
+                if (!lyricText.isEmpty()) {
+                    for (long timestamp : timestamps) {
+                        result.add(new LyricLine(timestamp, lyricText));
+                    }
                 }
             }
         }
