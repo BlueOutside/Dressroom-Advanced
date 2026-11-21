@@ -59,10 +59,23 @@ public final class ClockInlineSecondsGeometryTest {
         float avail = 1080f - 96f;
         float expectedScale = avail / 1280f;
         check(near(wide.fitScale(), expectedScale, 1e-4f), "wide clock scales smoothly to fit");
+        check(near(ClockSecondsLayout.scaleYAt(wide, 1f), 1f, 1e-4f),
+                "moderately wide clock preserves full height while condensing horizontally");
         float finalWinLeft = 140f + wide.shiftX();
         float finalWinRight = finalWinLeft + wide.fitScale() * 1280f;
         check(finalWinLeft >= 48f - 1e-2f && finalWinRight <= 1032f + 1e-2f,
                 "scaled combined bounds stay inside safe screen margins");
+
+        ClockSecondsLayout.Plan extreme =
+                ClockSecondsLayout.computePlan(
+                        0f, 0f, 900f, 420f,
+                        900f, 0f, 540f, 1f,
+                        90f, 990f, 840f, 32f,
+                        Gravity.CENTER_HORIZONTAL, false, 60f);
+        float expectedExtremeY = extreme.fitScale() / 0.72f;
+        check(near(ClockSecondsLayout.scaleYAt(extreme, 1f), expectedExtremeY, 1e-4f)
+                        && ClockSecondsLayout.scaleYAt(extreme, 1f) < 1f,
+                "extreme narrow viewport gently scales height once horizontal condense passes 0.72");
 
         ClockSecondsLayout.Plan clippedViewport = ClockSecondsLayout.computePlan(
                 0f, 0f, 800f, 420f, 800f, 0f, 480f, 1f,
@@ -83,21 +96,24 @@ public final class ClockInlineSecondsGeometryTest {
                 "progress 0 never jumps near bezel");
 
         // 6. Lockstep affine transform agreement between timeGroup and ZeroFootprintHost at every progress.
-        for (float u : new float[] {0f, 0.25f, 0.5f, 0.75f, 1f}) {
-            float s = ClockSecondsLayout.scaleAt(wide, u);
-            float tgLeft = 24f;
-            float tgTop = 12f;
-            float xLocalInTg = 135f;
-            float yLocalInTg = 90f;
-            float xStage = tgLeft + xLocalInTg;
-            float yStage = tgTop + yLocalInTg;
+        for (ClockSecondsLayout.Plan p : new ClockSecondsLayout.Plan[] {wide, extreme}) {
+            for (float u : new float[] {0f, 0.25f, 0.5f, 0.75f, 1f}) {
+                float sx = ClockSecondsLayout.scaleAt(p, u);
+                float sy = ClockSecondsLayout.scaleYAt(p, u);
+                float tgLeft = 24f;
+                float tgTop = 12f;
+                float xLocalInTg = 135f;
+                float yLocalInTg = 90f;
+                float xStage = tgLeft + xLocalInTg;
+                float yStage = tgTop + yLocalInTg;
 
-            float fromTgX = tgLeft + ClockSecondsLayout.timeGroupTx(wide, u, tgLeft, 0f) + s * xLocalInTg;
-            float fromHostX = ClockSecondsLayout.hostTx(wide, u) + s * xStage;
-            float fromTgY = tgTop + ClockSecondsLayout.timeGroupTy(wide, u, tgTop, 0f) + s * yLocalInTg;
-            float fromHostY = ClockSecondsLayout.hostTy(wide, u) + s * yStage;
-            check(near(fromTgX, fromHostX, 1e-3f) && near(fromTgY, fromHostY, 1e-3f),
-                    "timeGroup and host stay in sub-pixel lockstep at u=" + u);
+                float fromTgX = tgLeft + ClockSecondsLayout.timeGroupTx(p, u, tgLeft, 0f) + sx * xLocalInTg;
+                float fromHostX = ClockSecondsLayout.hostTx(p, u) + sx * xStage;
+                float fromTgY = tgTop + ClockSecondsLayout.timeGroupTy(p, u, tgTop, 0f) + sy * yLocalInTg;
+                float fromHostY = ClockSecondsLayout.hostTy(p, u) + sy * yStage;
+                check(near(fromTgX, fromHostX, 1e-3f) && near(fromTgY, fromHostY, 1e-3f),
+                        "timeGroup and host stay in sub-pixel lockstep at u=" + u);
+            }
         }
 
         // 7. Directional motion blur: horizontal streak >> vertical blur, monotonic decay to 0 at rest.
