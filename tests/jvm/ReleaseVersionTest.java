@@ -152,6 +152,104 @@ public final class ReleaseVersionTest {
                 "10: null APK payloads are skipped cleanly");
     }
 
+    private static void verifyRootUpdaterContracts() {
+        check(
+                "'/data/user/0/dev.denver.dressroomadvanced/cache/updates/release.apk'"
+                        .equals(
+                                RootUpdater.shellQuote(
+                                        "/data/user/0/dev.denver.dressroomadvanced/cache/updates/release.apk")),
+                "plain path shellQuote");
+        check(
+                "'/tmp/a'\"'\"'b.apk'".equals(RootUpdater.shellQuote("/tmp/a'b.apk")),
+                "embedded single quote shellQuote");
+        for (String bad : new String[] {null, "a\nb", "a\0b", "a\rb"}) {
+            try {
+                RootUpdater.shellQuote(bad);
+                throw new AssertionError("shellQuote accepted invalid input");
+            } catch (IllegalArgumentException expected) {
+                checks++;
+            }
+        }
+
+        check(
+                "cat '/tmp/release.apk' | cmd package install -r -S 12345 -"
+                        .equals(RootUpdater.installCommand("/tmp/release.apk", 12345L)),
+                "installCommand format");
+        for (long badSize : new long[] {0L, -1L}) {
+            try {
+                RootUpdater.installCommand("/tmp/release.apk", badSize);
+                throw new AssertionError("installCommand accepted invalid size");
+            } catch (IllegalArgumentException expected) {
+                checks++;
+            }
+        }
+        try {
+            RootUpdater.installCommand("", 100L);
+            throw new AssertionError("installCommand accepted empty path");
+        } catch (IllegalArgumentException expected) {
+            checks++;
+        }
+
+        check(
+                RootUpdater.isRootOutput(
+                        new RootUpdater.CommandResult(0, "uid=0(root) gid=0(root)\n", false)),
+                "uid=0 passes root check");
+        check(
+                !RootUpdater.isRootOutput(
+                        new RootUpdater.CommandResult(1, "uid=0(root)\n", false)),
+                "non-zero exit fails root check");
+        check(
+                !RootUpdater.isRootOutput(
+                        new RootUpdater.CommandResult(0, "uid=0(root)\n", true)),
+                "timedOut fails root check");
+        check(
+                !RootUpdater.isRootOutput(
+                        new RootUpdater.CommandResult(0, "uid=1000(system)\n", false)),
+                "non-root uid fails root check");
+
+        check(
+                RootUpdater.isInstallSuccess(new RootUpdater.CommandResult(0, "Success\n", false)),
+                "Success passes install check");
+        check(
+                !RootUpdater.isInstallSuccess(
+                        new RootUpdater.CommandResult(0, "Failure [INSTALL_FAILED]\n", false)),
+                "Failure with exit 0 fails install check");
+        check(
+                !RootUpdater.isInstallSuccess(
+                        new RootUpdater.CommandResult(1, "Success\n", false)),
+                "non-zero exit fails install check");
+        check(
+                !RootUpdater.isInstallSuccess(
+                        new RootUpdater.CommandResult(0, "Success\n", true)),
+                "timedOut fails install check");
+
+        String relaunch = RootUpdater.relaunchCommand();
+        for (String proc : RootUpdater.HOOKED_PROCESSES) {
+            check(relaunch.contains("'" + proc + "'"), "relaunchCommand missing " + proc);
+        }
+        check(
+                relaunch.indexOf("com.samsung.android.app.dressroom")
+                        < relaunch.indexOf("com.android.systemui"),
+                "relaunchCommand kills dressroom before systemui");
+        check(
+                relaunch.contains("com.samsung.android.app.aodservice:provider"),
+                "relaunchCommand includes aodservice:provider");
+        check(relaunch.endsWith("; true"), "relaunchCommand ends with ; true");
+
+        check(
+                UpdateRepository.shouldRelaunchAfterInstall(2000L, 1000L),
+                "within relaunch window");
+        check(
+                UpdateRepository.shouldRelaunchAfterInstall(2000L, 2000L),
+                "exact relaunch boundary");
+        check(
+                !UpdateRepository.shouldRelaunchAfterInstall(2000L, 2001L),
+                "expired relaunch window");
+        check(!UpdateRepository.shouldRelaunchAfterInstall(0L, 1000L), "zero until fails");
+        check(!UpdateRepository.shouldRelaunchAfterInstall(-1L, 1000L), "negative until fails");
+        check(!UpdateRepository.shouldRelaunchAfterInstall(1000L, 0L), "zero now fails");
+    }
+
     public static void main(String[] args) {
         order("1.1.10", "1.1.9", 1);
         order("v1.2.0", "1.1.99", 1);
@@ -171,6 +269,7 @@ public final class ReleaseVersionTest {
             }
         }
         verifyPrereleaseSelection();
+        verifyRootUpdaterContracts();
         System.out.println("Release versions: " + checks + " checks passed");
     }
 }

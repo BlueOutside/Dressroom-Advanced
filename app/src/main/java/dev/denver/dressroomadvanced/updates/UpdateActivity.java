@@ -3,10 +3,14 @@ package dev.denver.dressroomadvanced;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.ClipData;
+import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
 import android.provider.Settings;
+import android.view.Window;
+import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
@@ -21,25 +25,40 @@ public final class UpdateActivity extends Activity {
     private volatile boolean cancelled;
     private AlertDialog dialog;
     private File ready;
+    private long targetVersionCode = -1L;
+    private boolean waiting;
 
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
+        Window window = getWindow();
+        if (window != null) {
+            window.setDimAmount(0f);
+            window.setNavigationBarContrastEnforced(false);
+            window.setStatusBarContrastEnforced(false);
+        }
         waiting = state != null && state.getBoolean("waiting");
+        targetVersionCode = state == null ? -1L : state.getLong("targetVersionCode", -1L);
         org.json.JSONObject release;
         try {
             release = UpdateRepository.authorized(this, getIntent().getStringExtra("token"));
         } catch (Exception error) {
-            finish();
+            closeHost();
             return;
         }
         if (state != null && state.getBoolean("ready")) {
-            ready = UpdateRepository.apk(this);
-            if (!ready.isFile()) {
-                error("The downloaded update is no longer available");
+            if (targetVersionCode > 0
+                    && UpdateRepository.installedVersionCode(this) >= targetVersionCode) {
+                closeHost();
                 return;
             }
-            if (!state.getBoolean("waiting")) install();
+            ready = UpdateRepository.apk(this);
+            if (!ready.isFile()) {
+                if (waiting) closeHost();
+                else error("The downloaded update is no longer available");
+                return;
+            }
+            if (!waiting) launchSystemInstaller();
             return;
         }
         int padding = Math.round(24 * getResources().getDisplayMetrics().density);
@@ -58,24 +77,19 @@ public final class UpdateActivity extends Activity {
                         .setView(content)
                         .setNegativeButton(
                                 "Cancel",
-                                (d, which) -> {
-                                    cancelled = true;
-                                    finish();
-                                })
+                                (d, which) -> cancelAndClose())
                         .setOnCancelListener(
-                                d -> {
-                                    cancelled = true;
-                                    finish();
-                                })
+                                d -> cancelAndClose())
                         .create();
         dialog.setCanceledOnTouchOutside(false);
         dialog.show();
+        Context appContext = getApplicationContext();
         worker.execute(
                 () -> {
                     try {
                         File file =
                                 UpdateRepository.download(
-                                        getApplicationContext(),
+                                        appContext,
                                         release,
                                         new UpdateRepository.Progress() {
                                             public boolean cancelled() {
@@ -92,13 +106,59 @@ public final class UpdateActivity extends Activity {
                                                         });
                                             }
                                         });
+                        if (cancelled || isDestroyed()) return;
+                        long targetCode = UpdateRepository.archiveVersionCode(appContext, file);
                         runOnUiThread(
                                 () -> {
                                     if (cancelled || isDestroyed()) return;
                                     ready = file;
-                                    dialog.dismiss();
-                                    install();
+                                    targetVersionCode = targetCode;
+                                    dialog.setTitle("Installing update");
+                                    progress.setIndeterminate(true);
+                                    percent.setText("Checking root access...");
                                 });
+                        boolean hasRoot = RootUpdater.hasRoot();
+                        if (cancelled || isDestroyed()) return;
+                        if (hasRoot) {
+                            UpdateRepository.markPendingRelaunch(appContext);
+                            runOnUiThread(
+                                    () -> {
+                                        if (cancelled || isDestroyed()) return;
+                                        dialog.setCancelable(false);
+                                        Button negative =
+                                                dialog.getButton(DialogInterface.BUTTON_NEGATIVE);
+                                        if (negative != null) negative.setEnabled(false);
+                                        percent.setText("Installing with root...");
+                                    });
+                            RootUpdater.CommandResult installResult = RootUpdater.installApk(file);
+                            if (RootUpdater.isInstallSuccess(installResult)) {
+                                runOnUiThread(
+                                        () -> {
+                                            if (!isDestroyed()) closeHost();
+                                        });
+                            } else {
+                                android.util.Log.w(
+                                        DressroomModule.TAG,
+                                        "Root install failed, falling back to package installer: exit="
+                                                + installResult.exitCode()
+                                                + ", timedOut="
+                                                + installResult.timedOut());
+                                runOnUiThread(
+                                        () -> {
+                                            if (cancelled || isDestroyed()) return;
+                                            dismissDialog();
+                                            launchSystemInstaller();
+                                        });
+                            }
+                        } else {
+                            UpdateRepository.clearPendingRelaunch(appContext);
+                            runOnUiThread(
+                                    () -> {
+                                        if (cancelled || isDestroyed()) return;
+                                        dismissDialog();
+                                        launchSystemInstaller();
+                                    });
+                        }
                     } catch (Exception error) {
                         runOnUiThread(
                                 () -> {
@@ -108,9 +168,13 @@ public final class UpdateActivity extends Activity {
                 });
     }
 
-    private boolean waiting;
+    private void cancelAndClose() {
+        cancelled = true;
+        UpdateRepository.clearPendingRelaunch(getApplicationContext());
+        closeHost();
+    }
 
-    private void install() {
+    private void launchSystemInstaller() {
         if (isFinishing() || isDestroyed()) return;
         if (ready == null || !ready.isFile()) {
             error("The downloaded update is no longer available");
@@ -145,29 +209,53 @@ public final class UpdateActivity extends Activity {
         super.onActivityResult(request, result, data);
         waiting = false;
         if (request == 1) {
-            if (getPackageManager().canRequestPackageInstalls()) install();
-            else error("Allow Dressroom Advanced to install updates, then try again.");
-        } else if (request == 2) finish();
+            if (getPackageManager().canRequestPackageInstalls()) {
+                launchSystemInstaller();
+            } else {
+                UpdateRepository.clearPendingRelaunch(getApplicationContext());
+                error("Allow Dressroom Advanced to install updates, then try again.");
+            }
+        } else if (request == 2) {
+            UpdateRepository.clearPendingRelaunch(getApplicationContext());
+            closeHost();
+        }
     }
 
     @Override
     protected void onSaveInstanceState(Bundle state) {
         state.putBoolean("ready", ready != null);
         state.putBoolean("waiting", waiting);
+        state.putLong("targetVersionCode", targetVersionCode);
         super.onSaveInstanceState(state);
     }
 
     @Override
     protected void onDestroy() {
         cancelled = true;
-        if (dialog != null) dialog.dismiss();
+        dismissDialog();
         super.onDestroy();
+    }
+
+    private void dismissDialog() {
+        if (dialog != null) {
+            try {
+                if (dialog.isShowing()) dialog.dismiss();
+            } catch (RuntimeException ignored) {
+            }
+            dialog = null;
+        }
+    }
+
+    private void closeHost() {
+        dismissDialog();
+        if (!isFinishing()) finishAndRemoveTask();
     }
 
     private void error(String message) {
         waiting = false;
+        UpdateRepository.clearPendingRelaunch(getApplicationContext());
         if (cancelled || isFinishing() || isDestroyed()) return;
-        if (dialog != null) dialog.dismiss();
+        dismissDialog();
         dialog =
                 new AlertDialog.Builder(this)
                         .setTitle("Update failed")
@@ -175,8 +263,8 @@ public final class UpdateActivity extends Activity {
                                 message == null
                                         ? "Could not download the update. Please try again later."
                                         : message)
-                        .setPositiveButton("OK", (d, which) -> finish())
-                        .setOnCancelListener(d -> finish())
+                        .setPositiveButton("OK", (d, which) -> closeHost())
+                        .setOnCancelListener(d -> closeHost())
                         .create();
         dialog.setCanceledOnTouchOutside(false);
         dialog.show();
