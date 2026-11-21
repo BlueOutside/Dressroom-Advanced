@@ -1010,13 +1010,11 @@ public final class DressroomModule extends XposedModule {
                                                 layoutClocks.put(
                                                         editorOrientation + ":" + editorScreen,
                                                         new android.os.Bundle(draftSettings));
-                                            if (draft != null
-                                                    && draft.getInt("type", -1) == type
-                                                    && draft.getInt("font", -1) == font)
-                                                DateEffects.preview(
-                                                        clock, this, draft.getBoolean("hideDate"));
                                             android.os.Bundle effects =
                                                     draft != null ? draft : saved;
+                                            EditorClockBox.bind(
+                                                    this, editorBinding, chain.getThisObject(), clock, data);
+                                            DateEffects.bindSettings(clock, effects);
                                             if (effects != null) {
                                                 float scale =
                                                         ((Number) Reflect.call(data, "getScale"))

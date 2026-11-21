@@ -1,12 +1,12 @@
 {
   "Jvm": [
     "FoldSupportTest", "FoldStateMonitorTest", "FontAxesTest", "BlurOpacityTest", "ChargingStateTest", "DeferredDiscoveryTest", "IdentityLocksTest",
-    "LatestDepthWorkTest", "LifecycleContractTest", "ReflectContractTest", "WidgetLayoutTest", "AdapterContractsTest", "NowBarStackContractsTest", "MediaContractsTest", "LiveCoverContractsTest", "DepthContractsTest", "DeferredRefreshTest", "DepthSourcePolicyTest", "WallpaperMotionTest", "CaptureInstanceStateTest", "ReleaseVersionTest", "BlurRetryStateTest", "MediaWallpaperBlurTest", "Mod9ExtrasContractsTest", "ClockInlineSecondsGeometryTest", "OneUi95ContractsTest"
+    "LatestDepthWorkTest", "LifecycleContractTest", "ReflectContractTest", "WidgetLayoutTest", "AdapterContractsTest", "NowBarStackContractsTest", "MediaContractsTest", "LiveCoverContractsTest", "DepthContractsTest", "DeferredRefreshTest", "DepthSourcePolicyTest", "WallpaperMotionTest", "CaptureInstanceStateTest", "ReleaseVersionTest", "BlurRetryStateTest", "MediaWallpaperBlurTest", "Mod9ExtrasContractsTest", "ClockInlineSecondsGeometryTest", "OneUi95ContractsTest", "ClockLabelScaleTest"
   ],
   "Android": [
     "MediaPerformanceProbe", "ClockBlurSyncProbe", "OptimizationProbe", "ClockContentClipProbe", "WidgetDepthClipProbe", "WidgetPlacementOrderProbe",
     "CodebaseAuditProbe", "RenderHotPathProbe", "ReflectContractTest", "DepthRegionProbe", "WidgetMovementOwnershipProbe", "BlurAppearanceProbe", "UnlockBlurProbe",
     "DepthV2PlatformProbe", "MediaReturnProbe", "DepthViewMotionProbe", "WallpaperMotionProbe", "NowBarPipelineProbe", "LatestDepthWorkTest",
-    "LifecycleContractTest", "OrientationProfileProbe", "ScreenProfileProbe", "ScreenDepthIsolationProbe", "FoldParityProbe", "PostApplyWallpaperProbe", "EditorScrollProbe", "RootLayoutWatchProbe", "DepthSafetyProbe", "SongRevealProbe", "UpdateProbe", "ClockStylePositionProbe", "DateRefreshProbe", "DepthStorageReadProbe"
+    "LifecycleContractTest", "OrientationProfileProbe", "ScreenProfileProbe", "ScreenDepthIsolationProbe", "FoldParityProbe", "PostApplyWallpaperProbe", "EditorScrollProbe", "RootLayoutWatchProbe", "DepthSafetyProbe", "SongRevealProbe", "UpdateProbe", "ClockStylePositionProbe", "DateRefreshProbe", "ClockLabelLayoutProbe", "DepthStorageReadProbe"
   ]
 }
