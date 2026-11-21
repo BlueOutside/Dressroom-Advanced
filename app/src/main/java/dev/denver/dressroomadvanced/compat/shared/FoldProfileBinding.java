@@ -45,16 +45,21 @@ final class FoldProfileBinding {
         property = genericGet.getParameterTypes()[0];
         read = NativeContract.findMethod(policy, null, Object.class, nativeProfile, property);
 
-        Class<?> provider = Class.forName("javax.inject.Provider", false, loader);
-        contextValue = provider.getMethod("get");
+        Class<?> provider = null;
+        try {
+            provider = Class.forName("javax.inject.Provider", false, loader);
+        } catch (ClassNotFoundException obfuscated) {
+        }
         Class<?> mapping = Class.forName("com.samsung.android.app.clockpack.db.entity.LockProfileMappingIdEntity", false, loader);
         NativeContract.method(mapping, "getId", Long.class);
-        Class<?> manager = Class.forName(MANAGER_CLASS, false, loader);
 
         try {
+            Class<?> manager = resolveManager(loader);
             String mediatorDesc = DexSignatures.descriptor(mediator);
             contextProvider = resolveContextProvider(loader, mediatorDesc, provider, active);
-            DexSignatures.Body loadBody = DexSignatures.body(load);
+            contextValue = contextProvider.getType().getMethod("get");
+            contextValue.setAccessible(true);
+            DexSignatures.Body loadBody = DexSignatures.body(load, Set.of("useDeDao"));
             getDao = resolveDaoGetter(loader, mediatorDesc, loadBody);
             Class<?> daoType = getDao.getReturnType();
             database = loadBody.uniqueRead(
@@ -70,6 +75,19 @@ final class FoldProfileBinding {
             global = resolveGlobalUpdateMethod(loader, manager);
         } catch (IOException invalidDex) {
             throw new ReflectiveOperationException("Could not inspect profile DEX contracts", invalidDex);
+        }
+    }
+
+    private static Class<?> resolveManager(ClassLoader loader)
+            throws ReflectiveOperationException, IOException {
+        try {
+            return Class.forName(MANAGER_CLASS, false, loader);
+        } catch (ClassNotFoundException renamed) {
+            return OneUi95Editor.unique(DexSignatures.find(loader, Set.of("AODDataManager"))
+                    .stream().filter(body -> body.name().equals("getTag")
+                            && !Modifier.isStatic(body.access()) && body.parameters().isEmpty()
+                            && body.result().equals("Ljava/lang/String;")).toList(),
+                    "AOD data manager tag").loadOwner(loader);
         }
     }
 
@@ -91,10 +109,28 @@ final class FoldProfileBinding {
             ClassLoader loader, String mediatorDesc, Class<?> provider, Method activeMethod)
             throws ReflectiveOperationException, IOException {
         Field found = null;
-        for (DexSignatures.Read read : DexSignatures.body(activeMethod).reads()) {
+        DexSignatures.Body activeBody = DexSignatures.body(activeMethod);
+        Class<?> lazy = null;
+        try {
+            lazy = Class.forName("dagger.Lazy", false, loader);
+        } catch (ClassNotFoundException obfuscated) {
+        }
+        for (DexSignatures.Read read : activeBody.reads()) {
             if (!read.field().owner().equals(mediatorDesc) || read.field().type().equals("Z")) continue;
             Field candidate = read.field().field(loader);
-            if (!provider.isAssignableFrom(candidate.getType())) continue;
+            boolean isProvider =
+                    provider != null
+                            ? provider.isAssignableFrom(candidate.getType())
+                            : WidgetEditorBinding.isZeroArgSupplier(candidate.getType());
+            boolean isLazy =
+                    lazy != null
+                            ? lazy.isAssignableFrom(candidate.getType())
+                            : WidgetEditorBinding.isZeroArgSupplier(candidate.getType());
+            boolean wrapsContext = isLazy
+                    && DexSignatures.body(candidate.getType().getMethod("get")).reads().stream()
+                            .anyMatch(value -> value.field().owner().equals(read.field().type())
+                                    && value.field().type().equals("Ljava/lang/Object;"));
+            if (!isProvider && !wrapsContext) continue;
             if (found != null && !found.equals(candidate))
                 throw new NoSuchFieldException("Ambiguous context provider reads in " + activeMethod.getName());
             found = candidate;
@@ -114,6 +150,10 @@ final class FoldProfileBinding {
                     || call.result().equals("Z")
                     || call.result().equals("V")
                     || call.result().equals("Ljava/lang/String;")) continue;
+            // Migration only runs after unlock. Keep the credential-encrypted DAO when
+            // the provider has separate direct-boot storage.
+            if (call.offset() >= loadBody.anchors().getOrDefault("useDeDao", Integer.MAX_VALUE))
+                continue;
             Method candidate = call.method(loader);
             if (found != null && !found.equals(candidate))
                 throw new NoSuchMethodException("Ambiguous profile DAO getter in " + loadBody.name());

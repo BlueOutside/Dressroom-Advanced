@@ -5,6 +5,7 @@ import java.lang.reflect.Method;
 
 final class ClockBinding {
     final boolean legacy;
+    final boolean early;
     final boolean clockStyle;
     final Method balance, render;
     final int balanceHeights;
@@ -80,8 +81,16 @@ final class ClockBinding {
         clockStyle = pack;
         font = NativeContract.findField(base, null, type);
 
-        balance = ClockSourceBinding.normalizer(loader, type, clockStyle);
-        balanceHeights = balance.getParameterCount() == 1 ? 0 : 2;
+        Method normalizer;
+        try {
+            normalizer = ClockSourceBinding.normalizer(loader, type, clockStyle);
+        } catch (NoSuchMethodException missing) {
+            if (!OneUi80Clock.acceptsNativeHeights(base, type)) throw missing;
+            normalizer = null;
+        }
+        balance = normalizer;
+        early = normalizer == null;
+        balanceHeights = balance == null || balance.getParameterCount() == 1 ? 0 : 2;
         legacy = balanceHeights == 0;
 
         fontType = NativeContract.method(type, "getFontType", int.class);
@@ -105,6 +114,7 @@ final class ClockBinding {
                     || method.getReturnType() != void.class
                     || !java.util.Arrays.equals(method.getParameterTypes(), new Class<?>[] {type})
                     || method.getName().equals("setFontType")
+                    || method.getName().equals("setFontTypeInternal")
                     || method.getName().equals("startSpringAnimation")) continue;
             if (renderer != null)
                 throw new NoSuchMethodException(

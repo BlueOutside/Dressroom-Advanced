@@ -91,7 +91,7 @@ final class RuntimeExtras {
                         DressroomModule.TAG,
                         "Extra provider restarting; retaining committed settings",
                         error);
-            if (!retryPending && failures <= 5) {
+            if (!retryPending && cached == null) {
                 retryPending = true;
                 main.postDelayed(
                         () -> {

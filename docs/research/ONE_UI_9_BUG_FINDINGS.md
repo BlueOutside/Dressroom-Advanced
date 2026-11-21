@@ -1,5 +1,27 @@
 # One UI 9 bug findings
 
+## Extra Now Bar cards follow-up, 2026-11-21
+
+Compared the connected phone's AOD 8.9.67.3 with the extra rear layers. Now Brief creates a GenUI view through a shared controller, reparents that view, and disposes it on detach. Extra layers now use an ordinary ongoing-card background for Brief instead of creating another GenUI owner. The native front stack still creates the real Brief card and keeps its action handling. The rear shell's content stays hidden.
+
+Native media pivots previously skipped nested normal-content containers while extra layers climbed to the pill background. Both now use the same ancestor and pivot calculation. Rear-card inflation also preserves Samsung's dedicated-style priority over app-search/call fallbacks and sets the battery identity tag as the native factory does. Visual checks of an eight-card stack, including Brief promotion and opening without unlock, remain pending.
+
+Built and signed `dressroom-advanced-2.0.0-stack-preview.apk`; 43 stack contract checks and repository/layout checks passed. Installed on the connected S26 Ultra and reloaded SystemUI. Its fresh process reports the pivot repair and configurable rear layers installed without a stack error in the targeted startup messages. This confirms hook installation, not the final swipe behavior.
+
+## Depth and inline seconds follow-up, 2026-11-21
+
+- A transient wallpaper-source failure can set depth pending after a subject was already resolved. Reusing the same valid live subject now clears pending, including when its source stamp is unchanged. Disabled depth profiles no longer enter mask-freezing readiness checks. This is shared with 8.0.
+- Editor canvas blur takes an offscreen snapshot by drawing the wallpaper. Those synthetic draws now skip wallpaper discovery and depth-source updates. This addresses a possible source of the reported editor clipping loop with clock blur. Visual confirmation on an affected 8.5+ device is pending.
+- Inline seconds previously fitted to the visible clock container only on 8.0. The viewport constraint now applies on newer providers too. Check a wide clock on 9.0 with seconds open, including after rotation.
+
+The user reporting the readiness message on 8.0 uses a ported 9.0 beta pair, Dressroom 3.0.10.32 (301032000) and AOD 8.9.65.74 (896574000). Offline checks found the newer Object Capture API, crop accessors, and unique save-start/save-completion anchors. The 144 SDK/editor API classes compared with the 9.0 reference showed no Object Capture public-method changes. The module chooses the newer detector by class presence. These APKs contain no bundled detector native libraries. Runtime initialization and source-state recovery on the affected device remain unverified.
+
+A later screenshot shows the depth switches and Detect action rendered, which places the failure after the provider and library gates. The first switch is disabled by wallpaper-image availability. The panel now retries unresolved source discovery for six seconds and updates the existing controls when discovery succeeds. It distinguishes unresolved metadata from an unsupported wallpaper. The affected port still needs a visual check.
+
+The same user supplied stock 8.0 Dressroom 2.9.10.42 (291042000) and AOD 8.9.15.39 (891539000). A read-only class-loader check against their Dressroom passed wallpaper-source discovery and depth editor validation. Source discovery selects the active controller used by native preview recreation, not its retained alternate. A separate module gap retained only the application context if discovery missed the activity's `onCreate`. The native clock model and panel now recover the editor activity, including through themed context wrappers, before source checks. This changes no wallpaper-type or library restrictions. The affected user's result remains pending.
+
+The activity-recovery preview builds, and the existing depth contract (42 checks) and source-policy (46 checks) suites pass. Artifact: `dressroom-advanced-2.0.0-depth-activity-preview.apk`. No stock APK was installed on the local phone; its class loader was used only for the binding check.
+
 Reference AOD 8.9.66.1, Dressroom 3.0.10.38 and their reference SystemUI/framework.
 The names below are JADX aliases. APK comparisons should use the raw DEX roles
 and confirm their callers. The 1.1.42 implementations are listed below. The

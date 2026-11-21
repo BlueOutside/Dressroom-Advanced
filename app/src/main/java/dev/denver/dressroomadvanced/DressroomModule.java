@@ -95,6 +95,10 @@ public final class DressroomModule extends XposedModule {
         return source().known && source().image;
     }
 
+    boolean depthSourceKnown() {
+        return source().known;
+    }
+
     boolean depthProfilesReset() {
         return source().reset;
     }
@@ -107,7 +111,7 @@ public final class DressroomModule extends XposedModule {
                 source().image,
                 source().reset,
                 source().imageKey(),
-                profile == null ? "" : profile.getString("depthImageKey", ""));
+                profile == null ? "" : source().profileKey(profile.getString("depthImageKey", "")));
     }
 
     private EditorDepthSources.State source() {
@@ -128,8 +132,18 @@ public final class DressroomModule extends XposedModule {
             queueWallpaperSourceCheck();
             return;
         }
-        if (editorActivity.get() == null && editorContext instanceof android.app.Activity act) {
-            editorActivity = new java.lang.ref.WeakReference<>(act);
+        if (editorActivity.get() == null) {
+            rememberEditorActivity(editorContext);
+            Object owner = activeClockController.get();
+            if (editorActivity.get() == null && owner != null && editorBinding != null) {
+                try {
+                    Object context = editorBinding.activity(owner);
+                    if (context instanceof android.content.Context nativeContext)
+                        rememberEditorActivity(nativeContext);
+                } catch (ReflectiveOperationException | RuntimeException unavailable) {
+                    note("Editor activity recovery unavailable", unavailable);
+                }
+            }
         }
         if (sourceSyncing || wallpaperSourceBinding == null || editorActivity.get() == null) return;
         if (editorScreen != ScreenIdentity.current()) return;
@@ -139,9 +153,14 @@ public final class DressroomModule extends XposedModule {
             WallpaperSourceBinding.Source current =
                     wallpaperSourceBinding.read(editorActivity.get());
             if (current == null) return;
-            boolean changed = state.source.observe(current.key());
+            boolean changed = state.observe(current);
             state.known = true;
             state.image = current.image();
+            String activeKey = state.imageKey();
+            if (activeKey == null || activeKey.isEmpty()) activeKey = current.key();
+            DepthEffects.sourceKey(
+                    current.image() ? activeKey : "",
+                    current.effectApplied());
             if (depthSaveHolds == 0 && (changed || !state.image)) {
                 if (changed || !state.reset)
                     invalidateDepth(
@@ -157,6 +176,23 @@ public final class DressroomModule extends XposedModule {
             report("Wallpaper source check failed", error);
         } finally {
             sourceSyncing = false;
+        }
+    }
+
+    private void rememberEditorActivity(android.content.Context context) {
+        // Discovery can finish after onCreate. The native controller and themed
+        // panel context still lead to the activity needed to read EditorData.
+        for (int depth = 0; depth < 16 && context != null; depth++) {
+            if (context instanceof android.app.Activity activity) {
+                if (!activity.isDestroyed()
+                        && wallpaperSourceBinding != null
+                        && wallpaperSourceBinding.acceptsActivity(activity))
+                    editorActivity = new java.lang.ref.WeakReference<>(activity);
+                return;
+            }
+            if (!(context instanceof android.content.ContextWrapper wrapper)
+                    || wrapper.getBaseContext() == context) return;
+            context = wrapper.getBaseContext();
         }
     }
 
@@ -176,7 +212,7 @@ public final class DressroomModule extends XposedModule {
                 stretchLocks.remove(stretch);
                 setManualRenderer(renderer, false);
                 Reflect.call(stretch, "setFontHeight", (Object) null);
-                Reflect.call(stretch, "setFontHeightRects", (Object) null);
+                SavedStretch.editorRects(stretch, null);
             }
         } catch (Exception error) {
             report("Depth-owned stretch cleanup unavailable", error);
@@ -331,6 +367,10 @@ public final class DressroomModule extends XposedModule {
 
     EditorBinding editorBinding() {
         return editorBinding;
+    }
+
+    EditorWidgets earlyWidgetPanel() {
+        return editorBinding != null && editorBinding.early != null ? editorWidgets : null;
     }
 
     long generation() {
@@ -502,6 +542,11 @@ public final class DressroomModule extends XposedModule {
                                         Object result = chain.proceed();
                                         android.app.Activity activity =
                                                 (android.app.Activity) chain.getThisObject();
+                                        EditorWidgets widgets = earlyWidgetPanel();
+                                        if (widgets != null)
+                                            activity.getWindow().getDecorView().post(
+                                                    () -> OneUi80WidgetPanel.installToolbarFallback(
+                                                            activity, widgets));
                                         activity.getWindow().getDecorView().postDelayed(
                                                 () -> UpdatePrompt.check(activity), 500);
                                         return result;
@@ -856,8 +901,10 @@ public final class DressroomModule extends XposedModule {
                                             Object focused =
                                                     editorBinding.focusedScene(
                                                             chain.getThisObject());
-                                            Object id = Reflect.call(focused, "getId");
-                                            nextScene = id == null ? "" : String.valueOf(id);
+                                            if (focused != null) {
+                                                Object id = Reflect.call(focused, "getId");
+                                                nextScene = id == null ? "" : String.valueOf(id);
+                                            }
                                         } catch (Exception error) {
                                             report("Wallpaper scene identity unavailable", error);
                                         }
@@ -874,6 +921,8 @@ public final class DressroomModule extends XposedModule {
                                         Object activity =
                                                 editorBinding.activity(chain.getThisObject());
                                         if (activity instanceof android.content.Context) {
+                                            rememberEditorActivity(
+                                                    (android.content.Context) activity);
                                             editorContext =
                                                     ((android.content.Context) activity)
                                                             .getApplicationContext();
@@ -1099,7 +1148,7 @@ public final class DressroomModule extends XposedModule {
             if (!binding.legacy) {
                 BlurEffects.install(this, base);
                 widgetEngine.install(loader);
-            } else if (!binding.clockStyle) {
+            } else if (!binding.clockStyle && !binding.early) {
                 DepthBlurHooks.install(this, base);
             }
             Class<?> font =
@@ -1108,7 +1157,7 @@ public final class DressroomModule extends XposedModule {
                             false,
                             loader);
             Method normalizer = binding.balance;
-            record(
+            if (normalizer != null) record(
                     hook(normalizer)
                             .setId("dressroom-advanced.independent-segments")
                             .intercept(
@@ -1520,6 +1569,8 @@ public final class DressroomModule extends XposedModule {
                                 && processName.equals("com.android.systemui")
                                 && android.os.Build.VERSION.SDK_INT >= 36) {
                             ClassLoader classes = param.getClassLoader();
+                            MediaArtworkUncap.install(this, classes);
+                            MediaCoverWakefulness.install(this, classes);
                             BuiltInWallpaperMotion.install(this, classes);
                             UnlockBlur.install(this, classes);
                             DozeBlurRegions.install(this, classes);
@@ -1574,7 +1625,8 @@ public final class DressroomModule extends XposedModule {
                         widgets.install(loader);
                     } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
                         editorWidgets = null;
-                        throw error;
+                        if (editorBinding.beta == null) throw error;
+                        report("Optional beta widget editor unavailable", error);
                     }
                 }
                 installCommitHook(loader);
@@ -1607,7 +1659,7 @@ public final class DressroomModule extends XposedModule {
                     } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
                         legacyDepthReady = false;
                         legacyDepthFailure = DepthBinding.failureReason(error);
-                        report("8.5 depth source unavailable", error);
+                        report("Legacy editor depth source unavailable", error);
                     }
                 }
                 if (editorBinding.legacy) {
@@ -1616,14 +1668,16 @@ public final class DressroomModule extends XposedModule {
                         candidate.installLegacy(loader);
                         editorWidgets = candidate;
                     } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
-                        report("Optional 8.5 widget editor unavailable", error);
+                        report("Optional legacy widget editor unavailable", error);
                     }
                 }
                 log(
                         Log.INFO,
                         TAG,
                         "Editor adapter installed: "
-                                + (editorBinding.legacy
+                                + (editorBinding.early != null
+                                        ? "One UI 8.0"
+                                        : editorBinding.legacy
                                         ? "Dressroom 2.9.60.50/51 (core controls)"
                                         : "Dressroom signature shim"));
             } catch (ReflectiveOperationException | LinkageError | RuntimeException e) {
@@ -1655,8 +1709,8 @@ public final class DressroomModule extends XposedModule {
                                                 ? chain.proceed()
                                                 : chain.proceed(new Object[] {fixed});
                                     }));
-            Method rectSetter = data.getDeclaredMethod("setFontHeightRects", List.class);
-            record(
+            Method rectSetter = SavedStretch.editorRectSetter(data);
+            if (rectSetter != null) record(
                     hook(rectSetter)
                             .setId("dressroom-advanced.manual-rects")
                             .intercept(
@@ -1762,9 +1816,8 @@ public final class DressroomModule extends XposedModule {
                             "com.samsung.android.clockpack.plugins.clock.extension.ClockBlurExtension",
                             false,
                             loader);
-            Class<?> helper = OneUi9Editor.blurHelper(loader, clockView);
-            Method enable =
-                    NativeContract.findMethod(helper, "m", void.class, clockView, boolean.class);
+            OneUi9Editor.BlurMethods blur = OneUi9Editor.blurMethods(loader, clockView, extension);
+            Method enable = blur.enable();
             record(
                     hook(enable)
                             .setId("dressroom-advanced.blur-helper")
@@ -1786,7 +1839,7 @@ public final class DressroomModule extends XposedModule {
                                         }
                                         return chain.proceed();
                                     }));
-            Method text = NativeContract.findMethod(helper, "o", void.class, clockView);
+            Method text = blur.text();
             record(
                     hook(text)
                             .setId("dressroom-advanced.text-blur-helper")
@@ -1817,6 +1870,7 @@ public final class DressroomModule extends XposedModule {
         if (!(value instanceof LinearLayout))
             throw new IllegalStateException("Unexpected clock root");
         LinearLayout root = (LinearLayout) value;
+        rememberEditorActivity(root.getContext());
         Object repo = editorBinding.repo(controller);
         Object model = Reflect.call(repo, "getData");
         if (model == null

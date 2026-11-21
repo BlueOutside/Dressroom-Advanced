@@ -83,23 +83,24 @@ final class ClockBlurRetries {
                         return chain.proceed();
                     })::unhook);
 
-            hooks.add(module.hook(binding.task)
-                    .setId("dressroom-advanced.native-blur-retry-ticket")
-                    .intercept(chain -> {
-                        Object result = chain.proceed();
-                        BlurRetryState.Ticket ticket = lifecycle.requests.current(chain.getArg(0));
-                        if (ticket != null) lifecycle.tasks.put(chain.getThisObject(), ticket);
-                        return result;
-                    })::unhook);
-            hooks.add(module.hook(binding.run)
-                    .setId("dressroom-advanced.native-blur-retry-current")
-                    .intercept(chain -> {
-                        BlurRetryState.Ticket ticket = lifecycle.tasks.remove(chain.getThisObject());
-                        // R8 shares this Runnable with NestedScrollView. Only our
-                        // manager constructor receives a ticket; leave other uses alone.
-                        if (ticket != null && !lifecycle.requests.accepts(ticket)) return null;
-                        return chain.proceed();
-                    })::unhook);
+            if (binding.task != null) {
+                hooks.add(module.hook(binding.task)
+                        .setId("dressroom-advanced.native-blur-retry-ticket")
+                        .intercept(chain -> {
+                            Object result = chain.proceed();
+                            BlurRetryState.Ticket ticket = lifecycle.requests.current(chain.getArg(0));
+                            if (ticket != null) lifecycle.tasks.put(chain.getThisObject(), ticket);
+                            return result;
+                        })::unhook);
+                hooks.add(module.hook(binding.run)
+                        .setId("dressroom-advanced.native-blur-retry-current")
+                        .intercept(chain -> {
+                            BlurRetryState.Ticket ticket = lifecycle.tasks.remove(chain.getThisObject());
+                            // R8 also uses this Runnable for NestedScrollView.
+                            if (ticket != null && !lifecycle.requests.accepts(ticket)) return null;
+                            return chain.proceed();
+                        })::unhook);
+            }
             hooks.add(module.hook(binding.collect)
                     .setId("dressroom-advanced.native-blur-new-glyphs")
                     .intercept(chain -> {
@@ -128,7 +129,7 @@ final class ClockBlurRetries {
             module.deoptimize(binding.collect);
             module.deoptimize(NativeContract.findMethod(
                     base, null, void.class, int.class, android.widget.TextView[].class));
-            module.deoptimize(binding.run);
+            if (binding.run != null) module.deoptimize(binding.run);
             module.deoptimize(base.getDeclaredMethod("setClockTextBlur"));
             hooks.commit();
         }

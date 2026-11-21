@@ -6,7 +6,6 @@ import android.view.ViewGroup;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -34,10 +33,16 @@ final class ClockBlurMotion {
 
     private static final class Handoff {
         final WeakReference<View> target;
+        final ClockBlurRetryBinding binding;
+        final Field host;
+        final OneUi95BlurHost betaHost;
         boolean targetSubmitted;
 
-        Handoff(View target) {
+        Handoff(View target, ClockBlurRetryBinding binding, Field host, OneUi95BlurHost betaHost) {
             this.target = new WeakReference<>(target);
+            this.binding = binding;
+            this.host = host;
+            this.betaHost = betaHost;
         }
     }
 
@@ -70,6 +75,7 @@ final class ClockBlurMotion {
                     !aodFields.dozing.getBoolean(clock) && Boolean.TRUE.equals(configured.get(clock)));
             aod = keepAod;
             moving = visible && allows(reasons, amount, dashboardReturn);
+            if (moving && !aod) LockscreenFrameBoost.pulse(clock, 240L);
             if (moving || aod) movingClocks.add(clock);
             else movingClocks.remove(clock);
             return moving || aod;
@@ -77,6 +83,7 @@ final class ClockBlurMotion {
 
         void refresh(View clock) {
             if (states.get(clock) != this || !(moving || aod) || !clock.isShown()) return;
+            if (moving && !aod) LockscreenFrameBoost.pulse(clock, 200L);
             try {
                 Object manager = binding.manager.get(clock);
                 if (!Boolean.TRUE.equals(binding.enabled.invoke(manager)))
@@ -100,7 +107,8 @@ final class ClockBlurMotion {
 
     static boolean allows(Set<String> reasons, float amount, boolean dashboardReturn,
             boolean wallpaperAod) {
-        if (reasons.isEmpty() || !Float.isFinite(amount) || amount < 0 || amount > 1) return false;
+        if (!Float.isFinite(amount) || amount < 0 || amount > 1) return false;
+        if (reasons.isEmpty()) return dashboardReturn && amount == 0f;
         boolean media = reasons.contains("MEDIA_EXPAND_ANIMATING");
         for (String reason : reasons) {
             switch (reason) {
@@ -172,16 +180,14 @@ final class ClockBlurMotion {
                                 || names.contains("PROFILE_TRANSITIONING")) {
                             state.shadeSurfaces = null;
                         }
+                        ClockInlineSeconds.onBlockerState(clock, names);
                         state.reasons = Set.copyOf(names);
                         state.scale = scale.getFloat(chain.getThisObject());
                         // The transition destination receives its first state
                         // before pre-draw attaches it. Keep the return marked from
                         // the page transition so this apply does not remove blur.
                         boolean transitionReturn = returning(clock);
-                        if (transitionReturn && (names.contains("DASHBOARD_ACTIVE")
-                                || names.contains("FACE_WIDGET_TRANSITIONING"))) {
-                            state.dashboardReturn = true;
-                        }
+                        state.dashboardReturn = transitionReturn;
                         boolean keep = state.update(clock);
                         // An unattached destination cannot be "moving" yet, but its
                         // clear must still honour the return gesture.
@@ -204,15 +210,10 @@ final class ClockBlurMotion {
                         else retained.remove();
                         try {
                             Object result = chain.proceed();
-                        if (keep) queue(clock, state);
-                        if (state.aod) observeAod(clock.getContext());
+                            if (keep) queue(clock, state);
+                            if (state.aod) observeAod(clock.getContext());
                             if (state.reasons.isEmpty() && state.shadeSurfaces != null)
                                 restoreAfterShade(clock, state);
-                            if (state.dashboardReturn
-                                    && !names.contains("DASHBOARD_ACTIVE")
-                                    && !names.contains("FACE_WIDGET_TRANSITIONING")) {
-                                state.dashboardReturn = false;
-                            }
                             return result;
                         } finally {
                             if (previous == null) retained.remove();
@@ -377,13 +378,11 @@ final class ClockBlurMotion {
         ClassLoader loader = base.getClassLoader();
         Class<?> page = Class.forName(
                 "com.samsung.android.app.facewidget.pages.clock.FaceWidgetClockPage", false, loader);
+        var transition = ClockPageTransition.resolve(loader);
         String bindAnchor = "initViews() mClockView=";
-        String updateAnchor = "updateContentsView()";
         var bodies = DexSignatures.find(loader, Set.of(
-                "common_clock_transition_second", "makeSourceData()", "handleTransitionFinished()",
-                bindAnchor, updateAnchor));
+                "common_clock_transition_second", bindAnchor));
         DexSignatures.Body configuration = null;
-        Class<?> transition = null;
         Method bind = null;
         for (var body : bodies) {
             if (!body.owner().equals(DexSignatures.descriptor(page))
@@ -402,9 +401,10 @@ final class ClockBlurMotion {
                             && call.result().equals("V")
                             && call.parameters().equals(java.util.List.of("Z")));
             if (!drives) continue;
+            if (body.method(loader).getParameterTypes()[0] != transition.attach().getDeclaringClass())
+                continue;
             if (configuration != null) throw new NoSuchMethodException("Ambiguous page transition");
             configuration = body;
-            transition = body.method(loader).getParameterTypes()[0];
         }
         if (configuration == null) throw new NoSuchMethodException("Seconds-view transition");
         boolean tracksBoundClock = bind != null;
@@ -417,36 +417,23 @@ final class ClockBlurMotion {
                 transitionBlock = call.method(loader);
         if (transitionBlock == null)
             throw new NoSuchMethodException("Clock transition blur blocker");
-        // The destination is stored on the page before its transition is configured.
-        Field destination = configuration
-                .uniqueRead(DexSignatures.descriptor(page), "Landroid/view/View;", null)
-                .field(loader);
+        var destinationReads = configuration.reads().stream().map(DexSignatures.Read::field)
+                .filter(field -> field.owner().equals(DexSignatures.descriptor(page))
+                        && field.type().equals("Landroid/view/View;")).distinct().toList();
+        if (destinationReads.size() > 1)
+            throw new NoSuchFieldException("Ambiguous early clock transition target");
+        Field destination = destinationReads.isEmpty() ? null : destinationReads.get(0).field(loader);
+        // Some builds assign the target after configuration. Resolve it at attach on those builds.
+        Map<Object, WeakReference<Object>> pendingReturns = new WeakHashMap<>();
         Field pageState = pageStateField(configuration, page, loader);
-        Method attach = transitionMethod(bodies, transition, "makeSourceData()");
-        Method finish = transitionMethod(bodies, transition, "handleTransitionFinished()");
-        Set<Field> sources = new HashSet<>();
-        Set<Field> targets = new HashSet<>();
-        for (var read : DexSignatures.body(attach).reads()) {
-            var field = read.field();
-            if (field.owner().equals(DexSignatures.descriptor(transition))
-                    && field.type().equals("Landroid/view/View;")) {
-                Field candidate = field.field(loader);
-                // The source is final. Samsung assigns the destination before starting.
-                if (Modifier.isFinal(candidate.getModifiers())) sources.add(candidate);
-                else targets.add(candidate);
-            }
-        }
-        if (sources.size() != 1 || targets.size() != 1)
-            throw new NoSuchFieldException("Clock transition source or target");
-        Field source = sources.iterator().next();
-        Field target = targets.iterator().next();
-        Field host = cachedBlurHost(module, binding);
+        Method attach = transition.attach();
+        Method finish = transition.finish();
         try (HookTransaction hooks = new HookTransaction()) {
             if (tracksBoundClock) {
                 hooks.add(module.hook(bind).setId("dressroom-advanced.clock-bound-page")
                         .intercept(chain -> {
                             Object result = chain.proceed();
-                            View clock = transitionClock((View) chain.getArg(0), base);
+                            View clock = ClockPageTransition.clock((View) chain.getArg(0), base);
                             if (clock != null) {
                                 Object state = pageState.get(chain.getThisObject());
                                 String name = state instanceof Enum<?> value ? value.name() : null;
@@ -460,11 +447,14 @@ final class ClockBlurMotion {
             hooks.add(module.hook(configure).setId("dressroom-advanced.seconds-return-blur-start")
                     .intercept(chain -> {
                         boolean returning = false;
+                        View clock = null;
+                        Object transitionState = chain.getArg(0);
+                        Boolean previousReturn = returnTransition.get();
                         try {
                             View pageView = (View) chain.getThisObject();
                             Object value = pageState.get(pageView);
                             String now = value instanceof Enum<?> state ? state.name() : null;
-                            View from = transitionClock((View) source.get(chain.getArg(0)), base);
+                            View from = transition.clock(transitionState, transition.source(), base);
                             boolean fromDashboard = dashboardClocks.contains(from);
                             if (!tracksBoundClock && now != null) {
                                 String previous = lastTransitionStates.put(pageView, now);
@@ -473,12 +463,15 @@ final class ClockBlurMotion {
                             }
                             returning = ("SMALL".equals(now) || "EXPAND".equals(now))
                                     && fromDashboard;
-                            View view = (View) destination.get(pageView);
+                            if (destination != null)
+                                clock = ClockPageTransition.clock((View) destination.get(pageView), base);
                             if (returning) {
-                                View clock = markReturning(view, base);
                                 Object owner = blurController(pageView, controller);
-                                if (clock != null && owner != null) {
-                                    returnControllers.put(clock, owner);
+                                if (clock != null) {
+                                    returningClocks.add(clock);
+                                    if (owner != null) returnControllers.put(clock, owner);
+                                } else if (owner != null) {
+                                    pendingReturns.put(transitionState, new WeakReference<>(owner));
                                 }
                                 // Configure runs synchronously before the destination
                                 // is bound, so the blocker must be suppressed here.
@@ -486,15 +479,23 @@ final class ClockBlurMotion {
                                 android.util.Log.d(
                                         DressroomModule.TAG, "Seconds-view return blur armed");
                             } else {
-                                clearReturning(view, base);
+                                pendingReturns.remove(transitionState);
+                                clearReturning(clock);
                             }
                         } catch (ReflectiveOperationException | RuntimeException error) {
                             DressroomModule.note("Seconds-view return direction", error);
                         }
                         try {
                             return chain.proceed();
+                        } catch (Throwable error) {
+                            pendingReturns.remove(transitionState);
+                            clearReturning(clock);
+                            throw error;
                         } finally {
-                            if (returning) returnTransition.remove();
+                            if (returning) {
+                                if (previousReturn == null) returnTransition.remove();
+                                else returnTransition.set(previousReturn);
+                            }
                         }
                     })::unhook);
             hooks.add(module.hook(transitionBlock)
@@ -511,21 +512,21 @@ final class ClockBlurMotion {
             hooks.add(module.hook(attach).setId("dressroom-advanced.seconds-return-blur")
                     .intercept(chain -> {
                         Object transitionState = chain.getThisObject();
-                        View clock = transitionClock((View) target.get(transitionState), base);
-                        View from = transitionClock((View) source.get(transitionState), base);
-                        Handoff handoff = prepareHandoff(from, clock);
+                        View clock = transition.clock(transitionState, transition.target(), base);
+                        var pendingRef = pendingReturns.remove(transitionState);
+                        Object pending = pendingRef == null ? null : pendingRef.get();
+                        if (clock != null && pending != null) {
+                            returningClocks.add(clock);
+                            returnControllers.put(clock, pending);
+                        }
                         Object result;
                         try {
                             result = chain.proceed();
                         } catch (Throwable error) {
-                            if (handoff != null) outgoingClocks.remove(from, handoff);
+                            clearReturning(clock);
                             throw error;
                         }
-                        if (handoff != null) {
-                            if (outgoingHandoff(from) == handoff) releaseBlurHost(from, binding, host);
-                            else outgoingClocks.remove(from, handoff);
-                        }
-                        if (clock != null && returning(clock)) {
+                        if (returning(clock) && clock.isAttachedToWindow()) {
                             Object owner = returnControllers.get(clock);
                             if (owner != null) {
                                 try {
@@ -538,8 +539,10 @@ final class ClockBlurMotion {
                                     // the clock never returns sharp.
                                     state.scale = value;
                                     state.dashboardReturn = true;
-                                    enable.invoke(clock, value, true);
-                                    if (state.update(clock)) queue(clock, state);
+                                    if (state.update(clock)) {
+                                        enable.invoke(clock, value, true);
+                                        queue(clock, state);
+                                    }
                                     android.util.Log.d(DressroomModule.TAG,
                                             "Seconds-view return blur enabled clock="
                                                     + System.identityHashCode(clock)
@@ -564,33 +567,68 @@ final class ClockBlurMotion {
                         try {
                             return chain.proceed();
                         } finally {
-                            View to = (View) target.get(transitionState);
-                            View from = transitionClock((View) source.get(transitionState), base);
-                            Handoff next = outgoingClocks.get(from);
-                            if (next != null && next.target.get() == transitionClock(to, base))
-                                outgoingClocks.remove(from);
-                            clearReturning(to, base);
+                            pendingReturns.remove(transitionState);
+                            clearReturning(transition.clock(transitionState, transition.target(), base));
                         }
                     })::unhook);
             if (tracksBoundClock) module.deoptimize(bind);
             module.deoptimize(configure);
             module.deoptimize(transitionBlock);
-            module.deoptimize(attach);
-            module.deoptimize(finish);
-            // The holder invokes configure and bind through the parent declarations.
-            String parent = DexSignatures.descriptor(page.getSuperclass());
-            for (var body : bodies)
-                if (body.owner().equals(parent) && body.matches(updateAnchor))
-                    module.deoptimize(body.method(loader));
             for (var caller : DexSignatures.callers(configure))
                 module.deoptimize(caller.method(loader));
+            hooks.commit();
+        }
+        android.util.Log.i(DressroomModule.TAG,
+                "Seconds-view return blur installed via " + configure.getName());
+    }
+
+    static void installHandoff(DressroomModule module, Class<?> base)
+            throws ReflectiveOperationException, java.io.IOException {
+        ClassLoader loader = base.getClassLoader();
+        var transition = ClockPageTransition.resolve(loader);
+        var binding = ClockBlurRetryBinding.of(base);
+        Field host = binding.task == null ? null : cachedBlurHost(module, binding);
+        OneUi95BlurHost betaHost = binding.task == null ? OneUi95BlurHost.resolve(binding) : null;
+        Method attach = transition.attach();
+        Method finish = transition.finish();
+        try (HookTransaction hooks = new HookTransaction()) {
+            hooks.add(module.hook(attach).setId("dressroom-advanced.clock-handoff-attach")
+                    .intercept(chain -> {
+                        Object state = chain.getThisObject();
+                        View from = transition.clock(state, transition.source(), base);
+                        View to = transition.clock(state, transition.target(), base);
+                        Handoff handoff = prepareHandoff(from, to, binding, host, betaHost);
+                        if (handoff == null) return chain.proceed();
+                        try {
+                            Object result = chain.proceed();
+                            if (outgoingHandoff(from) != handoff) outgoingClocks.remove(from, handoff);
+                            return result;
+                        } catch (Throwable error) {
+                            outgoingClocks.remove(from, handoff);
+                            throw error;
+                        }
+                    })::unhook);
+            hooks.add(module.hook(finish).setId("dressroom-advanced.clock-handoff-finish")
+                    .intercept(chain -> {
+                        Object state = chain.getThisObject();
+                        View from = transition.clock(state, transition.source(), base);
+                        View to = transition.clock(state, transition.target(), base);
+                        Handoff handoff = outgoingClocks.get(from);
+                        if (handoff == null || handoff.target.get() != to) return chain.proceed();
+                        try {
+                            return chain.proceed();
+                        } finally {
+                            outgoingClocks.remove(from, handoff);
+                        }
+                    })::unhook);
+            module.deoptimize(attach);
+            module.deoptimize(finish);
+            module.deoptimize(transition.update());
             for (var caller : DexSignatures.callers(attach))
                 if (caller.name().equals("onPreDraw") && caller.parameters().isEmpty())
                     module.deoptimize(caller.method(loader));
             hooks.commit();
         }
-        android.util.Log.i(DressroomModule.TAG,
-                "Seconds-view return blur installed via " + configure.getName());
     }
 
     private static Field cachedBlurHost(DressroomModule module, ClockBlurRetryBinding binding) {
@@ -602,43 +640,54 @@ final class ClockBlurMotion {
         }
     }
 
-    private static Handoff prepareHandoff(View from, View to) {
+    private static Handoff prepareHandoff(View from, View to, ClockBlurRetryBinding binding,
+            Field host, OneUi95BlurHost betaHost) {
         if (from == null || to == null || from == to || !from.isAttachedToWindow()) return null;
         // Adding the destination can synchronously submit blur from its attach callback.
-        Handoff handoff = new Handoff(to);
+        Handoff handoff = new Handoff(to, binding, host, betaHost);
         outgoingClocks.remove(to);
         outgoingClocks.put(from, handoff);
         return handoff;
     }
 
-    private static void releaseBlurHost(View from, ClockBlurRetryBinding binding, Field host) {
+    private static void releaseBlurHost(View from, Handoff handoff) {
         ClockBlurSync.cancel(from);
-        if (host == null) return;
         try {
-            Object manager = binding.manager.get(from);
+            Object manager = handoff.binding.manager.get(from);
+            if (manager == null) return;
+            if (handoff.betaHost != null) {
+                handoff.betaHost.release(manager);
+                return;
+            }
             // The old reveal can still fade its own text. Drop its handle to the shared drawable.
-            if (manager != null && host.get(manager) instanceof View cached
-                    && "lock_clock_blur".equals(cached.getTag())) host.set(manager, null);
+            if (handoff.host != null && handoff.host.get(manager) instanceof View cached
+                    && "lock_clock_blur".equals(cached.getTag())) handoff.host.set(manager, null);
         } catch (IllegalAccessException error) {
             DressroomModule.note("Clock blur host handoff", error);
         }
     }
 
     static boolean outgoing(View clock) {
-        return outgoingHandoff(clock) != null;
+        Handoff handoff = outgoingHandoff(clock);
+        return handoff != null && handoff.targetSubmitted;
     }
 
-    static boolean allowOutgoingClear(View clock) {
-        Handoff handoff = outgoingHandoff(clock);
-        return handoff != null && !handoff.targetSubmitted;
+    static boolean hasHandoff() {
+        return !outgoingClocks.isEmpty();
     }
 
     static void submitted(View clock) {
         if (outgoingClocks.isEmpty()) return;
         for (View view = clock; view != null;
                 view = view.getParent() instanceof View parent ? parent : null) {
-            for (Handoff handoff : outgoingClocks.values())
-                if (handoff.target.get() == view) handoff.targetSubmitted = true;
+            for (var entry : outgoingClocks.entrySet()) {
+                Handoff handoff = entry.getValue();
+                View from = entry.getKey();
+                if (handoff.targetSubmitted || handoff.target.get() != view || from == null
+                        || outgoingHandoff(from) != handoff) continue;
+                handoff.targetSubmitted = true;
+                releaseBlurHost(from, handoff);
+            }
         }
     }
 
@@ -680,30 +729,6 @@ final class ClockBlurMotion {
         return states.iterator().next();
     }
 
-    private static View transitionClock(View target, Class<?> base) {
-        if (base.isInstance(target)) return target;
-        if (target instanceof android.view.ViewGroup group) {
-            for (int i = 0; i < group.getChildCount(); i++) {
-                View clock = transitionClock(group.getChildAt(i), base);
-                if (clock != null) return clock;
-            }
-        }
-        return null;
-    }
-
-    private static Method transitionMethod(
-            java.util.List<DexSignatures.Body> bodies, Class<?> owner, String anchor)
-            throws ReflectiveOperationException {
-        Method found = null;
-        for (var body : bodies) {
-            if (!body.owner().equals(DexSignatures.descriptor(owner)) || !body.matches(anchor)) continue;
-            if (found != null) throw new NoSuchMethodException("Ambiguous transition anchor " + anchor);
-            found = body.method(owner.getClassLoader());
-        }
-        if (found == null) throw new NoSuchMethodException("Missing transition anchor " + anchor);
-        return found;
-    }
-
     private static void queue(View clock, State state) {
         if (!ClockBlurSync.pending(clock)) ClockBlurSync.defer(clock, state::refresh);
     }
@@ -718,15 +743,6 @@ final class ClockBlurMotion {
                     && doze.getOrDefault(clock, 0f) == 0f)
                 BlurAppearance.restoreShadeSurfaces(clock.getRootView(), captured);
         });
-    }
-
-    private static View markReturning(View view, Class<?> base) {
-        View clock = transitionClock(view, base);
-        if (clock != null) returningClocks.add(clock);
-        android.util.Log.d(DressroomModule.TAG, "Return mark view="
-                + (view == null ? "none" : view.getClass().getSimpleName())
-                + " clock=" + (clock == null ? "none" : System.identityHashCode(clock)));
-        return clock;
     }
 
     /** Find the page's clock blur controller by its already resolved type. */
@@ -745,15 +761,26 @@ final class ClockBlurMotion {
         return null;
     }
 
-    private static void clearReturning(View view, Class<?> base) {
-        View clock = transitionClock(view, base);
+    private static void clearReturning(View clock) {
         if (clock == null) return;
         returningClocks.remove(clock);
         returnControllers.remove(clock);
+        State state = states.get(clock);
+        if (state == null || !state.dashboardReturn) return;
+        state.dashboardReturn = false;
+        try {
+            state.update(clock);
+        } catch (ReflectiveOperationException | RuntimeException error) {
+            DressroomModule.note("Seconds-view return blur cleanup", error);
+        }
     }
 
-    private static boolean returning(View clock) {
+    static boolean returning(View clock) {
         return clock != null && returningClocks.contains(clock);
+    }
+
+    static boolean hasReturningClock() {
+        return !returningClocks.isEmpty();
     }
 
     static boolean moving(View clock) {

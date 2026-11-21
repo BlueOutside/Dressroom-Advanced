@@ -48,6 +48,10 @@ final class EditorWidgets {
         return !legacy() || legacyGridReady;
     }
 
+    boolean scaleAvailable() {
+        return !earlyClockEditor() || legacyScaleReady;
+    }
+
     private static Object optionalDeviceRole(Object device, String role)
             throws ReflectiveOperationException {
         try {
@@ -65,6 +69,7 @@ final class EditorWidgets {
     }
 
     private Method pendingBinding;
+    private WeakReference<View> nativeToolbar = new WeakReference<>(null);
     private final WidgetScalePreview scalePreview = new WidgetScalePreview();
     private final RootLayoutWatch previewLayoutWatch = new RootLayoutWatch();
 
@@ -75,6 +80,15 @@ final class EditorWidgets {
 
     boolean legacy() {
         return legacyBinding != null;
+    }
+
+    boolean earlyClockEditor() {
+        return module.editorBinding().early != null;
+    }
+
+    Method earlyPanelShow() {
+        return legacyBinding == null || legacyBinding.earlyPanel == null
+                ? null : legacyBinding.earlyPanel.show();
     }
 
     boolean stackAvailable() {
@@ -230,7 +244,8 @@ final class EditorWidgets {
         if (draft == null) return null;
         DepthEffects.requireSaveReady(draft);
         try {
-            if (dirty && owner.get() != null) {
+            if (dirty && owner.get() != null
+                    && (!earlyClockEditor() || legacyGridReady && draft.getBoolean("layout"))) {
                 if ((Boolean) Reflect.call(data(), "getWidgetAlignChanging"))
                     throw new IllegalStateException(
                             "Wait for widget rotation to finish before Apply.");
@@ -357,7 +372,13 @@ final class EditorWidgets {
                         "The widgets do not fit. Increase the grid first");
         }
         if (legacy()) {
-            if (!legacyScaleReady) throw new IllegalStateException("Widget sizing is not ready.");
+            boolean early = earlyClockEditor();
+            if (!early && !legacyScaleReady)
+                throw new IllegalStateException("Widget sizing is not ready.");
+            boolean scaleChanged = next.getFloat("scale", 1f)
+                    != (draft == null ? 1f : draft.getFloat("scale", 1f));
+            if (scaleChanged && !legacyScaleReady)
+                throw new IllegalStateException("Widget sizing is not ready.");
             if (WidgetPreferences.covers(next)
                     && next.getInt("depth") == 1
                     && WidgetPreferences.mask(next, clock) == null)
@@ -375,8 +396,7 @@ final class EditorWidgets {
                     module.widgetEngine.refreshChecked(grid());
                     module.widgetEngine.reflow(grid());
                     legacyBinding.finalizeList(owner.get());
-                } else if (previous == null
-                        || previous.getFloat("scale", 1) != next.getFloat("scale", 1))
+                } else if (scaleChanged || (!early && previous == null))
                     module.widgetEngine.refreshChecked(grid());
                 recalculate();
                 applyPolicy();
@@ -393,7 +413,7 @@ final class EditorWidgets {
                 applyPolicy();
                 applyEffects();
                 try {
-                    module.widgetEngine.refreshChecked(grid());
+                    if (!early || scaleChanged) module.widgetEngine.refreshChecked(grid());
                     recalculate();
                 } catch (Exception rollback) {
                     error.addSuppressed(rollback);
@@ -594,7 +614,7 @@ final class EditorWidgets {
                             .intercept(
                                     chain -> {
                                         try {
-                                            addMenu(chain.getThisObject(), loader);
+                                            addMenu(chain.getThisObject(), rebuild.getDeclaringClass());
                                         } catch (Exception e) {
                                             module.report("Advanced toolbar item unavailable", e);
                                         }
@@ -847,7 +867,13 @@ final class EditorWidgets {
                             .intercept(
                                     chain -> {
                                         try {
-                                            addMenu(chain.getThisObject(), loader);
+                                            Object toolbar = chain.getThisObject();
+                                            if (nativeWidgets.earlyToolbarView != null
+                                                    && nativeWidgets.earlyToolbarView.get(toolbar)
+                                                            instanceof View view)
+                                                nativeToolbar = new WeakReference<>(view);
+                                            addMenu(toolbar,
+                                                    nativeWidgets.toolbar.getDeclaringClass());
                                         } catch (Exception error) {
                                             module.report("8.5 Advanced menu unavailable", error);
                                         }
@@ -863,9 +889,13 @@ final class EditorWidgets {
                                         Object result = chain.proceed();
                                         if (result != null)
                                             try {
-                                                boolean capacity =
-                                                        module.widgetEngine.installLegacyCapacity(
-                                                                result.getClass().getClassLoader());
+                                                ClassLoader providerLoader = result.getClass().getClassLoader();
+                                                boolean capacity = false;
+                                                if (nativeWidgets.earlyPanel != null) {
+                                                    capacity = module.widgetEngine.installEarlyCapacity(providerLoader);
+                                                    if (!legacyScaleReady)
+                                                        WidgetDepthBlur.install(module, providerLoader, true);
+                                                } else capacity = module.widgetEngine.installLegacyCapacity(providerLoader);
                                                 legacyGridReady = legacyLayoutReady && capacity;
                                                 legacyScaleReady = true;
                                                 if (legacyGridReady
@@ -873,7 +903,7 @@ final class EditorWidgets {
                                                         && draft != null) restoreModel(data());
                                             } catch (Exception | LinkageError error) {
                                                 module.report(
-                                                        "8.5 widget sizing unavailable", error);
+                                                        "Legacy widget sizing unavailable", error);
                                             }
                                         return result;
                                     });
@@ -886,15 +916,17 @@ final class EditorWidgets {
                                     chain -> {
                                         Object item = chain.getThisObject();
                                         if (isMain(item)) {
-                                            owner = new WeakReference<>(item);
-                                            Context context = WidgetEditorBinding.previewContext(item);
-                                            host = new WeakReference<>(context);
-                                            ui =
-                                                    new WeakReference<>(
-                                                            WidgetEditorBinding.findUiController(
-                                                                    item, "k"));
-                                            settings(context);
-                                            if (legacyGridReady) restoreModel(data());
+                                            try {
+                                                Context context = WidgetEditorBinding.previewContext(item);
+                                                Object panel = nativeWidgets.panel(item);
+                                                owner = new WeakReference<>(item);
+                                                host = new WeakReference<>(context);
+                                                ui = new WeakReference<>(panel);
+                                                settings(context);
+                                                if (legacyGridReady) restoreModel(data());
+                                            } catch (ReflectiveOperationException | RuntimeException error) {
+                                                module.report("Legacy widget preview unavailable", error);
+                                            }
                                         }
                                         Object result = chain.proceed();
                                         if (item == owner.get() && result instanceof View root) {
@@ -908,8 +940,9 @@ final class EditorWidgets {
                                                                 || !root.isAttachedToWindow())
                                                             return;
                                                         try {
-                                                            module.widgetEngine.refreshChecked(
-                                                                    grid());
+                                                            if (legacyScaleReady && (nativeWidgets.earlyPanel == null
+                                                                    || (draft != null && draft.getFloat("scale", 1f) != 1f)))
+                                                                module.widgetEngine.refreshChecked(grid());
                                                             if (legacyGridReady
                                                                     && draft != null
                                                                     && draft.getBoolean("layout")
@@ -1008,11 +1041,12 @@ final class EditorWidgets {
             hooks.add(align::unhook);
             module.deoptimize(feedback);
             try (HookTransaction structural = new HookTransaction()) {
-                installLegacyLayout(loader, nativeWidgets.create.getDeclaringClass(), structural);
+                installLegacyLayout(loader, nativeWidgets.create.getDeclaringClass(), structural,
+                        nativeWidgets.earlyPanel != null);
                 structural.commitTo(hooks);
             } catch (ReflectiveOperationException error) {
                 legacyGridReady = false;
-                module.report("8.5 custom widget layout unavailable", error);
+                module.report("Legacy custom widget layout unavailable", error);
             }
             var direct = installDirectDragBinding(loader);
             hooks.add(direct::unhook);
@@ -1042,9 +1076,10 @@ final class EditorWidgets {
         }
     }
 
-    private void installLegacyLayout(ClassLoader loader, Class<?> preview, HookTransaction hooks)
+    private void installLegacyLayout(ClassLoader loader, Class<?> preview,
+            HookTransaction hooks, boolean early)
             throws ReflectiveOperationException {
-        legacyLayout = new OneUi85WidgetLayout(loader, preview);
+        legacyLayout = new OneUi85WidgetLayout(loader, preview, early);
         var dimensions =
                 module.hook(legacyLayout.gridMetrics)
                         .setId("dressroom-advanced.85-grid-dimensions")
@@ -1119,7 +1154,8 @@ final class EditorWidgets {
         hooks.add(editHook::unhook);
         module.deoptimize(editable);
         Method alignValue = legacyLayout.alignValue;
-        var alignHook =
+        if (alignValue != null) {
+            var alignHook =
                 module.hook(alignValue)
                         .setId("dressroom-advanced.85-grid-clock-align")
                         .intercept(
@@ -1131,9 +1167,17 @@ final class EditorWidgets {
                                                 ? Reflect.call(
                                                         chain.getThisObject(), "getWidgetAlignType")
                                                 : chain.proceed());
-        hooks.add(alignHook::unhook);
-        module.deoptimize(alignValue);
-        installLegacyPicker(loader, hooks);
+            hooks.add(alignHook::unhook);
+            module.deoptimize(alignValue);
+        }
+        installLegacyPicker(hooks);
+        if (early) {
+            try {
+                installEarlyCatalog(preview, hooks);
+            } catch (ReflectiveOperationException | RuntimeException error) {
+                module.report("Optional 8.0 widget catalog refresh unavailable", error);
+            }
+        }
         var rotated =
                 module.hook(legacyLayout.rotate)
                         .setId("dressroom-advanced.85-grid-rotate")
@@ -1178,7 +1222,31 @@ final class EditorWidgets {
         legacyLayoutReady = true;
     }
 
-    private void installLegacyPicker(ClassLoader loader, HookTransaction hooks)
+    private boolean largeWidgetGrid() {
+        return draft != null && draft.getBoolean("layout") && draft.getInt("rows") >= 2;
+    }
+
+    private void installEarlyCatalog(Class<?> preview, HookTransaction hooks)
+            throws ReflectiveOperationException {
+        OneUi80WidgetPanel.Catalog catalog = OneUi80WidgetPanel.catalog(preview);
+        var pickerSizes = new java.util.WeakHashMap<Object, Boolean>();
+        hooks.add(module.hook(catalog.open())
+                .setId("dressroom-advanced.80-widget-catalog-refresh")
+                .intercept(chain -> {
+                    Object item = chain.getThisObject();
+                    if (item != owner.get() || !legacyGridReady) return chain.proceed();
+                    boolean large = largeWidgetGrid();
+                    Boolean previous = pickerSizes.get(item);
+                    if (previous == null || previous != large)
+                        catalog.loaded().setBoolean(item, false);
+                    Object result = chain.proceed();
+                    pickerSizes.put(item, large);
+                    return result;
+                })::unhook);
+        module.deoptimize(catalog.open());
+    }
+
+    private void installLegacyPicker(HookTransaction hooks)
             throws ReflectiveOperationException {
         Method eligible = legacyLayout.picker;
         Method tablet = legacyLayout.tablet;
@@ -1195,9 +1263,7 @@ final class EditorWidgets {
                                 chain -> {
                                     boolean old = largePicker.get();
                                     largePicker.set(
-                                            draft != null
-                                                    && draft.getBoolean("layout")
-                                                    && draft.getInt("rows") >= 2
+                                            largeWidgetGrid()
                                                     && Boolean.TRUE.equals(
                                                             Reflect.call(
                                                                     chain.getArg(0),
@@ -1654,14 +1720,10 @@ final class EditorWidgets {
 
     private io.github.libxposed.api.XposedInterface.HookHandle installDirectDragBinding(
             ClassLoader loader) throws ReflectiveOperationException {
-        Class<?> adapter =
-                legacy() ? OneUi85WidgetEditor.adapter(loader) : OneUi9WidgetEditor.adapter(loader);
-        Method position =
-                NativeContract.findStaticMethod(
-                        adapter,
-                        legacy()
-                                ? OneUi85WidgetEditor.ADAPTER_METHOD
-                                : OneUi9WidgetEditor.ADAPTER_METHOD,
+        Method position = legacy()
+                ? NativeContract.findStaticMethod(
+                        OneUi85WidgetEditor.adapter(loader),
+                        OneUi85WidgetEditor.ADAPTER_METHOD,
                         void.class,
                         View.class,
                         int.class,
@@ -1669,7 +1731,8 @@ final class EditorWidgets {
                         float.class,
                         int.class,
                         int.class,
-                        boolean.class);
+                        boolean.class)
+                : OneUi9WidgetEditor.resizeAnimation(loader);
         var handle =
                 module.hook(position)
                         .setId("dressroom-advanced.widget-drag-immediate-binding")
@@ -1773,20 +1836,47 @@ final class EditorWidgets {
         module.deoptimize(pickerScope);
     }
 
-    private void addMenu(Object toolbar, ClassLoader loader) throws Exception {
+    private void addMenu(Object toolbar, Class<?> rendererOwner) throws Exception {
         if (legacy()) {
             legacyBinding.addMenu(toolbar, context -> () -> open(context), TAG);
             return;
         }
-        OneUi9WidgetEditor.addMenu(toolbar, context -> () -> open(context), TAG);
+        OneUi9WidgetEditor.addMenu(toolbar, rendererOwner, context -> () -> open(context), TAG);
+    }
+
+    boolean previewAvailable() {
+        return owner.get() != null && ui.get() != null;
+    }
+
+    boolean nativeToolbarVisible(View root) {
+        View toolbar = nativeToolbar.get();
+        return toolbar != null && toolbar.isShown() && toolbar.getWidth() > 0
+                && toolbar.getHeight() > 0 && toolbar.getRootView() == root.getRootView();
+    }
+
+    void openFromClock(Context context) {
+        try {
+            new WidgetPanel(context, legacyBinding.toolbar.getDeclaringClass().getClassLoader(),
+                    this).showDialog(previewAvailable());
+        } catch (Exception e) {
+            module.report("Clock panel shortcut unavailable", e);
+            android.widget.Toast.makeText(context, "Could not open Extras.",
+                    android.widget.Toast.LENGTH_SHORT).show();
+        }
     }
 
     private void open(Context context) {
         try {
-            if (owner.get() == null || ui.get() == null)
+            Object preview = owner.get();
+            Object panel = ui.get();
+            if ((preview == null || panel == null) && earlyClockEditor()) {
+                openFromClock(context);
+                return;
+            }
+            if (preview == null || panel == null)
                 throw new IllegalStateException(
                         "Open the lockscreen editor with widgets available first.");
-            new WidgetPanel(context, owner.get().getClass().getClassLoader(), this).show(ui.get());
+            new WidgetPanel(context, preview.getClass().getClassLoader(), this).show(panel);
         } catch (Exception e) {
             module.report("Widget Advanced panel unavailable", e);
             android.widget.Toast.makeText(context, e.getMessage(), android.widget.Toast.LENGTH_LONG)

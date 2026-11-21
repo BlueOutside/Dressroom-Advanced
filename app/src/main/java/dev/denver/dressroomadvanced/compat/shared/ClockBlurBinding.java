@@ -58,7 +58,9 @@ final class ClockBlurBinding {
         origin = NativeContract.findMethod(strategy, null, PointF.class, ViewGroup.class);
         DexSignatures.Body body = DexSignatures.body(render);
         clip = resolveClip(body, loader);
-        Field[] ownerPath = ClockBlurRetryBinding.ownerClockPath(body, strategy, loader);
+        Field[] ownerPath = retry.task == null
+                ? retry.strategyClockPath(body)
+                : ClockBlurRetryBinding.ownerClockPath(body, strategy, loader);
         owner = ownerPath[0];
         clock = ownerPath[1];
         if (clock.getType() != Object.class && !View.class.isAssignableFrom(clock.getType()))

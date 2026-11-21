@@ -10,6 +10,11 @@ final class OneUi85WidgetLayout {
     final Method rotate, restore, editable, alignValue, picker, tablet, gridMetrics;
 
     OneUi85WidgetLayout(ClassLoader loader, Class<?> preview) throws ReflectiveOperationException {
+        this(loader, preview, false);
+    }
+
+    OneUi85WidgetLayout(ClassLoader loader, Class<?> preview, boolean early)
+            throws ReflectiveOperationException {
         Class<?> align =
                 Class.forName(
                         "com.samsung.android.clockpack.plugins.briefwidget.WidgetAlignType",
@@ -84,7 +89,7 @@ final class OneUi85WidgetLayout {
                         "com.samsung.android.lockscreen.editor.item.domain.entity.item.clock.ClockAssistData",
                         false,
                         loader);
-        alignValue = NativeContract.method(assist, "getWidgetAlignTypeValue", align);
+        alignValue = early ? null : NativeContract.method(assist, "getWidgetAlignTypeValue", align);
         Class<?> device =
                 Class.forName(
                         "com.samsung.android.lockscreen.editor.item.domain.entity.system.DeviceType",

@@ -63,13 +63,14 @@ final class AodStretchExtras {
                                                 } catch (Exception error) {
                                                     return chain.proceed();
                                                 }
+                                                boolean returning = mediaReturns.contains(clock);
                                                 if (!preserveHeight(
                                                         RuntimeExtras.enabled(
                                                                 clock.getContext(), "keepStretch"),
                                                         expanded,
                                                         dozing,
                                                         doze,
-                                                        mediaReturns.contains(clock)))
+                                                        returning))
                                                     return chain.proceed();
                                                 Object axis;
                                                 ArrayList<Object> remaining = new ArrayList<>();
@@ -85,14 +86,30 @@ final class AodStretchExtras {
                                                 } catch (Exception error) {
                                                     return chain.proceed();
                                                 }
+                                                Object result;
                                                 try {
-                                                    return chain.proceed();
+                                                    result = chain.proceed();
                                                 } finally {
                                                     try {
                                                         binding.axes.set(controller, axis);
                                                     } catch (Exception ignored) {
                                                     }
                                                 }
+                                                if (returning && remaining.isEmpty()) {
+                                                    try {
+                                                        ClockBinding clockBinding =
+                                                                ClockBinding.of(clock);
+                                                        Object nativeFont =
+                                                                clockBinding.font(clock);
+                                                        if (nativeFont != null) {
+                                                            clockBinding.render(clock, nativeFont);
+                                                            Reflect.call(clock, "refresh");
+                                                            clock.requestLayout();
+                                                        }
+                                                    } catch (Exception ignored) {
+                                                    }
+                                                }
+                                                return result;
                                             })
                             ::unhook);
             module.deoptimize(transition);

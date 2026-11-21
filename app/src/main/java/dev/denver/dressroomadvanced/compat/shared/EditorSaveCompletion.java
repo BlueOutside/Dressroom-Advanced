@@ -9,18 +9,20 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
-/** Final wallpaper-save contract shared by the 8.5 and 9.0 editors. */
+/** Final wallpaper-save contract across editor versions. */
 final class EditorSaveCompletion {
     private static final String START = "Start save.", CHECK = "checkSaveCondition";
     private static final String FAILED = "save condition is false.";
     private static final String COUNT = "OnSaveListener Done. ",
             FINISH = "Save done. Finish the Activity.";
+    private static final String COMPONENT_DONE = "Save completed = ";
     private static final String EDITOR =
             "Lcom/samsung/android/app/dressroom/presentation/preview/activity/EditBaseActivity;";
     final Method started, completed;
     private final Field owner;
     private final Value count, components, activity, button;
     private final Class<?> mediatorType;
+    private final boolean incrementsOnEntry;
 
     private interface Value {
         Object get(Object target) throws ReflectiveOperationException;
@@ -33,7 +35,7 @@ final class EditorSaveCompletion {
     private static List<DexSignatures.Body> discover(ClassLoader loader)
             throws ReflectiveOperationException {
         try {
-            return DexSignatures.find(loader, Set.of(START, CHECK, FAILED, COUNT, FINISH));
+            return DexSignatures.find(loader, Set.of(START, CHECK, FAILED, COUNT, FINISH, COMPONENT_DONE));
         } catch (java.io.IOException error) {
             throw new ReflectiveOperationException("Could not read editor save signatures", error);
         }
@@ -54,8 +56,25 @@ final class EditorSaveCompletion {
                 end = body;
             }
         }
-        if (begin == null || end == null)
+        if (begin == null)
             throw new NoSuchMethodException("Editor save signature not found");
+        incrementsOnEntry = end == null;
+        if (incrementsOnEntry) {
+            for (DexSignatures.Body candidate : bodies) {
+                if (!candidate.owner().equals(begin.owner())
+                        || (candidate.access() & 8) != 0 || !candidate.result().equals("V")
+                        || candidate.parameters().size() != 1
+                        || !candidate.parameters().get(0).startsWith("L")
+                        || !candidate.anchors().keySet().containsAll(Set.of(FINISH, COMPONENT_DONE)))
+                    continue;
+                var counter = oneRead(candidate, begin.owner(), Set.of("I"), FINISH);
+                if (candidate.writes().stream().noneMatch(write -> write.field().equals(counter)
+                        && write.offset() < candidate.anchors().get(FINISH))) continue;
+                if (end != null) throw new NoSuchMethodException("Ambiguous component save completion");
+                end = candidate;
+            }
+            if (end == null) throw new NoSuchMethodException("Editor save completion not found");
+        }
         if (!begin.anchors().containsKey(CHECK)) {
             // 8.5 keeps validation in a separate boolean helper. 9.0 inlines it.
             int validators = 0;
@@ -82,8 +101,8 @@ final class EditorSaveCompletion {
         completed = end.method(loader);
         mediatorType = started.getDeclaringClass();
         String mediator = begin.owner();
-        owner =
-                oneRead(end, end.owner(), Set.of("Ljava/lang/Object;", mediator), FINISH)
+        owner = incrementsOnEntry ? null
+                : oneRead(end, end.owner(), Set.of("Ljava/lang/Object;", mediator), FINISH)
                         .field(loader);
         count = value(end, mediator, Set.of("I"), FINISH, loader);
         components = value(end, mediator, Set.of("Ljava/util/ArrayList;"), FINISH, loader);
@@ -158,13 +177,14 @@ final class EditorSaveCompletion {
     }
 
     boolean finished(Object listener, Object editor) throws ReflectiveOperationException {
-        Object mediator = owner.get(listener);
+        Object mediator = owner == null ? listener : owner.get(listener);
         if (!belongsTo(mediator, editor)) return false;
         Object saved = components.get(mediator);
         if (saved != componentsIdentity.get(mediator))
             throw new IllegalStateException("Save phases refer to different component lists");
         return saved instanceof ArrayList<?> pending
                 && !pending.isEmpty()
-                && ((Number) count.get(mediator)).intValue() == pending.size();
+                && ((Number) count.get(mediator)).intValue() + (incrementsOnEntry ? 1 : 0)
+                        == pending.size();
     }
 }

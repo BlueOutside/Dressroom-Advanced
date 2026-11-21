@@ -25,10 +25,11 @@ final class MediaBlurHost {
                 .setId("dressroom-advanced.live-clock-blur-host")
                 .intercept(
                         chain -> {
-                            if (held.isEmpty()) return chain.proceed();
                             View view = (View) chain.getThisObject();
+                            if (held.isEmpty() && !MediaClockContrast.tracksWeatherAlpha(view))
+                                return chain.proceed();
                             float requested = ((Number) chain.getArg(0)).floatValue();
-                            float actual = nativeAlpha(view, requested);
+                            float actual = nativeAlpha(view, MediaClockContrast.weatherAlpha(view, requested));
                             return actual == requested
                                     ? chain.proceed()
                                     : chain.proceed(new Object[] {actual});

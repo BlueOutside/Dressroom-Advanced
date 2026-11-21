@@ -59,9 +59,15 @@ public final class PostApplyWallpaperProbe {
         queue.clear(); tracker.follow("commitExtras", cover);
         equal(0, queue.size(), "Extras incorrectly followed wallpaper IDs");
         tracker.follow("commit", profile(0, 1, 62, "non-fold"));
-        equal(0, queue.size(), "Non-fold path acquired delayed rebinding");
+        equal(1, queue.size(), "Non-fold path missed delayed rebinding");
+        ids[0] = 65; now[0] = 10250; queue.remove(0).run();
+        equal(count + 1, writes.size(), "Non-fold late wallpaper ID was not followed");
+        equal(0, ScreenIdentity.value(writes.get(count)), "Non-fold delayed Apply switched screen");
+        equal(65, writes.get(count).getInt("wallpaperId"), "Non-fold wallpaper ID lost");
+        queue.clear();
+        count = writes.size();
         tracker.follow("commit", profile(2, 1, 92, "unavailable"));
-        now[0] = 10250; ids[2] = -1; queue.remove(0).run();
+        now[0] = 10500; ids[2] = -1; queue.remove(0).run();
         equal(count, writes.size(), "Unavailable wallpaper ID destroyed a valid profile");
     }
 }

@@ -357,9 +357,10 @@ final class DexSignatures {
             List<Reader> loaded = new ArrayList<>();
             visitDex(source, bytes -> {
                 try {
-                    Reader reader = new Reader(bytes);
-                    reader.indexed = true;
-                    loaded.add(reader);
+                    for (Reader reader : Reader.readers(bytes)) {
+                        reader.indexed = true;
+                        loaded.add(reader);
+                    }
                 } catch (IndexOutOfBoundsException | IllegalArgumentException error) {
                     throw new IOException("Invalid DEX while caching editor signatures", error);
                 }
@@ -480,7 +481,7 @@ final class DexSignatures {
         }
         visitDex(source, bytes -> {
             try {
-                consumer.accept(new Reader(bytes));
+                for (Reader reader : Reader.readers(bytes)) consumer.accept(reader);
                 return false;
             } catch (IndexOutOfBoundsException | IllegalArgumentException | ArithmeticException error) {
                 throw new IOException("Invalid DEX while resolving " + context, error);
@@ -527,7 +528,11 @@ final class DexSignatures {
     private static List<Body> inspect(byte[] bytes, Set<String> anchors, Target target)
             throws IOException {
         try {
-            return new Reader(bytes).find(anchors, target);
+            List<Reader> sections = Reader.readers(bytes);
+            if (sections.size() == 1) return sections.get(0).find(anchors, target);
+            List<Body> found = new ArrayList<>();
+            for (Reader reader : sections) found.addAll(reader.find(anchors, target));
+            return found;
         } catch (IndexOutOfBoundsException | IllegalArgumentException | ArithmeticException error) {
             throw new IOException("Invalid DEX while resolving editor signatures", error);
         }
@@ -535,34 +540,84 @@ final class DexSignatures {
 
     private static final class Reader {
         final byte[] data;
-        final int strings, types, protos, fields, methods;
+        final int headerOffset;
+        final int stringCount, strings, types, protos, fields, methodCount, methods, classCount, classDefs;
+        final Map<Set<String>, Map<Integer, String>> anchorCache;
         boolean indexed;
         private Map<String, Integer> classIndex;
+
+        static List<Reader> readers(byte[] data) {
+            Reader first = new Reader(data, 0, null);
+            int headerSize = first.u32(36);
+            if (headerSize < 120 || data.length < 120) return List.of(first);
+            int containerSize = first.u32(112);
+            int declaredOffset = first.u32(116);
+            int firstSize = first.u32(32);
+            if (declaredOffset != 0 || containerSize > data.length || containerSize <= firstSize) {
+                return List.of(first);
+            }
+            Map<Long, Map<Set<String>, Map<Integer, String>>> sharedAnchors = new HashMap<>();
+            List<Reader> sections = new ArrayList<>();
+            int offset = 0;
+            while (offset < containerSize) {
+                if (containerSize - offset < 120)
+                    throw new IllegalArgumentException("Truncated DEX container section");
+                Reader section = new Reader(data, offset, sharedAnchors);
+                int sectionHeader = section.u32(offset + 36);
+                int sectionSize = section.u32(offset + 32);
+                int sectionOffset = section.u32(offset + 116);
+                if (sectionHeader < 120
+                        || sectionSize <= 0
+                        || sectionOffset != offset
+                        || sectionSize > containerSize - offset) {
+                    throw new IllegalArgumentException(
+                            "Invalid DEX container section at " + offset);
+                }
+                sections.add(section);
+                offset += sectionSize;
+            }
+            return sections;
+        }
 
         int classDef(String owner) {
             if (classIndex == null) {
                 Map<String, Integer> index = new HashMap<>();
-                for (int i = 0, count = u32(96), base = u32(100); i < count; i++)
-                    index.putIfAbsent(type(u32(base + i * 32)), i);
+                for (int i = 0; i < classCount; i++)
+                    index.putIfAbsent(type(u32(classDefs + i * 32)), i);
                 classIndex = index;
             }
             return classIndex.getOrDefault(owner, -1);
         }
 
-        Reader(byte[] data) {
+        Reader(
+                byte[] data,
+                int headerOffset,
+                Map<Long, Map<Set<String>, Map<Integer, String>>> sharedAnchors) {
             this.data = data;
-            if (data.length < 112
-                    || data[0] != 'd'
-                    || data[1] != 'e'
-                    || data[2] != 'x'
-                    || data[3] != '\n'
-                    || u32(40) != 0x12345678)
+            this.headerOffset = headerOffset;
+            if (headerOffset < 0
+                    || data.length - headerOffset < 112
+                    || data[headerOffset] != 'd'
+                    || data[headerOffset + 1] != 'e'
+                    || data[headerOffset + 2] != 'x'
+                    || data[headerOffset + 3] != '\n'
+                    || u32(headerOffset + 40) != 0x12345678)
                 throw new IllegalArgumentException("Unsupported DEX header");
-            strings = u32(60);
-            types = u32(68);
-            protos = u32(76);
-            fields = u32(84);
-            methods = u32(92);
+            stringCount = u32(headerOffset + 56);
+            strings = u32(headerOffset + 60);
+            types = u32(headerOffset + 68);
+            protos = u32(headerOffset + 76);
+            fields = u32(headerOffset + 84);
+            methodCount = u32(headerOffset + 88);
+            methods = u32(headerOffset + 92);
+            classCount = u32(headerOffset + 96);
+            classDefs = u32(headerOffset + 100);
+            if (sharedAnchors != null) {
+                long tableKey = (((long) strings) << 32) | (stringCount & 0xffffffffL);
+                anchorCache = sharedAnchors.computeIfAbsent(tableKey, ignored -> new HashMap<>());
+            } else {
+                anchorCache = null;
+            }
         }
 
         int u16(int offset) {
@@ -623,12 +678,17 @@ final class DexSignatures {
 
         Map<Integer, String> anchorIds(Set<String> anchors) {
             if (anchors.isEmpty()) return Map.of();
+            if (anchorCache != null) {
+                Map<Integer, String> cached = anchorCache.get(anchors);
+                if (cached != null) return cached;
+            }
             Map<Integer, String> ids = new HashMap<>();
-            for (int i = 0, size = u32(56); i < size; i++) {
+            for (int i = 0; i < stringCount; i++) {
                 for (String anchor : anchors) {
                     if (matchesText(i, anchor)) ids.put(i, anchor);
                 }
             }
+            if (anchorCache != null) anchorCache.put(Set.copyOf(anchors), ids);
             return ids;
         }
 
@@ -644,7 +704,7 @@ final class DexSignatures {
         }
 
         int findMethodCode(Target target) {
-            int first = 0, count = u32(96), base = u32(100);
+            int first = 0, count = classCount, base = classDefs;
             if (indexed) {
                 int def = classDef(target.owner);
                 if (def < 0) return -1;
@@ -910,14 +970,14 @@ final class DexSignatures {
             List<Body> found = new ArrayList<>();
             Set<Integer> callIds = new LinkedHashSet<>();
             if (target != null && target.callers) {
-                for (int i = 0, size = u32(88); i < size; i++) {
+                for (int i = 0; i < methodCount; i++) {
                     if (matchesType(u16(methods + i * 8), target.owner)
                             && matchesMethod(i, target)) callIds.add(i);
                 }
                 if (callIds.isEmpty()) return found;
             }
             if (ids.isEmpty() && target == null) return found;
-            int first = 0, count = u32(96), base = u32(100);
+            int first = 0, count = classCount, base = classDefs;
             if (indexed && target != null && !target.callers) {
                 int def = classDef(target.owner);
                 if (def < 0) return found;

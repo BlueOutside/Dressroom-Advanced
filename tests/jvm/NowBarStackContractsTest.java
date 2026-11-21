@@ -38,6 +38,14 @@ public final class NowBarStackContractsTest {
             return 204;
         }
 
+        static int presetWithBrightness(Context context, boolean b1, boolean b2,
+                Integer brightness, int mask) {
+            if (mask != 62 || b1 || b2 || brightness == null) {
+                throw new AssertionError("Beta glass must pass a value and avoid the wallpaper lookup");
+            }
+            return brightness;
+        }
+
         static int unrelated(String tag) {
             return tag.length();
         }
@@ -132,7 +140,7 @@ public final class NowBarStackContractsTest {
         Method m5 = NowBarGlass.selectPresetMethod(fiveArgCalls, loader);
         check("preset5".equals(m5.getName()), "5-arg preset selector must resolve");
         check(
-                NowBarGlass.invokePresetSelector(m5, null) == 105 && PresetHost.lastFiveArgCount == 62,
+                NowBarGlass.invokePresetSelector(m5, null, -1) == 105 && PresetHost.lastFiveArgCount == 62,
                 "5-arg preset selector must pass (62, context, false, false, false)");
 
         List<DexSignatures.Call> fourArgCalls =
@@ -149,8 +157,15 @@ public final class NowBarStackContractsTest {
         Method m4 = NowBarGlass.selectPresetMethod(fourArgCalls, loader);
         check("preset4".equals(m4.getName()), "4-arg ClockPack preset selector must resolve");
         check(
-                NowBarGlass.invokePresetSelector(m4, null) == 204 && PresetHost.lastFourArgCount == 62,
+                NowBarGlass.invokePresetSelector(m4, null, -1) == 204 && PresetHost.lastFourArgCount == 62,
                 "4-arg preset selector must pass (context, false, false, 62)");
+
+        Method beta = PresetHost.class.getDeclaredMethod("presetWithBrightness", Context.class,
+                boolean.class, boolean.class, Integer.class, int.class);
+        check(NowBarGlass.invokePresetSelector(beta, null, 58) == 58,
+                "Beta glass must pass Samsung's cached brightness");
+        check(NowBarGlass.invokePresetSelector(beta, null, -1) == -1,
+                "A missing color model must take the beta selector's default preset");
 
         boolean ambiguousRejected = false;
         try {
@@ -164,7 +179,7 @@ public final class NowBarStackContractsTest {
         boolean unsupportedRejected = false;
         try {
             NowBarGlass.invokePresetSelector(
-                    PresetHost.class.getDeclaredMethod("unrelated", String.class), null);
+                    PresetHost.class.getDeclaredMethod("unrelated", String.class), null, -1);
         } catch (NoSuchMethodException expected) {
             unsupportedRejected = true;
         }

@@ -133,7 +133,13 @@ final class WallpaperMotionPublisher {
                                     .intercept(
                                             chain -> {
                                                 Pass pass = publisher.drawing.get();
-                                                if (pass == null || pass.frame != null)
+                                                Object node = chain.getThisObject();
+                                                if (pass == null
+                                                        || pass.frame != null
+                                                        || node == null
+                                                        || node.getClass()
+                                                                != binding.bitmap
+                                                                        .getDeclaringClass())
                                                     return chain.proceed();
                                                 try {
                                                     publisher.captureDrawable(

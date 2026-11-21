@@ -30,7 +30,7 @@ Imported fonts use their own variable axes. Samsung's dynamic per-digit stretchi
 | 9.0 | Clock Style + Dressroom | Supported for clock, fonts, depth, widgets and Now Bar stack (ClockPack 8.9.65.92); clock blur and foldable profiles require AOD |
 | 8.5 | Clock Style + Dressroom | Tested on SM-P613 with a custom ROM |
 | 8.5 | AOD + Dressroom | Experimental; widget issues remain on some app versions |
-| 8.0 | Any combination | Unsupported (Support coming in a future update) |
+| 8.0 | AOD or Clock Style + Dressroom | Experimental clock and depth port. See [tested APKs](docs/compatibility/ONE_UI_8_0.md). |
 | 7.0 | Any combination | Unsupported (Support coming after 8.0 support update) |
 
 Requires Android 16 or 17 and an LSPosed-compatible framework with API 102 support. Features also depend on the installed Dressroom and clock-provider versions.
@@ -51,7 +51,7 @@ See [foldable support](docs/compatibility/ONE_UI_9_FOLDABLES.md) and [device val
 
 Reboot after module updates too, so all scoped processes load the new version.
 
-Opening the editor checks for a newer GitHub release. (Checks are cached for 15 minutes.)
+Opening the editor checks for a newer GitHub release. (Checks are cached for 15 minutes.) Enable **Pre-release updates** under **Advanced -> Extras -> Updates**, or install a `dev` build from the `dev` branch, to also check pre-release builds and choose between stable and pre-release updates when both are newer.
 
 For depth tracking during full-screen AOD wallpaper animations, also enable the Samsung live wallpaper scope (`com.samsung.android.wallpaper.live`). If its renderer is not supported or scoped, depth keeps its saved mapping.
 

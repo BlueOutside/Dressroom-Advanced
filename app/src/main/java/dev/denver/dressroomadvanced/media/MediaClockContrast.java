@@ -13,11 +13,12 @@ import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
-import android.graphics.RadialGradient;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.RenderNode;
 import android.graphics.Shader;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ImageView;
@@ -32,49 +33,157 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
 import java.util.WeakHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 final class MediaClockContrast {
-    private static final Set<View> clocks = Collections.newSetFromMap(new WeakHashMap<>());
+    private static final int SYNC_SAMPLE_MAX_DIM = 96;
+    private static final Map<View, ClockCache> clocks = new WeakHashMap<>();
     private static final Map<TextView, Saved> colors = new WeakHashMap<>();
     private static final Map<ViewGroup, Snapshot> samples = new WeakHashMap<>();
+    private static final Map<Bitmap, SampleEntry> coverSamples = new WeakHashMap<>();
+    private static final Map<ViewGroup, PendingSample> pendingSamples = new WeakHashMap<>();
     private static final Map<ImageView, Icon> icons = new WeakHashMap<>();
     private static final Set<Class<?>> customClasses =
             Collections.newSetFromMap(new WeakHashMap<>());
+    private static final class Async {
+        static final Handler MAIN = new Handler(Looper.getMainLooper());
+        static final ExecutorService POOL =
+                Executors.newSingleThreadExecutor(
+                        runnable -> {
+                            Thread t = new Thread(runnable, "DressroomArtSample");
+                            t.setDaemon(true);
+                            t.setPriority(Thread.NORM_PRIORITY - 1);
+                            return t;
+                        });
+    }
 
-    record AuraSpec(
-            int textColor, int scrimColor, float blurAlpha, float scrimAlpha, float conflict) {}
+    private static final int DARK_INK = 0xff17191c, LIGHT_INK = 0xfffff9f2;
+    record Palette(int textColor, float conflict) {}
+
+    private static final class SampleEntry {
+        final int generation;
+        volatile ArtworkSamples samples;
+        volatile boolean failed;
+
+        SampleEntry(int generation, ArtworkSamples samples) {
+            this.generation = generation;
+            this.samples = samples;
+        }
+    }
+
+    private static final class PendingSample {
+        final WeakReference<Bitmap> source;
+        final int generation;
+        final RectF destination = new RectF();
+        WeakReference<View> overlay;
+
+        PendingSample(Bitmap source, int generation, RectF destination, View overlay) {
+            this.source = new WeakReference<>(source);
+            this.generation = generation;
+            this.destination.set(destination);
+            this.overlay = new WeakReference<>(overlay);
+        }
+    }
+
+    private static final class ClockCache {
+        final ArrayList<TextView> texts = new ArrayList<>();
+        final ArrayList<ImageView> weather = new ArrayList<>();
+        String category;
+        boolean treeDirty = true;
+        boolean layoutDirty = true;
+        boolean wasActive;
+
+        static ClockCache create(View clock) {
+            ClockCache cache = new ClockCache();
+            clock.addOnLayoutChangeListener(
+                    (v, l, t, r, b, ol, ot, or, ob) -> {
+                        cache.treeDirty = true;
+                        cache.layoutDirty = true;
+                        invalidate(v.getRootView());
+                    });
+            clock.addOnAttachStateChangeListener(
+                    new View.OnAttachStateChangeListener() {
+                        @Override
+                        public void onViewAttachedToWindow(View v) {
+                            cache.category = null;
+                            cache.treeDirty = true;
+                            cache.layoutDirty = true;
+                            invalidate(v.getRootView());
+                        }
+
+                        @Override
+                        public void onViewDetachedFromWindow(View v) {
+                            cache.category = null;
+                            cache.treeDirty = true;
+                            cache.layoutDirty = true;
+                        }
+                    });
+            return cache;
+        }
+    }
 
     private static final class Snapshot {
         final WeakReference<Bitmap> source;
         final int generation;
         final ArtworkSamples pixels;
-        AuraSpec spec;
+        Palette spec;
+        int videoInk;
+        long lastVideoSample;
+        boolean returning;
+        WeakReference<View> overlay = new WeakReference<>(null);
         final RectF localBounds = new RectF();
-        final RectF auraBounds = new RectF();
-        final Matrix shaderMatrix = new Matrix();
-        final Paint layerPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        final Paint scrimPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        final RectF destination = new RectF();
+        final Path cover = new Path();
+        RenderNode art;
+        int artRevision = -1;
+        float artOpacity;
+        final RectF appliedCover = new RectF();
+        int appliedOriginX, appliedOriginY;
+        int appliedInk;
+        int appliedClockCount = -1;
+        int appliedClockStateHash;
+        boolean settled;
+        final Matrix transform = new Matrix();
+        final Paint ink = new Paint(Paint.ANTI_ALIAS_FLAG);
+        final Paint glassSheen = new Paint();
+        final Matrix sheenScale = new Matrix();
+        final android.graphics.LinearGradient sheen = new android.graphics.LinearGradient(
+                0f, 0f, 0f, 1f, new int[] {0x16eff8ff, 0x00000000, 0x0e000000},
+                new float[] {0f, .52f, 1f}, Shader.TileMode.CLAMP);
         final Paint maskPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        final RadialGradient maskShader =
-                new RadialGradient(
-                        0f,
-                        0f,
-                        1f,
-                        new int[] {0xffffffff, 0xd8ffffff, 0x55ffffff, 0x00ffffff},
-                        new float[] {0f, .52f, .78f, 1f},
-                        Shader.TileMode.CLAMP);
+        final Paint iconMask = new Paint(Paint.ANTI_ALIAS_FLAG);
+        int iconImageAlpha = -1;
 
         Snapshot(WeakReference<Bitmap> source, int generation, ArtworkSamples pixels) {
             this.source = source;
             this.generation = generation;
             this.pixels = pixels;
             maskPaint.setBlendMode(BlendMode.DST_IN);
-            maskPaint.setShader(maskShader);
+            iconMask.setBlendMode(BlendMode.DST_IN);
+            glassSheen.setShader(sheen);
+        }
+
+        Paint maskFor(View view) {
+            if (!(view instanceof ImageView image)) return maskPaint;
+            int alpha = image.getImageAlpha();
+            if (iconImageAlpha != alpha) {
+                iconImageAlpha = alpha;
+                iconMask.setColorFilter(new android.graphics.ColorMatrixColorFilter(new float[] {
+                        1, 0, 0, 0, 0,
+                        0, 1, 0, 0, 0,
+                        0, 0, 1, 0, 0,
+                        0, 0, 0, 510f / Math.max(1, alpha), 0
+                }));
+            }
+            return iconMask;
         }
     }
 
     private static final class Work {
         final RectF cover = new RectF();
+        final RectF boundsF = new RectF();
+        final Matrix matrix = new Matrix();
         final Rect bounds = new Rect();
         final Rect clockBounds = new Rect();
         final int[] origin = new int[2];
@@ -97,6 +206,7 @@ final class MediaClockContrast {
 
     private static final ThreadLocal<Work> workspace = ThreadLocal.withInitial(Work::new);
     private static boolean installed, writing;
+    private static Field customOutlineColor, customPathMode;
     private static final ThreadLocal<TextView> drawing = new ThreadLocal<>();
 
     private static final class Saved {
@@ -112,34 +222,103 @@ final class MediaClockContrast {
         int shadowColor = 0x99000000;
         final boolean custom;
         Bitmap bitmap;
+        String text = "";
         int generation;
         final RectF cover = new RectF();
         final Rect bounds = new Rect();
 
         Saved(ViewGroup root, TextView view) {
             this.root = new WeakReference<>(root);
-            nativeColors = view.getTextColors();
-            color = target = nativeColors.getDefaultColor();
             custom = customClasses.stream().anyMatch(type -> type.isInstance(view));
+            nativeColors = view.getTextColors();
+            color = target = nativeDisplayColor(view, custom, nativeColors);
         }
+    }
+
+    private static int nativeDisplayColor(
+            TextView view, boolean custom, ColorStateList fallbackColors) {
+        if (custom && customOutlineColor != null && customPathMode != null) {
+            try {
+                if (customPathMode.getBoolean(view)) {
+                    return customOutlineColor.getInt(view);
+                }
+            } catch (IllegalAccessException ignored) {
+            }
+        }
+        ColorStateList list = fallbackColors != null ? fallbackColors : view.getTextColors();
+        return list != null ? list.getDefaultColor() : view.getCurrentTextColor();
+    }
+
+    private static boolean glyphBounds(View view, Work work) {
+        if (view.getGlobalVisibleRect(work.bounds) && !work.bounds.isEmpty()) return true;
+        if (!view.isShown() || view.getWidth() <= 0 || view.getHeight() <= 0) return false;
+        work.matrix.reset();
+        view.transformMatrixToGlobal(work.matrix);
+        work.boundsF.set(0f, 0f, view.getWidth(), view.getHeight());
+        work.matrix.mapRect(work.boundsF);
+        work.bounds.set(
+                (int) Math.floor(work.boundsF.left),
+                (int) Math.floor(work.boundsF.top),
+                (int) Math.ceil(work.boundsF.right),
+                (int) Math.ceil(work.boundsF.bottom));
+        return !work.bounds.isEmpty();
     }
 
     private static final class Icon {
         final WeakReference<ViewGroup> root;
         ColorFilter nativeFilter;
         ColorFilter filter;
+        float emphasis;
         int color, target;
+        float nativeAlpha;
         boolean closing;
         ValueAnimator animator;
 
         Icon(ViewGroup root, ImageView view) {
             this.root = new WeakReference<>(root);
             nativeFilter = view.getColorFilter();
+            nativeAlpha = view.getAlpha();
         }
     }
 
+    static boolean tracksWeatherAlpha(View view) {
+        return !icons.isEmpty() && view instanceof ImageView && icons.containsKey(view);
+    }
+
+    static float weatherAlpha(View view, float alpha) {
+        if (writing || icons.isEmpty() || !(view instanceof ImageView image)) return alpha;
+        Icon saved = icons.get(image);
+        if (saved == null) return alpha;
+        saved.nativeAlpha = alpha;
+        return iconAlpha(saved);
+    }
+
+    private static float iconAlpha(Icon saved) {
+        return saved.nativeAlpha + (1f - saved.nativeAlpha) * saved.emphasis;
+    }
+
     static void track(View clock) {
-        clocks.add(clock);
+        if (clock == null) return;
+        clocks.computeIfAbsent(clock, ClockCache::create);
+    }
+
+    static void invalidate(View root) {
+        if (root instanceof ViewGroup group) {
+            Snapshot snapshot = samples.get(group);
+            if (snapshot != null) snapshot.settled = false;
+        }
+    }
+
+    static boolean isActive(ViewGroup root) {
+        if (root == null) return false;
+        if (samples.containsKey(root) || pendingSamples.containsKey(root)) return true;
+        for (Saved saved : colors.values()) {
+            if (saved.root.get() == root) return true;
+        }
+        for (Icon saved : icons.values()) {
+            if (saved.root.get() == root) return true;
+        }
+        return false;
     }
 
     static boolean overridesDraw(TextView view) {
@@ -150,50 +329,10 @@ final class MediaClockContrast {
 
     static void install(DressroomModule module, ClassLoader loader)
             throws ReflectiveOperationException {
-        Class<?> custom =
-                Class.forName(
-                        "com.samsung.android.uniform.widget.ClockNonePaddingTextView",
-                        false,
-                        loader);
-        if (!customClasses.contains(custom)) {
-            final Field outlineColor = resolveOutlineField(custom.getSuperclass());
-            Method draw = custom.getDeclaredMethod("onDraw", Canvas.class);
-            module.hook(draw)
-                    .setId("dressroom-advanced.media-clock-palette-draw")
-                    .intercept(
-                            chain -> {
-                                TextView view = (TextView) chain.getThisObject();
-                                Saved saved = colors.get(view);
-                                if (saved == null || !saved.initialized) return chain.proceed();
-                                android.text.TextPaint paint = view.getPaint();
-                                Shader shader = paint.getShader();
-                                int color = paint.getColor();
-                                int nativeOutline =
-                                        outlineColor == null ? 0 : outlineColor.getInt(view);
-                                float radius = paint.getShadowLayerRadius();
-                                float dx = paint.getShadowLayerDx(), dy = paint.getShadowLayerDy();
-                                int shadow = paint.getShadowLayerColor();
-                                TextView previous = drawing.get();
-                                try {
-                                    drawing.set(view);
-                                    paint.setShader(null);
-                                    paint.setColor(saved.color);
-                                    if (outlineColor != null)
-                                        outlineColor.setInt(view, saved.color);
-                                    shadow(view, saved);
-                                    return chain.proceed();
-                                } finally {
-                                    paint.setShader(shader);
-                                    paint.setColor(color);
-                                    if (outlineColor != null)
-                                        outlineColor.setInt(view, nativeOutline);
-                                    paint.setShadowLayer(radius, dx, dy, shadow);
-                                    if (previous == null) drawing.remove();
-                                    else drawing.set(previous);
-                                }
-                            });
-            module.deoptimize(draw);
-            customClasses.add(custom);
+        try {
+            installCustomGlyphs(module, loader);
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError unavailable) {
+            DressroomModule.note("Optional fullscreen artwork custom glyph binding", unavailable);
         }
         if (installed) return;
         Method textDraw = TextView.class.getDeclaredMethod("onDraw", Canvas.class);
@@ -213,9 +352,14 @@ final class MediaClockContrast {
                             int textColor = paint.getColor();
                             try {
                                 paint.setShader(null);
-                                paint.setColor(saved.color);
-                                shadow(view, saved);
-                                return chain.proceed();
+                                Canvas canvas = (Canvas) chain.getArg(0);
+                                ViewGroup root = saved.root.get();
+                                paint.setColor(saved.color | 0xff000000);
+                                if (hasArtwork(root, canvas)) paint.clearShadowLayer();
+                                else shadow(view, saved);
+                                return drawArtworkGlyph(canvas, view, root,
+                                        saved.emphasis, saved.color,
+                                        target -> chain.proceed(new Object[] {target}));
                             } finally {
                                 paint.setShader(shader);
                                 paint.setColor(textColor);
@@ -233,7 +377,7 @@ final class MediaClockContrast {
                                             && saved.custom
                                             && saved.initialized
                                             && drawing.get() == chain.getThisObject()
-                                    ? saved.color
+                                    ? saved.color | 0xff000000
                                     : chain.proceed();
                         });
         module.deoptimize(currentColor);
@@ -271,14 +415,81 @@ final class MediaClockContrast {
                             return chain.proceed(new Object[] {saved.filter});
                         });
         module.deoptimize(filter);
+        Method iconDraw = ImageView.class.getDeclaredMethod("onDraw", Canvas.class);
+        module.hook(iconDraw).setId("dressroom-advanced.media-weather-artwork-blur")
+                .intercept(chain -> {
+                    ImageView view = (ImageView) chain.getThisObject();
+                    Icon saved = icons.get(view);
+                    if (saved == null) return chain.proceed();
+                    return drawArtworkGlyph((Canvas) chain.getArg(0), view, saved.root.get(),
+                            saved.emphasis, saved.color,
+                            target -> chain.proceed(new Object[] {target}));
+                });
+        module.deoptimize(iconDraw);
         installed = true;
     }
 
-    static AuraSpec computeAura(ArtworkSamples.Stats stats) {
+    private static void installCustomGlyphs(DressroomModule module, ClassLoader loader)
+            throws ReflectiveOperationException {
+        Class<?> custom =
+                Class.forName(
+                        "com.samsung.android.uniform.widget.ClockNonePaddingTextView",
+                        false,
+                        loader);
+        if (!customClasses.contains(custom)) {
+            final Field outlineColor = resolveOutlineField(custom.getSuperclass());
+            final Field pathMode = resolvePathModeField(custom.getSuperclass());
+            if (outlineColor != null) customOutlineColor = outlineColor;
+            if (pathMode != null) customPathMode = pathMode;
+            Method draw = custom.getDeclaredMethod("onDraw", Canvas.class);
+            module.hook(draw)
+                    .setId("dressroom-advanced.media-clock-palette-draw")
+                    .intercept(
+                            chain -> {
+                                TextView view = (TextView) chain.getThisObject();
+                                Saved saved = colors.get(view);
+                                if (saved == null || !saved.initialized) return chain.proceed();
+                                android.text.TextPaint paint = view.getPaint();
+                                Shader shader = paint.getShader();
+                                int color = paint.getColor();
+                                int nativeOutline =
+                                        outlineColor == null ? 0 : outlineColor.getInt(view);
+                                float radius = paint.getShadowLayerRadius();
+                                float dx = paint.getShadowLayerDx(), dy = paint.getShadowLayerDy();
+                                int shadow = paint.getShadowLayerColor();
+                                TextView previous = drawing.get();
+                                try {
+                                    drawing.set(view);
+                                    paint.setShader(null);
+                                    Canvas canvas = (Canvas) chain.getArg(0);
+                                    ViewGroup root = saved.root.get();
+                                    boolean glass = hasArtwork(root, canvas);
+                                    int drawColor = glass ? saved.color | 0xff000000 : saved.color;
+                                    paint.setColor(drawColor);
+                                    if (outlineColor != null) outlineColor.setInt(view, drawColor);
+                                    if (glass) paint.clearShadowLayer();
+                                    else shadow(view, saved);
+                                    return drawArtworkGlyph(canvas, view, root,
+                                            saved.emphasis, saved.color,
+                                            target -> chain.proceed(new Object[] {target}));
+                                } finally {
+                                    paint.setShader(shader);
+                                    paint.setColor(color);
+                                    if (outlineColor != null)
+                                        outlineColor.setInt(view, nativeOutline);
+                                    paint.setShadowLayer(radius, dx, dy, shadow);
+                                    if (previous == null) drawing.remove();
+                                    else drawing.set(previous);
+                                }
+                            });
+            module.deoptimize(draw);
+            customClasses.add(custom);
+        }
+    }
+
+    static Palette computePalette(ArtworkSamples.Stats stats) {
         boolean darkText = stats.mean() > .20;
-        int textColor = darkText ? 0xff17191c : 0xfffff9f2;
-        int scrimColor = darkText ? 0xfffff9f2 : 0xff000000;
-        float spread = clamp((float) ((stats.spread() - .02) / .18));
+        int textColor = darkText ? DARK_INK : LIGHT_INK;
         float conflict;
         if (darkText) {
             double darkSpot = Math.max(1.0 - stats.min(), (1.0 - stats.mean()) * .85);
@@ -287,97 +498,317 @@ final class MediaClockContrast {
             double hotSpot = Math.max(stats.max(), stats.mean() * 1.5);
             conflict = clamp((float) ((hotSpot - .03) / .55));
         }
-        float scrimAlpha = conflict * (darkText ? .44f : .42f);
-        float blurAlpha = Math.max(scrimAlpha, clamp(Math.max(spread, conflict * .85f)));
-        return new AuraSpec(textColor, scrimColor, blurAlpha, scrimAlpha, conflict);
+        return new Palette(textColor, conflict);
     }
 
     private static float clamp(float value) {
         return Float.isFinite(value) ? Math.max(0f, Math.min(1f, value)) : 0f;
     }
 
-    static boolean hasAura(ViewGroup root) {
-        if (root == null) return false;
-        Snapshot snapshot = samples.get(root);
-        return snapshot != null
-                && snapshot.spec != null
-                && snapshot.spec.blurAlpha() > .005f
-                && !snapshot.localBounds.isEmpty();
+    private static final float GLASS_ART_BLEND = 0.78f;
+
+    /** Scales the frosted artwork fill inside clock glyphs so tinted contrast ink remains visible. */
+    static int glassBlendAlpha(float mix, float artOpacity) {
+        return Math.round(255f * clamp(mix) * clamp(artOpacity) * GLASS_ART_BLEND);
     }
 
-    static void drawAura(
-            Canvas canvas,
-            ViewGroup root,
-            RenderNode blurredArt,
-            RectF destination,
-            Path clipOutline,
-            float progress) {
-        if (root == null
-                || canvas == null
-                || !canvas.isHardwareAccelerated()
-                || blurredArt == null
-                || !blurredArt.hasDisplayList()
-                || destination == null
-                || destination.isEmpty()) {
-            return;
-        }
+    static boolean hasGlass(ViewGroup root) {
+        if (root == null || MediaClockVisibility.hidden(root)) return false;
         Snapshot snapshot = samples.get(root);
-        if (snapshot == null
-                || snapshot.spec == null
-                || snapshot.spec.blurAlpha() <= .005f
-                || snapshot.localBounds.isEmpty()) {
-            return;
-        }
-        float emphasis = 0f;
-        for (Saved saved : colors.values()) {
-            if (saved != null && saved.initialized && saved.root.get() == root) {
-                emphasis = Math.max(emphasis, saved.emphasis);
+        return snapshot != null && snapshot.spec != null && !snapshot.localBounds.isEmpty();
+    }
+
+    /** Copies the cached clock/weather bounds in {@code root} coordinates, returning whether available. */
+    static boolean clockBounds(ViewGroup root, RectF out) {
+        if (out == null) return false;
+        out.setEmpty();
+        if (root == null || MediaClockVisibility.hidden(root)) return false;
+        Snapshot snapshot = samples.get(root);
+        if (snapshot == null || snapshot.localBounds.isEmpty()) return false;
+        out.set(snapshot.localBounds);
+        return true;
+    }
+
+    static boolean shouldSampleSync(Bitmap image) {
+        return image != null
+                && image.getConfig() != Bitmap.Config.HARDWARE
+                && image.getWidth() <= SYNC_SAMPLE_MAX_DIM
+                && image.getHeight() <= SYNC_SAMPLE_MAX_DIM;
+    }
+
+    static void prefetch(Bitmap image) {
+        if (!installed || image == null || image.isRecycled()) return;
+        obtainSamples(image, image.getGenerationId(), null, null, null);
+    }
+
+    private static ArtworkSamples obtainSamples(
+            Bitmap image, int generation, ViewGroup root, RectF destination, View overlay) {
+        SampleEntry existing;
+        synchronized (coverSamples) {
+            existing = coverSamples.get(image);
+            if (existing != null && existing.generation == generation) {
+                if (existing.samples != null) {
+                    if (root != null) pendingSamples.remove(root);
+                    return existing.samples;
+                }
+                if (existing.failed) {
+                    if (root != null) pendingSamples.remove(root);
+                    return null;
+                }
+                recordPending(root, image, generation, destination, overlay);
+                return null;
             }
         }
-        if (emphasis <= .005f) return;
-        float reveal = clamp((progress - .25f) / .75f) * emphasis;
-        float layerAlpha = snapshot.spec.blurAlpha() * reveal;
-        if (layerAlpha <= .005f) return;
-        float density = root.getResources().getDisplayMetrics().density;
-        float padX = Math.max(28f * density, snapshot.localBounds.width() * .22f);
-        float padY = Math.max(24f * density, snapshot.localBounds.height() * .28f);
-        RectF aura = snapshot.auraBounds;
-        aura.set(
-                snapshot.localBounds.left - padX,
-                snapshot.localBounds.top - padY,
-                snapshot.localBounds.right + padX,
-                snapshot.localBounds.bottom + padY);
-        if (!aura.intersect(destination) || aura.isEmpty()) return;
-        int clip = canvas.save();
-        if (clipOutline != null) canvas.clipPath(clipOutline);
-        snapshot.layerPaint.setAlpha(Math.round(layerAlpha * 255f));
-        int layer = canvas.saveLayer(aura, snapshot.layerPaint);
-        canvas.drawRenderNode(blurredArt);
-        if (snapshot.spec.scrimAlpha() > .005f) {
-            float scrimRel = clamp(snapshot.spec.scrimAlpha() / Math.max(.005f, snapshot.spec.blurAlpha()));
-            snapshot.scrimPaint.setColor(
-                    (snapshot.spec.scrimColor() & 0xffffff)
-                            | (Math.round(scrimRel * 255f) << 24));
-            canvas.drawRect(aura, snapshot.scrimPaint);
+        if (shouldSampleSync(image)) {
+            ArtworkSamples computed = ArtworkSamples.read(image);
+            synchronized (coverSamples) {
+                coverSamples.put(image, new SampleEntry(generation, computed));
+            }
+            if (root != null) pendingSamples.remove(root);
+            return computed;
         }
-        snapshot.shaderMatrix.reset();
-        snapshot.shaderMatrix.setScale(aura.width() * .5f, aura.height() * .5f);
-        snapshot.shaderMatrix.postTranslate(aura.centerX(), aura.centerY());
-        snapshot.maskShader.setLocalMatrix(snapshot.shaderMatrix);
-        canvas.drawRect(aura, snapshot.maskPaint);
-        canvas.restoreToCount(layer);
-        canvas.restoreToCount(clip);
+        SampleEntry pending = new SampleEntry(generation, null);
+        synchronized (coverSamples) {
+            SampleEntry raced = coverSamples.get(image);
+            if (raced != null && raced.generation == generation) {
+                if (raced.samples != null) {
+                    if (root != null) pendingSamples.remove(root);
+                    return raced.samples;
+                }
+                if (raced.failed) return null;
+                recordPending(root, image, generation, destination, overlay);
+                return null;
+            }
+            coverSamples.put(image, pending);
+        }
+        recordPending(root, image, generation, destination, overlay);
+        final WeakReference<Bitmap> bitmapRef = new WeakReference<>(image);
+        Async.POOL.execute(
+                () -> {
+                    ArtworkSamples computed = null;
+                    Bitmap target = bitmapRef.get();
+                    if (target != null && !target.isRecycled()) {
+                        try {
+                            computed = ArtworkSamples.read(target);
+                        } catch (RuntimeException error) {
+                            DressroomModule.note("Async artwork palette sample", error);
+                        }
+                    }
+                    final ArtworkSamples result = computed;
+                    synchronized (coverSamples) {
+                        if (pending.generation == generation) {
+                            if (result != null) pending.samples = result;
+                            else pending.failed = true;
+                        }
+                    }
+                    if (result != null) {
+                        Async.MAIN.post(() -> onSamplesReady(bitmapRef.get(), generation, result));
+                    } else {
+                        Async.MAIN.post(() -> clearPendingFor(bitmapRef.get(), generation));
+                    }
+                });
+        return null;
+    }
+
+    private static void recordPending(
+            ViewGroup root, Bitmap image, int generation, RectF destination, View overlay) {
+        if (root == null || destination == null) return;
+        PendingSample existing = pendingSamples.get(root);
+        if (existing != null
+                && existing.source.get() == image
+                && existing.generation == generation) {
+            existing.destination.set(destination);
+            if (existing.overlay.get() != overlay) {
+                existing.overlay = new WeakReference<>(overlay);
+            }
+            return;
+        }
+        pendingSamples.put(root, new PendingSample(image, generation, destination, overlay));
+    }
+
+    private static void clearPendingFor(Bitmap image, int generation) {
+        if (pendingSamples.isEmpty()) return;
+        for (var entry : new ArrayList<>(pendingSamples.entrySet())) {
+            ViewGroup root = entry.getKey();
+            PendingSample pending = entry.getValue();
+            if (root == null
+                    || !root.isAttachedToWindow()
+                    || (pending.source.get() == image && pending.generation == generation)) {
+                pendingSamples.remove(root);
+            }
+        }
+    }
+
+    private static void onSamplesReady(Bitmap image, int generation, ArtworkSamples computed) {
+        if (pendingSamples.isEmpty() || image == null || image.isRecycled()) return;
+        for (var entry : new ArrayList<>(pendingSamples.entrySet())) {
+            ViewGroup root = entry.getKey();
+            PendingSample pending = entry.getValue();
+            if (root == null || !root.isAttachedToWindow()) {
+                pendingSamples.remove(root);
+                continue;
+            }
+            if (pending.source.get() == image
+                    && pending.generation == generation
+                    && image.getGenerationId() == generation) {
+                pendingSamples.remove(root);
+                apply(root, image, pending.destination, pending.overlay.get());
+            }
+        }
+    }
+
+    /**
+     * Share the rendered artwork with the actual glyph draw. A sibling below the clock
+     * cannot replace the text paint, and it misses the native icon's alpha mask.
+     */
+    static void artwork(
+            ViewGroup root,
+            RenderNode blurredArt,
+            int artRevision,
+            RectF destination,
+            Path cover,
+            float opacity) {
+        if (root == null || MediaClockVisibility.hidden(root)) return;
+        Snapshot snapshot = samples.get(root);
+        if (snapshot == null || !blurredArt.hasDisplayList()) return;
+        boolean changed =
+                snapshot.art != blurredArt
+                        || snapshot.artRevision != artRevision
+                        || !snapshot.destination.equals(destination)
+                        || Math.abs(snapshot.artOpacity - opacity) > .004f;
+        snapshot.art = blurredArt;
+        snapshot.artRevision = artRevision;
+        snapshot.destination.set(destination);
+        snapshot.cover.rewind();
+        if (cover == null) snapshot.cover.addRect(destination, Path.Direction.CW);
+        else snapshot.cover.set(cover);
+        snapshot.artOpacity = opacity;
+        if (changed) {
+            for (var entry : colors.entrySet())
+                if (entry.getKey() != null && entry.getValue().root.get() == root)
+                    entry.getKey().invalidate();
+            for (var entry : icons.entrySet())
+                if (entry.getKey() != null && entry.getValue().root.get() == root)
+                    entry.getKey().invalidate();
+        }
+    }
+
+    private static boolean hasArtwork(ViewGroup root, Canvas canvas) {
+        if (root == null || !canvas.isHardwareAccelerated()) return false;
+        Snapshot snapshot = samples.get(root);
+        return snapshot != null && snapshot.art != null && snapshot.art.hasDisplayList()
+                && snapshot.artOpacity > .005f;
+    }
+
+    @FunctionalInterface
+    private interface DrawGlyph {
+        Object draw(Canvas canvas) throws Throwable;
+    }
+
+    private static Object drawArtworkGlyph(Canvas canvas, View view, ViewGroup root, float mix,
+            int tint, DrawGlyph glyph) throws Throwable {
+        if (!hasArtwork(root, canvas) || view.getWidth() <= 0 || view.getHeight() <= 0)
+            return glyph.draw(canvas);
+        Snapshot snapshot = samples.get(root);
+        snapshot.transform.reset();
+        root.transformMatrixToGlobal(snapshot.transform);
+        view.transformMatrixToLocal(snapshot.transform);
+        int width = view.getWidth(), height = view.getHeight();
+        int glassAlpha = glassBlendAlpha(mix, snapshot.artOpacity);
+        int layer = canvas.saveLayer(0, 0, width, height, null);
+        try {
+            snapshot.ink.setColor(tint | 0xff000000);
+            canvas.drawRect(0, 0, width, height, snapshot.ink);
+            int transform = canvas.save();
+            canvas.concat(snapshot.transform);
+            boolean overArtwork = glassAlpha > 0 && canvas.clipPath(snapshot.cover);
+            if (overArtwork) {
+                int artW = snapshot.art.getWidth(), artH = snapshot.art.getHeight();
+                if (artW > 0 && artH > 0 && !snapshot.destination.isEmpty()) {
+                    int blend = canvas.saveLayerAlpha(snapshot.destination, glassAlpha);
+                    canvas.translate(snapshot.destination.left, snapshot.destination.top);
+                    canvas.scale(
+                            snapshot.destination.width() / artW,
+                            snapshot.destination.height() / artH);
+                    canvas.drawRenderNode(snapshot.art);
+                    canvas.restoreToCount(blend);
+                }
+            }
+            canvas.restoreToCount(transform);
+            if (overArtwork && view instanceof TextView) {
+                snapshot.sheenScale.setScale(1f, height);
+                snapshot.sheen.setLocalMatrix(snapshot.sheenScale);
+                snapshot.glassSheen.setAlpha(glassAlpha);
+                canvas.drawRect(0, 0, width, height, snapshot.glassSheen);
+            }
+            Paint maskPaint = snapshot.maskFor(view);
+            int mask = canvas.saveLayer(0, 0, width, height, maskPaint);
+            try {
+                return glyph.draw(canvas);
+            } finally {
+                canvas.restoreToCount(mask);
+            }
+        } finally {
+            canvas.restoreToCount(layer);
+        }
+    }
+
+    static void clearImmediate(ViewGroup root) {
+        if (root == null) return;
+        pendingSamples.remove(root);
+        Snapshot snapshot = samples.remove(root);
+        if (snapshot != null) snapshot.settled = false;
+        if (!colors.isEmpty()) {
+            for (TextView view : new ArrayList<>(colors.keySet())) {
+                Saved saved = colors.get(view);
+                if (saved != null && (saved.root.get() == root || saved.root.get() == null)) {
+                    if (saved.animator != null) {
+                        ValueAnimator animator = saved.animator;
+                        saved.animator = null;
+                        animator.cancel();
+                    }
+                    colors.remove(view);
+                    if (!saved.custom) write(view, saved.nativeColors);
+                    view.invalidate();
+                }
+            }
+        }
+        if (!icons.isEmpty()) {
+            for (ImageView view : new ArrayList<>(icons.keySet())) {
+                Icon saved = icons.get(view);
+                if (saved != null && (saved.root.get() == root || saved.root.get() == null)) {
+                    if (saved.animator != null) {
+                        ValueAnimator animator = saved.animator;
+                        saved.animator = null;
+                        animator.cancel();
+                    }
+                    restoreIcon(view, saved);
+                    view.invalidate();
+                }
+            }
+        }
     }
 
     static void clear(ViewGroup root) {
-        samples.remove(root);
+        pendingSamples.remove(root);
+        Snapshot snapshot = samples.get(root);
+        if (snapshot != null) {
+            snapshot.returning = true;
+            snapshot.settled = false;
+        }
+        pruneSnapshot(root);
         if (colors.isEmpty() && icons.isEmpty()) return;
         for (TextView view : new ArrayList<>(colors.keySet())) {
             Saved saved = colors.get(view);
             if (saved != null && (saved.root.get() == root || saved.root.get() == null)) {
                 if (!saved.closing) {
                     if (saved.custom) saved.nativeColors = view.getTextColors();
-                    fade(view, saved, saved.nativeColors.getDefaultColor(), saved.conflict, true);
+                    fade(
+                            view,
+                            saved,
+                            nativeDisplayColor(view, saved.custom, saved.nativeColors),
+                            saved.conflict,
+                            true);
                 }
             }
         }
@@ -389,54 +820,147 @@ final class MediaClockContrast {
                     if (!saved.closing) fadeIcon(view, saved, nativeTint, true);
                 } else {
                     if (saved.animator != null) saved.animator.cancel();
-                    icons.remove(view);
-                    writeIcon(view, saved.nativeFilter);
+                    restoreIcon(view, saved);
                 }
             }
         }
     }
 
-    static void apply(ViewGroup root, Bitmap image, RectF destination) {
+    private static void pruneSnapshot(ViewGroup root) {
+        Snapshot snapshot = samples.get(root);
+        if (snapshot == null || !snapshot.returning) return;
+        for (Saved saved : colors.values())
+            if (saved.root.get() == root && saved.initialized) return;
+        samples.remove(root);
+    }
+
+    static int videoInk(double luma, int prior) {
+        if (prior == DARK_INK) return luma < .15 ? LIGHT_INK : DARK_INK;
+        return luma > .26 ? DARK_INK : LIGHT_INK;
+    }
+
+    static void sampleVideo(ViewGroup root, Bitmap frame, RectF destination) {
+        Snapshot snapshot = samples.get(root);
+        long now = android.os.SystemClock.uptimeMillis();
+        if (snapshot == null || snapshot.returning || snapshot.spec == null || destination.isEmpty()
+                || now - snapshot.lastVideoSample < 250) return;
+        snapshot.lastVideoSample = now;
+        RectF clock = snapshot.localBounds;
+        double luma = 0;
+        for (int y = 0; y < 3; y++) {
+            int py = Math.max(0, Math.min(frame.getHeight() - 1, (int) ((clock.top
+                    + clock.height() * (y + .5f) / 3 - destination.top)
+                    / destination.height() * frame.getHeight())));
+            for (int x = 0; x < 5; x++) {
+                int px = Math.max(0, Math.min(frame.getWidth() - 1, (int) ((clock.left
+                        + clock.width() * (x + .5f) / 5 - destination.left)
+                        / destination.width() * frame.getWidth())));
+                luma += ArtworkSamples.luminance(frame.getPixel(px, py));
+            }
+        }
+        int ink = videoInk(luma / 15, snapshot.videoInk == 0
+                ? snapshot.spec.textColor() : snapshot.videoInk);
+        if (ink != snapshot.videoInk) {
+            snapshot.videoInk = ink;
+            root.postInvalidateOnAnimation();
+        }
+    }
+
+    static void apply(ViewGroup root, Bitmap image, RectF destination, View overlay) {
+        if (MediaClockVisibility.hidden(root)) {
+            clear(root);
+            return;
+        }
         if (!installed || image == null || image.isRecycled() || destination.isEmpty()) return;
         Work work = workspace.get();
         if (work.busy) work = new Work();
         work.busy = true;
         try {
-            apply(root, image, destination, work);
+            apply(root, image, destination, overlay, work);
         } finally {
             work.clear();
         }
     }
 
-    private static void apply(ViewGroup root, Bitmap image, RectF destination, Work work) {
+    private static boolean isClockActive(View clock, ClockCache cache, ViewGroup root) {
+        if (clock == null
+                || !clock.isShown()
+                || clock.getAlpha() <= .005f
+                || ClockBlurMotion.outgoing(clock)
+                || clock.getWindowToken() != root.getWindowToken()) {
+            return false;
+        }
+        if (clock.getDisplay() == null
+                || (!ScreenIdentity.supported() && clock.getDisplay().getDisplayId() != 0)
+                || root.getDisplay() == null
+                || clock.getDisplay().getDisplayId() != root.getDisplay().getDisplayId()) {
+            return false;
+        }
+        if (cache.category == null) {
+            try {
+                cache.category = String.valueOf(Reflect.call(clock, "getCategory"));
+            } catch (Exception ignored) {
+                return false;
+            }
+        }
+        return "LOCK_SCREEN".equals(cache.category) || "AOD".equals(cache.category);
+    }
+
+    private static int clockStateHash(View clock, ClockCache cache) {
+        int h = 17;
+        h = 31 * h + Float.floatToIntBits(clock.getTranslationX());
+        h = 31 * h + Float.floatToIntBits(clock.getTranslationY());
+        h = 31 * h + Float.floatToIntBits(clock.getScaleX());
+        h = 31 * h + Float.floatToIntBits(clock.getScaleY());
+        for (int i = 0, n = cache.texts.size(); i < n; i++) {
+            TextView tv = cache.texts.get(i);
+            boolean shown = tv.isShown();
+            CharSequence cs = tv.getText();
+            int len = cs == null ? 0 : cs.length();
+            h = 31 * h + (shown && len > 0 ? 1 : 0);
+            if (shown && len > 0) {
+                h = 31 * h + System.identityHashCode(tv);
+                h = 31 * h + len;
+                h = 31 * h + cs.charAt(0);
+                h = 31 * h + cs.charAt(len - 1);
+                if (len > 2) h = 31 * h + cs.charAt(len >> 1);
+            }
+        }
+        for (int i = 0, n = cache.weather.size(); i < n; i++) {
+            ImageView iv = cache.weather.get(i);
+            boolean shown = iv.isShown();
+            android.graphics.drawable.Drawable d = iv.getDrawable();
+            h = 31 * h + (shown && d != null ? 1 : 0);
+            if (shown && d != null) {
+                h = 31 * h + System.identityHashCode(iv);
+                h = 31 * h + System.identityHashCode(d);
+            }
+        }
+        return h;
+    }
+
+    private static void apply(ViewGroup root, Bitmap image, RectF destination, View overlay, Work work) {
         int generation = image.getGenerationId();
         Snapshot snapshot = samples.get(root);
         if (snapshot == null
                 || snapshot.source.get() != image
                 || snapshot.generation != generation) {
-            Bitmap readable =
-                    image.getConfig() == Bitmap.Config.HARDWARE
-                            ? image.copy(Bitmap.Config.ARGB_8888, false)
-                            : image;
-            if (readable == null) return;
-            Bitmap pixels = null;
-            ArtworkSamples cached;
-            try {
-                pixels =
-                        Bitmap.createScaledBitmap(
-                                readable,
-                                Math.min(96, image.getWidth()),
-                                Math.min(96, image.getHeight()),
-                                true);
-                if (pixels == null) return;
-                cached = ArtworkSamples.read(pixels);
-            } finally {
-                if (pixels != null && pixels != image && pixels != readable) pixels.recycle();
-                if (readable != image) readable.recycle();
+            ArtworkSamples cached = obtainSamples(image, generation, root, destination, overlay);
+            if (cached == null) return;
+            Snapshot next = new Snapshot(new WeakReference<>(image), generation, cached);
+            if (snapshot != null && !snapshot.returning) {
+                next.overlay = snapshot.overlay;
+                next.localBounds.set(snapshot.localBounds);
+                next.destination.set(snapshot.destination);
+                next.cover.set(snapshot.cover);
+                next.art = snapshot.art;
+                next.artRevision = snapshot.artRevision;
+                next.artOpacity = snapshot.artOpacity;
             }
-            snapshot = new Snapshot(new WeakReference<>(image), generation, cached);
+            snapshot = next;
             samples.put(root, snapshot);
         }
+        if (snapshot.overlay.get() != overlay) snapshot.overlay = new WeakReference<>(overlay);
         float scale =
                 Math.max(
                         destination.width() / image.getWidth(),
@@ -449,32 +973,73 @@ final class MediaClockContrast {
                 destination.centerY() + image.getHeight() * scale / 2);
         root.getLocationOnScreen(work.origin);
         cover.offset(work.origin[0], work.origin[1]);
+
+        for (View clock : clocks.keySet()) work.clocks.add(clock);
+        boolean anyClockDirty = false;
+        int clockStateHash = 1;
+        int clockCount = work.clocks.size();
+        for (int i = 0; i < clockCount; i++) {
+            View clock = work.clocks.get(i);
+            ClockCache cache = clocks.get(clock);
+            if (cache == null) continue;
+            boolean active = isClockActive(clock, cache, root);
+            if (active != cache.wasActive || cache.treeDirty || cache.layoutDirty) {
+                anyClockDirty = true;
+            }
+            if (active) {
+                if (cache.treeDirty) {
+                    cache.texts.clear();
+                    cache.weather.clear();
+                    collectAll(clock, cache.texts, cache.weather);
+                    cache.treeDirty = false;
+                }
+                clockStateHash = 31 * clockStateHash + System.identityHashCode(clock);
+                clockStateHash = 31 * clockStateHash + clockStateHash(clock, cache);
+            }
+        }
+
+        if (snapshot.settled
+                && snapshot.spec != null
+                && !snapshot.returning
+                && !anyClockDirty
+                && snapshot.appliedOriginX == work.origin[0]
+                && snapshot.appliedOriginY == work.origin[1]
+                && snapshot.appliedCover.equals(cover)
+                && snapshot.appliedClockCount == clockCount
+                && snapshot.appliedClockStateHash == clockStateHash) {
+            int settledInk = snapshot.videoInk == 0 ? snapshot.spec.textColor() : snapshot.videoInk;
+            if (snapshot.appliedInk == (settledInk | 0xff000000)) {
+                return;
+            }
+        }
+        snapshot.returning = false;
+        snapshot.settled = false;
+
         Set<TextView> visible = work.visible;
         Set<ImageView> weather = work.weather;
-        for (View clock : clocks) work.clocks.add(clock);
-        for (View clock : work.clocks) {
-            if (clock == null
-                    || !clock.isShown()
-                    || clock.getWindowToken() != root.getWindowToken()) continue;
-            if (clock.getDisplay() == null
-                    || (!ScreenIdentity.supported() && clock.getDisplay().getDisplayId() != 0)
-                    || root.getDisplay() == null
-                    || clock.getDisplay().getDisplayId() != root.getDisplay().getDisplayId())
-                continue;
-            try {
-                String category = String.valueOf(Reflect.call(clock, "getCategory"));
-                if (!category.equals("LOCK_SCREEN") && !category.equals("AOD")) continue;
-            } catch (Exception ignored) {
-                continue;
+        for (int i = 0; i < clockCount; i++) {
+            View clock = work.clocks.get(i);
+            ClockCache cache = clocks.get(clock);
+            if (cache == null) continue;
+            boolean active = isClockActive(clock, cache, root);
+            cache.wasActive = active;
+            cache.layoutDirty = false;
+            if (!active) continue;
+            for (int j = 0, tn = cache.texts.size(); j < tn; j++) {
+                TextView tv = cache.texts.get(j);
+                if (tv.isShown() && tv.getText().length() > 0) visible.add(tv);
             }
-            collect(clock, visible, weather);
+            for (int j = 0, wn = cache.weather.size(); j < wn; j++) {
+                ImageView iv = cache.weather.get(j);
+                if (iv.isShown() && iv.getDrawable() != null) weather.add(iv);
+            }
         }
         // Pick once for the whole clock, using the final fullscreen crop. Sampling
         // each moving digit independently made a single time alternate black/white.
         if (!visible.isEmpty()) {
             work.clockBounds.setEmpty();
             for (TextView view : visible)
-                if (view.getGlobalVisibleRect(work.bounds)) work.clockBounds.union(work.bounds);
+                if (glyphBounds(view, work)) work.clockBounds.union(work.bounds);
             for (ImageView view : weather)
                 if (view.getGlobalVisibleRect(work.bounds)) work.clockBounds.union(work.bounds);
             if (!work.clockBounds.isEmpty()) {
@@ -494,16 +1059,17 @@ final class MediaClockContrast {
                             work.origin[0] + (root.getWidth() + image.getWidth() * finalScale) / 2,
                             work.origin[1] + (root.getHeight() + image.getHeight() * finalScale) / 2);
                     snapshot.spec =
-                            computeAura(snapshot.pixels.analyze(work.cover, work.clockBounds));
+                            computePalette(snapshot.pixels.analyze(work.cover, work.clockBounds));
                 }
             }
         }
         if (snapshot.spec == null) return;
-        int playerColor = snapshot.spec.textColor();
+        int ink = snapshot.videoInk == 0 ? snapshot.spec.textColor() : snapshot.videoInk;
+        int playerColor = ink | 0xff000000;
         float conflict = snapshot.spec.conflict();
         for (TextView view : visible) {
+            if (!glyphBounds(view, work)) continue;
             Rect bounds = work.bounds;
-            if (!view.getGlobalVisibleRect(bounds) || bounds.isEmpty()) continue;
             Saved saved = colors.get(view);
             if (saved == null) {
                 saved = new Saved(root, view);
@@ -513,13 +1079,17 @@ final class MediaClockContrast {
                     && !saved.closing
                     && saved.bitmap == image
                     && saved.generation == generation
+                    && saved.target == playerColor
+                    && android.text.TextUtils.equals(saved.text, view.getText())
                     && saved.cover.equals(cover)
                     && saved.bounds.equals(bounds)) continue;
             saved.initialized = true;
             saved.bitmap = image;
+            saved.text = view.getText().toString();
             saved.generation = generation;
             saved.cover.set(cover);
             saved.bounds.set(bounds);
+            if (overlay != null) overlay.invalidate();
             fade(view, saved, playerColor, conflict, false);
         }
         for (TextView view : colors.keySet()) work.texts.add(view);
@@ -558,10 +1128,16 @@ final class MediaClockContrast {
                     saved.animator = null;
                     animator.cancel();
                 }
-                icons.remove(view);
-                writeIcon(view, saved.nativeFilter);
+                restoreIcon(view, saved);
             }
         }
+        snapshot.appliedInk = playerColor;
+        snapshot.appliedOriginX = work.origin[0];
+        snapshot.appliedOriginY = work.origin[1];
+        snapshot.appliedCover.set(cover);
+        snapshot.appliedClockCount = clockCount;
+        snapshot.appliedClockStateHash = clockStateHash;
+        snapshot.settled = !visible.isEmpty();
     }
 
     private static void fade(
@@ -580,10 +1156,10 @@ final class MediaClockContrast {
         float startEmphasis = saved.emphasis;
         int startColor = saved.color;
         android.animation.ArgbEvaluator returnColor =
-                closing && !saved.custom ? new android.animation.ArgbEvaluator() : null;
+                closing ? new android.animation.ArgbEvaluator() : null;
         if (!closing) {
             saved.conflict = conflict;
-            if (target == 0xff17191c) {
+            if ((target & 0x00ffffff) == (DARK_INK & 0x00ffffff)) {
                 int maxAlpha = Math.round(0x55 + (0xcc - 0x55) * conflict);
                 saved.shadowColor = (maxAlpha << 24) | 0xffffff;
             } else {
@@ -599,12 +1175,14 @@ final class MediaClockContrast {
         animator.setInterpolator(new android.view.animation.AccelerateDecelerateInterpolator());
         animator.addUpdateListener(
                 value -> {
-                    // Native blur can update the temperature's text alpha during
+                    // Native blur can update the glyph or temperature text alpha during
                     // the return. Follow that color before handing the view back.
                     saved.color = returnColor == null
                             ? (Integer) value.getAnimatedValue()
-                            : (Integer) returnColor.evaluate(value.getAnimatedFraction(),
-                                    startColor, saved.nativeColors.getDefaultColor());
+                            : (Integer) returnColor.evaluate(
+                                    value.getAnimatedFraction(),
+                                    startColor,
+                                    nativeDisplayColor(view, saved.custom, saved.nativeColors));
                     saved.emphasis =
                             startEmphasis
                                     + ((closing ? 0f : 1f) - startEmphasis)
@@ -612,7 +1190,11 @@ final class MediaClockContrast {
                     if (!saved.custom) write(view, ColorStateList.valueOf(saved.color));
                     view.invalidate();
                     ViewGroup owner = saved.root.get();
-                    if (owner != null) owner.invalidate();
+                    if (owner != null) {
+                        Snapshot snapshot = samples.get(owner);
+                        View overlay = snapshot == null ? null : snapshot.overlay.get();
+                        if (overlay != null) overlay.invalidate();
+                    }
                 });
         animator.addListener(
                 new AnimatorListenerAdapter() {
@@ -622,6 +1204,7 @@ final class MediaClockContrast {
                         saved.animator = null;
                         if (saved.closing && colors.get(view) == saved) {
                             colors.remove(view);
+                            pruneSnapshot(saved.root.get());
                             if (!saved.custom) write(view, saved.nativeColors);
                             else view.invalidate();
                         }
@@ -642,15 +1225,18 @@ final class MediaClockContrast {
         }
         saved.target = target;
         saved.closing = closing;
+        float start = saved.emphasis;
         ValueAnimator animator = ValueAnimator.ofArgb(saved.color, target);
         saved.animator = animator;
         animator.setDuration(220);
         animator.setInterpolator(new android.view.animation.AccelerateDecelerateInterpolator());
         animator.addUpdateListener(
                 value -> {
+                    saved.emphasis = start + ((closing ? 0f : 1f) - start) * value.getAnimatedFraction();
                     saved.color = (Integer) value.getAnimatedValue();
                     saved.filter = new PorterDuffColorFilter(saved.color, PorterDuff.Mode.SRC_IN);
                     writeIcon(view, saved.filter);
+                    writeIconAlpha(view, iconAlpha(saved));
                 });
         animator.addListener(
                 new AnimatorListenerAdapter() {
@@ -659,32 +1245,35 @@ final class MediaClockContrast {
                         if (saved.animator != animation) return;
                         saved.animator = null;
                         if (saved.closing && icons.get(view) == saved) {
-                            icons.remove(view);
-                            writeIcon(view, saved.nativeFilter);
+                            restoreIcon(view, saved);
                         }
                     }
                 });
         animator.start();
     }
 
-    private static void collect(View view, Set<TextView> found, Set<ImageView> weather) {
-        if (!view.isShown()) return;
-        if (view instanceof TextView text && text.getText().length() > 0) found.add(text);
-        if (view instanceof ImageView image
-                && image.getDrawable() != null
-                && image.getId() != View.NO_ID)
-            try {
-                if (image.getResources().getResourceEntryName(image.getId()).contains("weather"))
-                    weather.add(image);
-            } catch (android.content.res.Resources.NotFoundException ignored) {
-            }
+    private static void collectAll(
+            View view, ArrayList<TextView> found, ArrayList<ImageView> weather) {
+        if (view instanceof TextView text) found.add(text);
+        if (view instanceof ImageView image && isWeatherIcon(image)) weather.add(image);
         if (view instanceof ViewGroup group)
             for (int i = 0; i < group.getChildCount(); i++)
-                collect(group.getChildAt(i), found, weather);
+                collectAll(group.getChildAt(i), found, weather);
+    }
+
+    private static boolean isWeatherIcon(ImageView image) {
+        if ("common_weather_icon".equals(image.getTag())) return true;
+        if (image.getId() == View.NO_ID) return false;
+        try {
+            return "common_weather_icon".equals(
+                    image.getResources().getResourceEntryName(image.getId()));
+        } catch (android.content.res.Resources.NotFoundException unavailable) {
+            return false;
+        }
     }
 
     private static void shadow(TextView view, Saved saved) {
-        if (saved.emphasis <= 0) return;
+        if (saved.emphasis <= 0 || !saved.closing) return;
         float density = view.getResources().getDisplayMetrics().density;
         int alpha = Math.round((saved.shadowColor >>> 24) * saved.emphasis);
         float radius = (2.5f + 5.5f * saved.conflict) * density;
@@ -715,6 +1304,23 @@ final class MediaClockContrast {
         } finally {
             writing = old;
         }
+    }
+
+    private static void writeIconAlpha(ImageView view, float alpha) {
+        if (view.getAlpha() == alpha) return;
+        boolean old = writing;
+        writing = true;
+        try {
+            view.setAlpha(alpha);
+        } finally {
+            writing = old;
+        }
+    }
+
+    private static void restoreIcon(ImageView view, Icon saved) {
+        icons.remove(view);
+        writeIcon(view, saved.nativeFilter);
+        writeIconAlpha(view, saved.nativeAlpha);
     }
 
     private static Integer nativeTint(ColorFilter filter) {
@@ -772,5 +1378,27 @@ final class MediaClockContrast {
                     "Multiple int fields read in " + ownerDescriptor + ".onDraw: " + names);
         }
         return match;
+    }
+
+    static Field resolvePathModeField(Class<?> textClass) throws NoSuchFieldException {
+        if (textClass == null) return null;
+        try {
+            Method setColor = textClass.getDeclaredMethod("setTextColor", int.class);
+            String desc = DexSignatures.descriptor(textClass);
+            DexSignatures.Body body = DexSignatures.cached(() -> DexSignatures.body(setColor));
+            Field mode = body.uniqueRead(desc, "Z", null).field(textClass.getClassLoader());
+            mode.setAccessible(true);
+            return mode;
+        } catch (NoSuchMethodException ignored) {
+            return null;
+        } catch (NoSuchFieldException error) {
+            throw error;
+        } catch (ReflectiveOperationException | IOException error) {
+            throw (NoSuchFieldException)
+                    new NoSuchFieldException("Blur path mode field lookup failed").initCause(error);
+        } catch (Exception error) {
+            throw (NoSuchFieldException)
+                    new NoSuchFieldException("Blur path mode field lookup failed").initCause(error);
+        }
     }
 }

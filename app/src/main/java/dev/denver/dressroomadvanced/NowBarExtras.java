@@ -33,7 +33,7 @@ final class NowBarExtras {
     private static WeakReference<Object> wrapper = new WeakReference<>(null);
     private static Context context;
     private static ClassLoader loader;
-    private static Object textItem;
+    private static volatile Object textItem;
     private static String textSignature = "";
     private static boolean installed;
 
@@ -197,12 +197,18 @@ final class NowBarExtras {
                                                 })
                                 ::unhook);
                 module.deoptimize(resources);
-                for (Method callback : endCallbacks) {
+                for (int i = 0; i < endCallbacks.size(); i++) {
+                    Method callback = endCallbacks.get(i);
+                    String id =
+                            i < 2
+                                    ? "dressroom-advanced.charging-finish-" + callback.getName()
+                                    : "dressroom-advanced.charging-finish-"
+                                            + i
+                                            + "-"
+                                            + callback.getName();
                     hooks.add(
                             module.hook(callback)
-                                            .setId(
-                                                    "dressroom-advanced.charging-finish-"
-                                                            + callback.getName())
+                                            .setId(id)
                                             .intercept(
                                                     chain -> {
                                                         boolean previous = finishing.get();
@@ -282,6 +288,22 @@ final class NowBarExtras {
                                         && body.result().equals("Ljava/lang/Object;")
                                         && callsMethod(body, uiDesc, "dismissOverlay"),
                         "ChargerNowBarView animation end callback"));
+        String controllerPrefix =
+                "Lcom/android/systemui/power/feature/charginganimation/ChargingAnimationController$";
+        List<DexSignatures.Body> dozeDeadlines =
+                finder.find(Set.of("timeout")).stream()
+                        .filter(
+                                body ->
+                                        body.owner().startsWith(controllerPrefix)
+                                                && body.name().equals("invokeSuspend")
+                                                && body.parameters()
+                                                        .equals(List.of("Ljava/lang/Object;"))
+                                                && body.result().equals("Ljava/lang/Object;")
+                                                && callsMethod(body, uiDesc, "dismissOverlay"))
+                        .toList();
+        if (dozeDeadlines.size() == 1) {
+            callbacks.add(dozeDeadlines.get(0).method(classes));
+        }
         return callbacks;
     }
 
@@ -534,6 +556,10 @@ final class NowBarExtras {
         held.clear();
     }
 
+    static Object customMessage() {
+        return textItem;
+    }
+
     private static void updateText() {
         Object host = wrapper.get();
         if (context == null || host == null) return;
@@ -567,8 +593,14 @@ final class NowBarExtras {
             Bundle extra = new Bundle();
             extra.putInt("nowbar_key_screen_type", 3);
             Reflect.call(card, "setExtraData", extra);
-            Reflect.call(host, "updateItem", card);
+            Object previous = textItem;
             textItem = card;
+            try {
+                Reflect.call(host, "updateItem", card);
+            } catch (ReflectiveOperationException | RuntimeException error) {
+                textItem = previous;
+                throw error;
+            }
             textSignature = signature;
         } catch (Exception e) {
             android.util.Log.w(DressroomModule.TAG, "Custom Now Bar unavailable", e);

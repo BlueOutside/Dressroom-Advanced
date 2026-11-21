@@ -15,7 +15,15 @@ import java.util.Set;
 
 /** Resolves the editor's active wallpaper controller and {@code EditorData} source slot. */
 final class WallpaperSourceBinding {
-    record Source(Object data, String key, boolean image) {}
+    record Source(Object data, String key, boolean image, boolean effectApplied, String externalUri) {
+        Source(Object data, String key, boolean image) {
+            this(data, key, image, false, "");
+        }
+
+        Source(Object data, String key, boolean image, boolean effectApplied) {
+            this(data, key, image, effectApplied, "");
+        }
+    }
 
     private record Candidate(Field f0, Field f1, Field f2, Field f3, Method changed) {
         Class<?> controller() {
@@ -33,6 +41,7 @@ final class WallpaperSourceBinding {
     private static final String RECREATE_ANCHOR = "need_to_recreate_preview";
 
     private final Field[] path;
+    private final Method parentType;
     final Method changed;
     final Class<?> dataType;
 
@@ -51,7 +60,14 @@ final class WallpaperSourceBinding {
         NativeContract.method(dataType, "getUri", Uri.class);
         NativeContract.method(dataType, "getStorageFilePath", String.class);
         NativeContract.method(dataType, "getWallpaperSubType", int.class);
-        NativeContract.method(dataType, "getWallpaperParentSubType", int.class);
+        Method parent;
+        try {
+            parent = NativeContract.method(dataType, "getWallpaperParentSubType", int.class);
+        } catch (NoSuchMethodException missing) {
+            if (!legacy) throw missing;
+            parent = null;
+        }
+        parentType = parent;
         Class<?> activityType =
                 Class.forName(
                         "com.samsung.android.app.dressroom.presentation.preview.activity.EditBaseActivity",
@@ -383,6 +399,10 @@ final class WallpaperSourceBinding {
                 && !name.startsWith("dalvik.");
     }
 
+    boolean acceptsActivity(Object activity) {
+        return activity != null && path[0].getDeclaringClass().isInstance(activity);
+    }
+
     Source read(Object activity) throws ReflectiveOperationException {
         Object data = activity;
         for (Field field : path) {
@@ -391,12 +411,49 @@ final class WallpaperSourceBinding {
         }
         if (data == null) return null;
         int type = ((Number) Reflect.call(data, "getWallpaperSubType")).intValue();
-        int parent = ((Number) Reflect.call(data, "getWallpaperParentSubType")).intValue();
-        Object uri = Reflect.call(data, "getOriginalUri");
-        if (uri == null) uri = Reflect.call(data, "getUri");
-        if (uri == null) uri = Reflect.call(data, "getStorageFilePath");
-        String key = uri == null ? "" : uri.toString();
-        if (DepthSourcePolicy.image(type, parent) && key.isEmpty()) return null;
-        return new Source(data, key, DepthSourcePolicy.image(type, parent) && !key.isEmpty());
+        int parent = parentType == null ? type : ((Number) parentType.invoke(data)).intValue();
+        boolean cover = Boolean.TRUE.equals(optionalCall(data, "getIsCover"));
+        boolean imageType = DepthSourcePolicy.image(type, parent, cover);
+
+        String key = nonEmpty(Reflect.call(data, "getOriginalUri"));
+        if (key.isEmpty()) key = nonEmpty(Reflect.call(data, "getUri"));
+        if (key.isEmpty()) key = nonEmpty(optionalCall(data, "getOriginalFilePath"));
+        if (key.isEmpty()) key = nonEmpty(Reflect.call(data, "getStorageFilePath"));
+        if (key.isEmpty()) key = nonEmpty(optionalCall(data, "getPath"));
+        if (key.isEmpty()) key = nonEmpty(optionalCall(data, "getPreviewPath"));
+        if (key.isEmpty()) key = nonEmpty(optionalCall(data, "getFileName"));
+        if (key.isEmpty() && type == 402) {
+            String weatherId = nonEmpty(optionalCall(data, "getWeatherId"));
+            if (!weatherId.isEmpty()
+                    && !"-1".equals(weatherId)
+                    && !"null".equalsIgnoreCase(weatherId)) {
+                key = "weather:" + weatherId;
+            }
+        }
+        boolean effectApplied = Boolean.TRUE.equals(optionalCall(data, "isApplyEffect"));
+        if (!effectApplied) {
+            String filterInfo = nonEmpty(optionalCall(data, "getImageFilterInfo"));
+            if (!filterInfo.isEmpty() && !"Original".equalsIgnoreCase(filterInfo)) {
+                effectApplied = true;
+            }
+        }
+        if (imageType && key.isEmpty()) return null;
+        return new Source(data, key, imageType && !key.isEmpty(), effectApplied,
+                imageType ? nonEmpty(optionalCall(data, "getExternalOriginalUri")) : "");
+    }
+
+    private static Object optionalCall(Object target, String name)
+            throws ReflectiveOperationException {
+        try {
+            return Reflect.call(target, name);
+        } catch (NoSuchMethodException ignored) {
+            return null;
+        }
+    }
+
+    static String nonEmpty(Object value) {
+        if (value == null) return "";
+        String text = value.toString();
+        return text == null || text.isEmpty() ? "" : text;
     }
 }

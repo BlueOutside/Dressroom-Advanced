@@ -36,10 +36,24 @@ final class DepthSourcePolicy {
     }
 
     static boolean image(int type, int parent) {
-        return still(type) && (parent <= 0 || still(parent));
+        return image(type, parent, false);
     }
 
-    private static boolean still(int type) {
-        return type == 0 || type == 19 || type == 23 || type == 401 || type == 402 || type == 408;
+    static boolean image(int type, int parent, boolean cover) {
+        return still(type, cover) && (parent <= 0 || still(parent, cover));
+    }
+
+    private static boolean still(int type, boolean cover) {
+        return type == 0
+                || type == 12
+                || type == 16
+                || type == 17
+                || type == 19
+                || type == 23
+                || type == 401
+                || type == 402
+                || type == 408
+                || type == 409
+                || (cover && type == 5);
     }
 }

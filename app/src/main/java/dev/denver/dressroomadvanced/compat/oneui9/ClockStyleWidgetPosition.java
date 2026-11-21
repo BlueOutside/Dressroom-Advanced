@@ -25,14 +25,6 @@ final class ClockStyleWidgetPosition {
 
     static Binding bind(ClassLoader loader)
             throws ReflectiveOperationException, java.io.IOException {
-        Class<?> manager =
-                Class.forName(
-                        "com.samsung.android.app.facewidget.manager.KeyguardClockPositionManager",
-                        false,
-                        loader);
-        String owner = "L" + manager.getName().replace('.', '/') + ";";
-        Method dump = NativeContract.method(manager, "dump", void.class, PrintWriter.class);
-        Field widgets = DexSignatures.body(dump).uniqueRead(owner, "Z", null).field(loader);
         List<Method> candidates = new ArrayList<>();
         for (DexSignatures.Body body :
                 DexSignatures.find(loader, Set.of("ClockMovableAreaResolver[clock_position]"))) {
@@ -51,16 +43,44 @@ final class ClockStyleWidgetPosition {
             throw new NoSuchMethodException(
                     "Clock Style movable area resolver: " + candidates.size());
         Method resolve = candidates.get(0);
+        String expectedOwner = null;
+        try {
+            Class<?> known =
+                    Class.forName(
+                            "com.samsung.android.app.facewidget.manager.KeyguardClockPositionManager",
+                            false,
+                            loader);
+            expectedOwner = DexSignatures.descriptor(known);
+        } catch (ClassNotFoundException obfuscated) {
+        }
         candidates.clear();
         for (DexSignatures.Body body : DexSignatures.callers(resolve)) {
-            if (body.owner().equals(owner)
-                    && body.result().equals("V")
+            if (body.result().equals("V")
                     && body.parameters().equals(List.of("Z"))
-                    && (body.access() & 8) == 0) candidates.add(body.method(loader));
+                    && (body.access() & 8) == 0) {
+                if (expectedOwner != null) {
+                    if (body.owner().equals(expectedOwner)) candidates.add(body.method(loader));
+                } else {
+                    Class<?> ownerClass = body.loadOwner(loader);
+                    if (NativeContract.hasMethod(ownerClass, void.class, PrintWriter.class)) {
+                        try {
+                            NativeContract.method(
+                                    ownerClass, "dump", void.class, PrintWriter.class);
+                            candidates.add(body.method(loader));
+                        } catch (NoSuchMethodException ignored) {
+                        }
+                    }
+                }
+            }
         }
         if (candidates.size() != 1)
             throw new NoSuchMethodException("Clock Style position update: " + candidates.size());
-        return new Binding(candidates.get(0), resolve, widgets);
+        Method update = candidates.get(0);
+        Class<?> manager = update.getDeclaringClass();
+        String owner = DexSignatures.descriptor(manager);
+        Method dump = NativeContract.method(manager, "dump", void.class, PrintWriter.class);
+        Field widgets = DexSignatures.body(dump).uniqueRead(owner, "Z", null).field(loader);
+        return new Binding(update, resolve, widgets);
     }
 
     static void install(DressroomModule module, ClassLoader loader)

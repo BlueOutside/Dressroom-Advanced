@@ -119,7 +119,8 @@ final class ClockBlurRetryBinding {
         if (DexSignatures.body(entry).calls().stream().noneMatch(call -> calls(call, submit)))
             throw new NoSuchMethodException("Clock blur entry does not call retry method");
 
-        DexSignatures.Body body = DexSignatures.body(submit);
+        Set<String> synchronous = OneUi95Aod.synchronousBlurAnchors();
+        DexSignatures.Body body = DexSignatures.body(submit, synchronous);
         Set<Field> animators = new LinkedHashSet<>();
         for (DexSignatures.Read read : body.reads())
             if (read.field().owner().equals(DexSignatures.descriptor(managerType))
@@ -148,17 +149,22 @@ final class ClockBlurRetryBinding {
                 tasks.add(Class.forName(
                         call.owner().substring(1, call.owner().length() - 1).replace('/', '.'),
                         false, loader));
-        if (tasks.size() != 1)
-            throw new NoSuchMethodException("Ambiguous clock blur retry task: " + tasks.size());
-        Class<?> taskType = tasks.iterator().next();
-        if (!Runnable.class.isAssignableFrom(taskType))
-            throw new NoSuchMethodException("Clock blur retry is not runnable");
-        task = taskType.getDeclaredConstructor(
-                managerType, int.class, int.class, boolean.class);
-        task.setAccessible(true);
-        run = taskType.getDeclaredMethod("run");
-        if (DexSignatures.body(run).calls().stream().noneMatch(call -> calls(call, submit)))
-            throw new NoSuchMethodException("Clock blur retry does not return to its manager");
+        if (tasks.isEmpty() && body.anchors().keySet().containsAll(synchronous)) {
+            // This manager submits directly. The draw retry still uses the shared submit method.
+            task = null;
+            run = null;
+        } else {
+            if (tasks.size() != 1)
+                throw new NoSuchMethodException("Ambiguous clock blur retry task: " + tasks.size());
+            Class<?> taskType = tasks.iterator().next();
+            if (!Runnable.class.isAssignableFrom(taskType))
+                throw new NoSuchMethodException("Clock blur retry is not runnable");
+            task = taskType.getDeclaredConstructor(managerType, int.class, int.class, boolean.class);
+            task.setAccessible(true);
+            run = taskType.getDeclaredMethod("run");
+            if (DexSignatures.body(run).calls().stream().noneMatch(call -> calls(call, submit)))
+                throw new NoSuchMethodException("Clock blur retry does not return to its manager");
+        }
 
         // The retry reads manager -> holder -> clock. Match both DEX reads;
         // unrelated Object fields in R8's merged holder classes are not enough.
@@ -171,6 +177,18 @@ final class ClockBlurRetryBinding {
         Object holder = owner.get(nativeManager);
         Object value = holder == null ? null : clock.get(holder);
         return value instanceof View view ? view : null;
+    }
+
+    Field[] strategyClockPath(DexSignatures.Body renderBody) throws ReflectiveOperationException {
+        Class<?> type = render.getDeclaringClass();
+        ClassLoader loader = type.getClassLoader();
+        String holderType = DexSignatures.descriptor(owner.getType());
+        DexSignatures.Member holder =
+                renderBody.uniqueRead(DexSignatures.descriptor(type), holderType, null);
+        if (renderBody.reads().stream().noneMatch(read ->
+                read.field().owner().equals(holderType) && read.field().name().equals(clock.getName())))
+            throw new NoSuchFieldException("Blur strategy does not read the clock holder");
+        return new Field[] {holder.field(loader), clock};
     }
 
     private static boolean calls(DexSignatures.Call call, Method method) {

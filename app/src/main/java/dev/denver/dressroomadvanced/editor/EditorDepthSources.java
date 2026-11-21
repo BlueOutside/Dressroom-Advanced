@@ -12,10 +12,35 @@ final class EditorDepthSources {
         final DepthSourcePolicy source = new DepthSourcePolicy();
         boolean known, image, reset;
         long revision;
+        String primaryUri = "", externalUri = "";
         void invalidate() { revision++; reset = true; }
         String imageKey() {
             String key = source.key();
-            return key == null ? "" : DepthStorage.hash(key.getBytes(StandardCharsets.UTF_8));
+            return key == null ? "" : hash(key);
+        }
+
+        boolean observe(WallpaperSourceBinding.Source next) {
+            String original = next.externalUri();
+            boolean sameImage = next.image() && (original.isEmpty() || externalUri.isEmpty()
+                    ? (next.key().equals(primaryUri) || next.key().equals(externalUri)
+                            || (!original.isEmpty() && original.equals(primaryUri)))
+                    : original.equals(externalUri));
+            if (sameImage && original.isEmpty()) original = externalUri;
+            // Dressroom can replace its working URI while retaining the gallery original.
+            boolean changed = source.observe(original.isEmpty() ? next.key() : original);
+            primaryUri = next.key();
+            externalUri = original;
+            return changed && !sameImage;
+        }
+
+        String profileKey(String savedKey) {
+            return image && !externalUri.isEmpty() && !primaryUri.isEmpty()
+                    && hash(primaryUri).equals(savedKey)
+                    ? imageKey() : savedKey;
+        }
+
+        private static String hash(String key) {
+            return DepthStorage.hash(key.getBytes(StandardCharsets.UTF_8));
         }
     }
     private final Map<Integer, State> screens = new HashMap<>();

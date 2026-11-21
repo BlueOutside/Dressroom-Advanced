@@ -35,7 +35,12 @@ final class ObjectCaptureBackend {
                     .getMethod("getInstance", Context.class);
             return true;
         } catch (ReflectiveOperationException | LinkageError ignored) {
-            return false;
+            try {
+                OneUi80Depth.resolve(loader);
+                return true;
+            } catch (ReflectiveOperationException | RuntimeException | LinkageError unavailable) {
+                return false;
+            }
         }
     }
 
@@ -60,6 +65,12 @@ final class ObjectCaptureBackend {
 
     static <T> T detect(Context context, ClassLoader loader, Detection<T> scan) throws Exception {
         if (!available(loader)) throw new IllegalStateException(unavailableReason());
+        try {
+            Class.forName(SDK + "base.ObjectCapture", false, loader);
+        } catch (ClassNotFoundException older) {
+            android.util.Log.i(DressroomModule.TAG, "Scanning subject with the wallpaper Object Capture SDK");
+            return OneUi80Depth.resolve(loader).detect(context, scan);
+        }
         List<Callable<?>> factories = new ArrayList<>();
         factories.add(
                 () ->

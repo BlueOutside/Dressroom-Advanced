@@ -14,7 +14,6 @@ final class DepthBlurHooks {
     private static final Set<ClassLoader> installed =
             Collections.newSetFromMap(new WeakHashMap<>());
     private static final ThreadLocal<Scope> current = new ThreadLocal<>();
-    private static final ThreadLocal<Object> finishingClear = new ThreadLocal<>();
     private static final Set<View> verified = Collections.newSetFromMap(new WeakHashMap<>());
 
     private static final class Scope {
@@ -57,8 +56,8 @@ final class DepthBlurHooks {
             handles.add(module.hook(binding.host)
                     .setId("dressroom-advanced.clock-blur-handoff-host")
                     .intercept(chain -> {
+                        if (!ClockBlurMotion.hasHandoff()) return chain.proceed();
                         Object strategy = chain.getThisObject();
-                        if (strategy == finishingClear.get()) return chain.proceed();
                         View clock;
                         try {
                             clock = binding.clock(strategy);
@@ -125,7 +124,8 @@ final class DepthBlurHooks {
                                                     scope.clock,
                                                     scope.origin.x,
                                                     scope.origin.y,
-                                                    original);
+                                                    ClockInlineSeconds.withSecondsPath(
+                                                            scope.clock, scope.origin, original));
                                             Path subject =
                                                     DepthEffects.nativeSubjectPath(
                                                             scope.clock,
@@ -170,18 +170,9 @@ final class DepthBlurHooks {
                                         } catch (ReflectiveOperationException | RuntimeException error) {
                                             return chain.proceed();
                                         }
-                                        Object previous = finishingClear.get();
-                                        if (ClockBlurMotion.allowOutgoingClear(clock))
-                                            finishingClear.set(strategy);
-                                        try {
-                                            Object result = chain.proceed();
-                                            if (clock != null)
-                                                MediaFullscreenExtras.clockPath(clock, 0, 0, null);
-                                            return result;
-                                        } finally {
-                                            if (previous == null) finishingClear.remove();
-                                            else finishingClear.set(previous);
-                                        }
+                                        Object result = chain.proceed();
+                                        if (clock != null) MediaFullscreenExtras.clockPath(clock, 0, 0, null);
+                                        return result;
                                     }));
             module.deoptimize(clear);
             installed.add(loader);
@@ -190,6 +181,14 @@ final class DepthBlurHooks {
             for (io.github.libxposed.api.XposedInterface.HookHandle handle : handles)
                 handle.unhook();
             module.report("Native blur depth unavailable", error);
+            return;
+        }
+        if (!module.inEditorProcess()) {
+            try {
+                ClockBlurMotion.installHandoff(module, ClockBlurRetryBinding.absClockView(base));
+            } catch (Exception | LinkageError error) {
+                module.report("Optional clock page blur handoff unavailable", error);
+            }
         }
     }
 

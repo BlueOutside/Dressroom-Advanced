@@ -27,7 +27,7 @@ final class Reflect {
             };
     private static final Object[] NO_ARGUMENTS = new Object[0];
 
-    private static Field findField(Class<?> type, String name) throws NoSuchFieldException {
+    static Field findField(Class<?> type, String name) throws NoSuchFieldException {
         Members cache = members.get(type);
         Field cached = cache.fields.get(name);
         if (cached != null) return cached;

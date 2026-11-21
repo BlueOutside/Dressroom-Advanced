@@ -58,6 +58,10 @@ final class WidgetEngine {
             Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
     private final Set<ClassLoader> scaleInstalled =
             Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
+    private final Set<ClassLoader> earlyScale =
+            Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
+    private final Set<ClassLoader> earlyGrid =
+            Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
 
     WidgetEngine(DressroomModule module) {
         this.module = module;
@@ -97,7 +101,8 @@ final class WidgetEngine {
     }
 
     private Bundle config(Object manager) throws ReflectiveOperationException {
-        return settings((Context) Reflect.field(manager, "context"));
+        return settings((Context) RuntimeWidgetHooks.resolveControllerMember(
+                manager, "context", "contextProvider"));
     }
 
     synchronized boolean installLegacyCapacity(ClassLoader loader)
@@ -106,11 +111,27 @@ final class WidgetEngine {
         if (installed.contains(loader)) return true;
         if (!scaleInstalled.contains(loader)) install(loader);
         if (installed.contains(loader)) return true;
-        installScale(loader);
+        installScale(loader, false);
         return false;
     }
 
-    synchronized void installScale(ClassLoader loader) throws ReflectiveOperationException {
+    boolean earlyScaling(Object grid) {
+        return earlyScale.contains(grid.getClass().getClassLoader());
+    }
+
+    boolean earlyCapacity(Object grid) {
+        return earlyGrid.contains(grid.getClass().getClassLoader());
+    }
+
+    synchronized boolean installEarlyCapacity(ClassLoader loader) throws ReflectiveOperationException {
+        legacyProviders.add(loader);
+        if (!installed.contains(loader) && !scaleInstalled.contains(loader)) install(loader, true);
+        if (!installed.contains(loader)) installScale(loader, true);
+        return earlyGrid.contains(loader);
+    }
+
+    synchronized void installScale(ClassLoader loader, boolean early)
+            throws ReflectiveOperationException {
         if (scaleInstalled.contains(loader) || installed.contains(loader)) return;
         Class<?> manager = Class.forName(SIZE, false, loader);
         NativeContract.field(manager, "_scaleFactor", float.class);
@@ -131,7 +152,7 @@ final class WidgetEngine {
                         display);
         refreshBindings.get(grid);
         validateLegacyGrid(grid);
-        WidgetHostSizing.validate(loader);
+        Method earlyHost = early ? OneUi80WidgetRuntime.addHost(loader) : null;
         try (HookTransaction hooks = new HookTransaction()) {
             var scale =
                     module.hook(init)
@@ -170,13 +191,18 @@ final class WidgetEngine {
                                     });
             hooks.add(root::unhook);
             module.deoptimize(bind);
-            installHostSizing(loader, handle -> hooks.add(handle::unhook));
+            installHostSizing(loader, earlyHost, handle -> hooks.add(handle::unhook));
             hooks.commit();
             scaleInstalled.add(loader);
+            if (early) earlyScale.add(loader);
         }
     }
 
     synchronized void install(ClassLoader loader) {
+        install(loader, false);
+    }
+
+    private void install(ClassLoader loader, boolean early) {
         if (installed.contains(loader)) return;
         try (HookTransaction hooks = new HookTransaction()) {
             Class<?> size = Class.forName(SIZE, false, loader);
@@ -236,9 +262,9 @@ final class WidgetEngine {
                                                         Reflect.set(
                                                                 manager,
                                                                 "widgetAlignType",
-                                                                enumValue(
-                                                                        align.getClass(),
-                                                                        "Default"));
+                                                                        enumValue(
+                                                                                align.getClass(),
+                                                                                "Default"));
                                                     }
                                                     Object result = chain.proceed();
                                                     if (main(chain.getThisObject())) {
@@ -267,12 +293,13 @@ final class WidgetEngine {
                     module.deoptimize(m);
                 }
             Class<?> grid = Class.forName(GRID, false, loader);
+            if (early) OneUi80WidgetRuntime.grid(grid);
             Class<?> alignType =
                     Class.forName(
                             "com.samsung.android.clockpack.plugins.briefwidget.WidgetAlignType",
                             false,
                             loader);
-            if (module.editorWidgets == null) {
+            if (!early && module.editorWidgets == null) {
                 boolean legacy;
                 try {
                     legacy =
@@ -321,7 +348,7 @@ final class WidgetEngine {
                                 .intercept(
                                         chain -> {
                                             Object controller =
-                                                    Reflect.field(
+                                                    RuntimeWidgetHooks.widgetMember(
                                                             chain.getThisObject(),
                                                             "complicationGridUIController");
                                             Object manager =
@@ -377,14 +404,14 @@ final class WidgetEngine {
                                 "checkAllowPosition",
                                 "sendAppWidgetOptions")
                         .contains(m.getName())) module.deoptimize(m);
-            Class<?> containers =
-                    Class.forName(
-                            "com.samsung.android.app.facewidget.complication.ComplicationContainerManager",
-                            false,
-                            loader);
-            for (Method m : containers.getDeclaredMethods())
-                if (m.getName().equals("getContainerWidth")
-                        || m.getName().equals("getContainerHeight")) module.deoptimize(m);
+            if (!early) {
+                Class<?> containers = Class.forName(
+                        "com.samsung.android.app.facewidget.complication.ComplicationContainerManager",
+                        false, loader);
+                for (Method m : containers.getDeclaredMethods())
+                    if (m.getName().equals("getContainerWidth")
+                            || m.getName().equals("getContainerHeight")) module.deoptimize(m);
+            }
             for (Method m : grid.getDeclaredMethods())
                 if (m.getName().equals("setRootContainer") && m.getParameterCount() == 3) {
                     hooks.add(
@@ -405,11 +432,18 @@ final class WidgetEngine {
                                     ::unhook);
                     module.deoptimize(m);
                 }
-            installHostSizing(loader, handle -> hooks.add(handle::unhook));
+            installHostSizing(loader, early ? OneUi80WidgetRuntime.addHost(loader) : null,
+                    handle -> hooks.add(handle::unhook));
+            if (early) validateLegacyGrid(grid);
+            if (early) OneUi80WidgetRuntime.grid(grid);
             hooks.commit();
             installed.add(loader);
-            WidgetDepthBlur.install(module, loader);
-            if (module.inEditorProcess()) {
+            if (early) {
+                earlyScale.add(loader);
+                earlyGrid.add(loader);
+            }
+            if (!early) WidgetDepthBlur.install(module, loader);
+            if (!early && module.inEditorProcess()) {
                 try {
                     EditorWidgetBlur.install(module, grid);
                 } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
@@ -426,9 +460,40 @@ final class WidgetEngine {
 
     private void installHostSizing(
             ClassLoader loader,
+            Method earlyHost,
             java.util.function.Consumer<io.github.libxposed.api.XposedInterface.HookHandle> own)
             throws ReflectiveOperationException {
-        WidgetHostSizing.validate(loader);
+        WidgetHostSizing.validateResize(loader);
+        if (earlyHost == null) {
+            installFactoryHostSizing(loader, own);
+        } else {
+            own.accept(module.hook(earlyHost)
+                    .setId("dressroom-advanced.80-widget-host-scale")
+                    .intercept(chain -> {
+                        Object result = chain.proceed();
+                        try {
+                            Object manager = Reflect.call(chain.getThisObject(), "getWidgetSizeManager");
+                            if (!main(manager)) return result;
+                            float zoom = config(manager).getFloat("scale", 1f);
+                            if (zoom == 1f) return result;
+                            Object info = chain.getArg(0);
+                            int columns = ((Number) Reflect.call(info, "getWidth")).intValue();
+                            int rows = ((Number) Reflect.call(info, "getHeight")).intValue();
+                            for (var host : Set.copyOf(WidgetHostSizing.inView((View) chain.getArg(1)).values()))
+                                WidgetHostSizing.refresh(host, columns, rows, manager, zoom, false, true);
+                        } catch (ReflectiveOperationException | RuntimeException error) {
+                            module.report("8.0 widget host scaling unavailable", error);
+                        }
+                        return result;
+                    }));
+            module.deoptimize(earlyHost);
+        }
+        installWidgetOptionSizing(loader, own);
+    }
+
+    private void installFactoryHostSizing(ClassLoader loader,
+            java.util.function.Consumer<io.github.libxposed.api.XposedInterface.HookHandle> own)
+            throws ReflectiveOperationException {
         Method create = WidgetHostSizing.creation(loader);
         var created =
                 module.hook(create)
@@ -481,6 +546,11 @@ final class WidgetEngine {
                                 });
         own.accept(created);
         module.deoptimize(create);
+    }
+
+    private void installWidgetOptionSizing(ClassLoader loader,
+            java.util.function.Consumer<io.github.libxposed.api.XposedInterface.HookHandle> own)
+            throws ReflectiveOperationException {
         Class<?> grid = Class.forName(GRID, false, loader);
         Method optionsMethod =
                 NativeContract.method(
@@ -583,6 +653,7 @@ final class WidgetEngine {
             int columns = ((Number) Reflect.call(item, "getWidth")).intValue();
             int rows = ((Number) Reflect.call(item, "getHeight")).intValue();
             Object manager = Reflect.call(grid, "getWidgetSizeManager");
+            boolean early = earlyScaling(grid);
             WidgetHostSizing.refresh(
                     host,
                     columns,
@@ -590,7 +661,7 @@ final class WidgetEngine {
                     manager,
                     config(manager).getFloat("scale", 1),
                     legacyProviders.contains(manager.getClass().getClassLoader())
-                            && config(manager).getBoolean("layout"));
+                            && config(manager).getBoolean("layout"), early);
             Reflect.call(grid, "sendAppWidgetOptions", id, columns, rows);
         }
     }
@@ -622,7 +693,13 @@ final class WidgetEngine {
     }
 
     void reflow(Object grid) throws ReflectiveOperationException {
-        Object containers = Reflect.field(grid, "containerManager");
+        if (earlyCapacity(grid)) {
+            if (!OneUi80WidgetRuntime.grid(grid.getClass()).reflow(grid))
+                throw new IllegalStateException(
+                        "Samsung could not fit these widgets. Increase the grid size.");
+            return;
+        }
+        Object containers = RuntimeWidgetHooks.widgetMember(grid, "containerManager");
         Object id = Reflect.call(containers, "getContainerId");
         if (id == null) return;
         Object manager = Reflect.call(grid, "getGridManager");

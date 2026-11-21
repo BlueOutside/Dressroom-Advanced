@@ -10,8 +10,34 @@ final class NativeEdits {
     }
 
     static Object toggle(Object controller, boolean value, boolean weather) throws Exception {
+        EditorBinding binding = EditorBinding.of(controller);
+        if (binding.early != null) {
+            Object repo = binding.repo(controller);
+            Object data = Reflect.call(repo, "getData");
+            if (weather) {
+                Object model = model(controller);
+                binding.weather.invoke(NativeContract.findField(model.getClass(), null,
+                        binding.weather.getDeclaringClass()).get(model), value);
+            } else {
+                Reflect.call(data, "setShowDateInfoFirst", value);
+                Reflect.call(repo, "setData", data, true);
+            }
+            return null;
+        }
         Object model = model(controller);
-        if (EditorBinding.of(controller).legacy) {
+        if (binding.beta != null) {
+            if (weather) {
+                OneUi95Editor.weather(binding.beta, model, value, true);
+                OneUi95Editor.weather(binding.beta, model, value, false);
+                return null;
+            }
+            Object repo = binding.repo(controller);
+            Object data = Reflect.call(repo, "getData");
+            Reflect.call(data, "setShowDataInfoFirst", data, value, true);
+            Reflect.call(repo, "setData", data, false);
+            return null;
+        }
+        if (binding.legacy) {
             if (weather) {
                 Reflect.call(Reflect.field(model, "c"), "a", value);
                 return null;
@@ -57,8 +83,14 @@ final class NativeEdits {
     }
 
     static void changing(Object controller, boolean value) throws Exception {
+        EditorBinding binding = EditorBinding.of(controller);
+        if (binding.early != null) return;
         Object model = model(controller);
-        if (EditorBinding.of(controller).legacy) {
+        if (binding.beta != null) {
+            OneUi95Editor.editing(model, value);
+            return;
+        }
+        if (binding.legacy) {
             Reflect.call(Reflect.field(model, "k"), "b", value, null, null, null, null);
             return;
         }
@@ -68,8 +100,17 @@ final class NativeEdits {
     }
 
     static void remeasure(Object controller, boolean weather) throws Exception {
+        EditorBinding binding = EditorBinding.of(controller);
+        if (binding.early != null) {
+            toggle(controller, weather, true);
+            return;
+        }
+        if (binding.beta != null) {
+            OneUi95Editor.weather(binding.beta, model(controller), weather);
+            return;
+        }
         Object operation = Reflect.field(model(controller), "c");
-        if (EditorBinding.of(controller).legacy) Reflect.call(operation, "a", weather);
+        if (binding.legacy) Reflect.call(operation, "a", weather);
         else Reflect.call(operation, "a", weather, true);
     }
 

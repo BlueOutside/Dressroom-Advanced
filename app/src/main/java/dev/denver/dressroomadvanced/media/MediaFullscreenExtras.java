@@ -1,18 +1,13 @@
 package dev.denver.dressroomadvanced;
 
 import android.graphics.Bitmap;
-import android.graphics.BlendMode;
 import android.graphics.Canvas;
 import android.graphics.ColorFilter;
-import android.graphics.LinearGradient;
 import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.PixelFormat;
 import android.graphics.RectF;
-import android.graphics.RenderEffect;
-import android.graphics.RenderNode;
-import android.graphics.Shader;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.view.View;
@@ -44,16 +39,24 @@ final class MediaFullscreenExtras {
             java.util.Collections.newSetFromMap(new WeakHashMap<>());
     private static final Set<ClassLoader> motionInstalled =
             Collections.newSetFromMap(new WeakHashMap<>());
-    private static final android.os.Handler main =
-            new android.os.Handler(android.os.Looper.getMainLooper());
+    private static final class Main {
+        static final android.os.Handler HANDLER =
+                new android.os.Handler(android.os.Looper.getMainLooper());
+    }
     private static DressroomModule module;
     private static boolean rootInstalled;
+    private static boolean nativeAmbientState;
 
     static void screenChanged() {
         clockPaths.clear();
+        markCandidatesDirty();
         for (WeakReference<Backdrop> reference : new ArrayList<>(hosts.values())) {
             Backdrop backdrop = reference.get();
             if (backdrop == null) continue;
+            backdrop.ambientCollapsed = false;
+            backdrop.topBandSolidNorm = DEFAULT_TOP_BAND_SOLID_NORM;
+            backdrop.topBandEndNorm = DEFAULT_TOP_BAND_END_NORM;
+            backdrop.lastClockBottom = 0f;
             backdrop.resetWindow();
         }
         for (Art state : new ArrayList<>(art.values())) {
@@ -61,6 +64,85 @@ final class MediaFullscreenExtras {
             state.overlayActive = state.closing = false;
             state.returningCard.clear();
         }
+    }
+
+    static void markCandidatesDirty() {
+        for (WeakReference<Backdrop> reference : hosts.values()) {
+            Backdrop backdrop = reference.get();
+            if (backdrop == null) continue;
+            backdrop.candidatesDirty = true;
+            backdrop.hiddenDirty = true;
+        }
+    }
+
+    static boolean shouldCloseAmbient(
+            boolean expanded,
+            boolean previousExpanded,
+            boolean ambientVisible,
+            boolean showing,
+            boolean ambientHandoff) {
+        return !expanded && (previousExpanded || ambientVisible || (showing && ambientHandoff));
+    }
+
+    /** Suppresses the 320ms song-change crossfade on ambient wake or while native reveal owns the transition. */
+    static boolean shouldStartSongCrossfade(
+            boolean showing,
+            boolean sameArt,
+            boolean closing,
+            boolean hasSmall,
+            float progress,
+            boolean exitingAmbient,
+            boolean nativeRevealActive) {
+        return showing
+                && sameArt
+                && !closing
+                && !hasSmall
+                && progress >= .98f
+                && !exitingAmbient
+                && !nativeRevealActive;
+    }
+
+    /**
+     * Avoids restarting a song transition from 0% when the fallback crossfade has already visibly
+     * progressed for the same incoming artwork.
+     */
+    static boolean shouldDeferToRunningCrossfade(
+            boolean crossfadeRunning, boolean sameTarget, float crossfadeFraction) {
+        return crossfadeRunning && sameTarget && crossfadeFraction > .02f;
+    }
+
+    static final long WAKE_HOLD_TIMEOUT_MS = 1500L;
+
+    /** Holds a wake-handoff cover while native artwork still points at the pre-doze bitmap. */
+    static boolean shouldHoldWakeArtwork(
+            boolean hasHoldBitmap, boolean matchesStaleBitmap, long nowUptimeMs, long holdUntilMs) {
+        return hasHoldBitmap && matchesStaleBitmap && nowUptimeMs < holdUntilMs;
+    }
+
+    static final float DEFAULT_TOP_BAND_SOLID_NORM = .16f;
+    static final float DEFAULT_TOP_BAND_END_NORM = .26f;
+
+    /** Returns whether the top clock blur should be suppressed because the clock is disabled/hidden. */
+    static boolean isTopBlurDisabled(boolean hideClockPrefEnabled, boolean clockHiddenInWindow) {
+        return hideClockPrefEnabled || clockHiddenInWindow;
+    }
+
+    /** Keeps the controls blur live through open/close motion while respecting live controls alpha when settled. */
+    static float controlsBandOpacity(
+            float liveControlsOpacity, float progress, boolean closing, boolean compact) {
+        float p = clamp(progress);
+        float live = clamp(liveControlsOpacity);
+        if (closing || compact) return p;
+        return p < .995f ? Math.max(live, p) : live;
+    }
+
+    /** Keeps the top progressive blur live through open/close motion unless the clock is disabled. */
+    static float topBandOpacity(
+            float progress, boolean closing, boolean compact, boolean disabled) {
+        if (disabled) return 0f;
+        float p = clamp(progress);
+        if (closing || compact || p < .995f) return p;
+        return 1f;
     }
 
     static void clockPath(View clock, float x, float y, Path path) {
@@ -83,8 +165,23 @@ final class MediaFullscreenExtras {
                     && backdrop.showing) {
                 backdrop.clockMaskDirty = true;
                 backdrop.invalidate();
+                backdrop.overlayLayer.invalidate();
             }
         }
+    }
+
+    static void clockVisibilityChanged(View root) {
+        MediaClockContrast.invalidate(root);
+        WeakReference<Backdrop> reference = hosts.get(root);
+        Backdrop backdrop = reference == null ? null : reference.get();
+        if (backdrop == null) return;
+        if (MediaClockVisibility.hidden(root)
+                || RuntimeExtras.enabled(root.getContext(), MediaClockVisibility.KEY)) {
+            backdrop.topBandOpacity = 0f;
+        }
+        backdrop.candidatesDirty = true;
+        backdrop.clockMaskDirty = true;
+        backdrop.overlayLayer.invalidate();
     }
 
     static void installRoot(DressroomModule owner, ClassLoader loader) {
@@ -121,18 +218,20 @@ final class MediaFullscreenExtras {
                 .equals("com.android.systemui.shade.NotificationShadeWindowView")) return null;
         host = new Backdrop(root);
         hosts.put(root, new WeakReference<>(host));
-        int position = root.getChildCount();
-        for (int i = 0; i < root.getChildCount(); i++) {
-            String name = name(root.getChildAt(i));
-            if (name.equals("notification_panel") || name.equals("lock_clock_blur")) {
-                position = i;
-                break;
-            }
-        }
-        root.addView(host, position, new FrameLayout.LayoutParams(-1, -1));
+        root.addView(host, backdropIndex(root), new FrameLayout.LayoutParams(-1, -1));
         android.util.Log.i(
                 DressroomModule.TAG, "Artwork backdrop attached behind native clock/player");
         return host;
+    }
+
+    static int backdropIndex(ViewGroup root) {
+        int fallback = root.getChildCount();
+        for (int i = 0; i < root.getChildCount(); i++) {
+            String name = name(root.getChildAt(i));
+            if (name.equals("notification_panel")) return i;
+            if (name.equals("lock_clock_blur")) fallback = i;
+        }
+        return fallback;
     }
 
     private static String name(View view) {
@@ -161,6 +260,8 @@ final class MediaFullscreenExtras {
         final NativeArtworkReveal reveal;
         Drawable displayedDrawable;
         Bitmap displayedBitmap;
+        Bitmap previousBitmap;
+        boolean bitmapChangedBeforeReveal;
 
         Art(
                 View view,
@@ -200,6 +301,8 @@ final class MediaFullscreenExtras {
             if (drawable == null) {
                 displayedDrawable = null;
                 displayedBitmap = null;
+                previousBitmap = null;
+                bitmapChangedBeforeReveal = false;
                 return null;
             }
             if (drawable == displayedDrawable
@@ -212,6 +315,14 @@ final class MediaFullscreenExtras {
                 if (original != null && !original.isRecycled()) source = original;
             } catch (IllegalAccessException ignored) {
                 DressroomModule.note("Fullscreen bitmap field", ignored);
+            }
+            if (source != null
+                    && !source.isRecycled()
+                    && displayedBitmap != null
+                    && !displayedBitmap.isRecycled()
+                    && displayedBitmap != source) {
+                previousBitmap = displayedBitmap;
+                bitmapChangedBeforeReveal = true;
             }
             displayedDrawable = drawable;
             displayedBitmap = source;
@@ -310,7 +421,7 @@ final class MediaFullscreenExtras {
         }
     }
 
-    private static final class Backdrop extends View {
+    private static final class Backdrop extends FrameLayout {
         final WeakReference<ViewGroup> root;
         private final android.view.ViewTreeObserver.OnPreDrawListener redraw = () -> {
             update();
@@ -332,22 +443,39 @@ final class MediaFullscreenExtras {
         final Map<View, Boolean> maskVisibility = new WeakHashMap<>();
         int maskSources = -1;
         final View returnLayer;
+        final LiveCoverController liveCover;
+        final View overlayLayer;
         final Path outline = new Path();
         final RectF returnBounds = new RectF(),
+                returnTitleBounds = new RectF(),
                 returnExclusion = new RectF(),
                 previousExclusion = new RectF();
-        final RenderNode blurredArt = new RenderNode("Dressroom media controls artwork");
-        final Paint fadePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        final Paint blurOpacity = new Paint(Paint.ANTI_ALIAS_FLAG);
+        final Path returnClip = new Path();
+        final ArtworkBlurFilter.Layers artworkBlur;
+        final ArtworkCrossfade songFade;
         final Path clockMask = new Path();
         boolean clockMaskDirty = true;
-        float controlAlpha;
-        boolean compact, blurBandReady;
-        float controlsTop = -1, fadeTop, fadeBottom;
-        float bandTopNorm = 0, bandSolidNorm = 1;
-        final RectF blurBounds = new RectF();
-        float blurCorner = -1;
+        boolean compact;
+        final RectF ambientRect = new RectF();
+        final RectF clockRect = new RectF();
+        float bandTopNorm = .58f, bandSolidNorm = .83f;
+        float controlsBandTop, controlsBandSolid, controlsBandOpacity;
+        float topBandSolidNorm = DEFAULT_TOP_BAND_SOLID_NORM,
+                topBandEndNorm = DEFAULT_TOP_BAND_END_NORM;
+        float topBandSolid, topBandEnd, topBandOpacity;
+        float lastClockBottom;
         boolean blurDirty = true;
+        boolean liveBlurDirty;
+        boolean lastLiveVisible;
+        boolean wasAmbient;
+        Bitmap preAmbientNative;
+        Bitmap wakeHoldBitmap;
+        Bitmap wakeHoldStale;
+        long wakeHoldUntilMs;
+        final ArrayList<Art> candidateScratch = new ArrayList<>();
+        WeakReference<Art> lastArt = new WeakReference<>(null);
+        boolean candidatesDirty = true;
+        boolean hiddenDirty = true;
         final Matrix global = new Matrix(),
                 rootGlobal = new Matrix(),
                 inverse = new Matrix(),
@@ -356,19 +484,23 @@ final class MediaFullscreenExtras {
         Bitmap bitmap;
         int bitmapGeneration;
         View boundPage;
-        boolean showing;
+        boolean showing, ambientCollapsed;
 
         Backdrop(ViewGroup root) {
             super(root.getContext());
             this.root = new WeakReference<>(root);
+            setWillNotDraw(false);
             returnLayer =
                     new View(root.getContext()) {
                         @Override
                         protected void onDraw(Canvas canvas) {
                             if (!showing || current == null || current.small.get() == null) return;
-                            if (returnBounds.isEmpty()) return;
+                            if (returnBounds.isEmpty() && returnTitleBounds.isEmpty()) return;
                             int save = canvas.save();
-                            canvas.clipRect(returnBounds);
+                            returnClip.rewind();
+                            returnClip.addRect(returnBounds, Path.Direction.CW);
+                            returnClip.addRect(returnTitleBounds, Path.Direction.CW);
+                            canvas.clipPath(returnClip);
                             if (!returnExclusion.isEmpty()) canvas.clipOutRect(returnExclusion);
                             // Only the moving cover belongs above the pill, not the controls blur.
                             Backdrop.this.drawArtwork(canvas);
@@ -379,10 +511,32 @@ final class MediaFullscreenExtras {
             returnLayer.setFocusable(false);
             returnLayer.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
             returnLayer.setVisibility(INVISIBLE);
-            float radius = 24 * getResources().getDisplayMetrics().density;
-            blurredArt.setRenderEffect(
-                    RenderEffect.createBlurEffect(radius, radius, Shader.TileMode.CLAMP));
-            fadePaint.setBlendMode(BlendMode.DST_IN);
+            artworkBlur = new ArtworkBlurFilter.Layers(this);
+            overlayLayer =
+                    new View(root.getContext()) {
+                        @Override
+                        protected void onDraw(Canvas canvas) {
+                            drawForegroundBlur(canvas);
+                        }
+                    };
+            overlayLayer.setClickable(false);
+            overlayLayer.setFocusable(false);
+            overlayLayer.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
+            liveCover =
+                    new LiveCoverController(
+                            root.getContext(),
+                            () -> {
+                                liveBlurDirty = true;
+                                overlayLayer.invalidate();
+                                if (returnLayer.getVisibility() == VISIBLE) returnLayer.invalidate();
+                            });
+            songFade = new ArtworkCrossfade(this, () -> {
+                blurDirty = true;
+                invalidate();
+                overlayLayer.invalidate();
+            });
+            addView(liveCover.hostView(), new FrameLayout.LayoutParams(0, 0));
+            addView(overlayLayer, new FrameLayout.LayoutParams(-1, -1));
             setVisibility(INVISIBLE);
             setClickable(false);
             setFocusable(false);
@@ -392,6 +546,7 @@ final class MediaFullscreenExtras {
         @Override
         protected void onAttachedToWindow() {
             super.onAttachedToWindow();
+            liveCover.onAttached();
             ViewGroup parent = root.get();
             if (parent == null) return;
             parent.getOverlay().add(returnLayer);
@@ -401,6 +556,8 @@ final class MediaFullscreenExtras {
 
         @Override
         protected void onDetachedFromWindow() {
+            liveCover.onDetached();
+            artworkBlur.detach();
             if (observer != null && observer.isAlive()) observer.removeOnPreDrawListener(redraw);
             observer = null;
             resetWindow();
@@ -410,61 +567,181 @@ final class MediaFullscreenExtras {
         }
 
         void resetWindow() {
+            resetWindow(false);
+        }
+
+        void resetWindow(boolean immediateContrast) {
+            liveCover.reset();
+            songFade.clear();
+            lastLiveVisible = false;
+            wasAmbient = false;
+            controlsBandOpacity = 0f;
+            topBandOpacity = 0f;
+            preAmbientNative = wakeHoldBitmap = wakeHoldStale = null;
+            wakeHoldUntilMs = 0L;
             restore();
             showing = regularPublished = false;
             current = null;
             bitmap = null;
+            candidatesDirty = true;
+            hiddenDirty = true;
             clockMask.reset();
             clockMaskDirty = true;
             maskVisibility.clear();
             maskSources = -1;
             setVisibility(INVISIBLE);
-            blurredArt.discardDisplayList();
+            overlayLayer.invalidate();
+            artworkBlur.discardDisplayLists();
             ViewGroup parent = root.get();
             if (parent != null) {
-                MediaClockContrast.clear(parent);
+                if (immediateContrast) MediaClockContrast.clearImmediate(parent);
+                else MediaClockContrast.clear(parent);
                 WidgetMediaOcclusion.publish(parent, null);
+                if (immediateContrast) parent.invalidate();
             }
+        }
+
+        private static boolean isUsable(Art candidate, ViewGroup parent) {
+            if (candidate == null || candidate.target.get() == null) return false;
+            View small = candidate.small.get();
+            if (small != null
+                    && candidate.collapseScale > 1.001f
+                    && small.getWidth() > 0
+                    && small.getWidth() * (small.getScaleX() - 1f) <= 1.5f) {
+                if (candidate.thumbnailMuted) {
+                    MediaBlurHost.release(small);
+                    candidate.thumbnailMuted = false;
+                }
+                return false;
+            }
+            View moving = candidate.moving();
+            View overlay = candidate.overlayHost.get();
+            boolean inOverlay =
+                    candidate.overlayActive
+                            && overlay != null
+                            && overlay.getWindowToken() == parent.getWindowToken();
+            return moving != null
+                    && (inOverlay
+                            || (moving.isShown()
+                                    && moving.getWindowToken() != null
+                                    && moving.getWindowToken() == parent.getWindowToken()))
+                    && candidate.bitmap() != null;
         }
 
         void update() {
             ViewGroup parent = root.get();
             if (parent == null) return;
+            if (ambientCollapsed) {
+                if (!nativeAmbientState && !liveCover.ambientHandoff()) {
+                    ambientCollapsed = false;
+                } else {
+                    updateRegularWidgets(parent);
+                    return;
+                }
+            }
+            boolean fullscreenEnabled = RuntimeExtras.enabled(getContext(), "fullscreenArt");
+            if (fullscreenEnabled
+                    && liveCover.retainOnWallpaperAod(
+                            showing && current != null && !current.closing ? current.bitmap() : null)) {
+                if (!wasAmbient) {
+                    preAmbientNative =
+                            showing && current != null && !current.closing
+                                    ? current.bitmap()
+                                    : bitmap;
+                }
+                wasAmbient = true;
+                detachReturnLayer();
+                for (Art candidate : art.values()) {
+                    View framed = candidate.target.get();
+                    if (framed != null && framed.getRootView() == parent)
+                        collectAmbientArtwork(framed);
+                }
+                Bitmap ambientArt = liveCover.ambientBitmap();
+                Bitmap fallbackArt =
+                        current != null && !current.closing ? current.bitmap() : null;
+                Bitmap synced =
+                        ambientArt != null && !ambientArt.isRecycled() ? ambientArt : fallbackArt;
+                if (synced != null && !synced.isRecycled() && bitmap != synced) {
+                    songFade.update(synced, false);
+                    bitmap = synced;
+                    bitmapGeneration = synced.getGenerationId();
+                    blurDirty = true;
+                }
+                if (current != null && current.reveal != null && !current.reveal.running()) {
+                    current.reveal.progress(1f);
+                }
+                if (current != null) current.bitmapChangedBeforeReveal = false;
+                liveCover.hideVideoSurface();
+                if (getAlpha() != 1f) setAlpha(1f);
+                if (getVisibility() != VISIBLE) setVisibility(VISIBLE);
+                liveCover.prepareAmbientClock(parent, this);
+                ambientRect.set(0f, 0f, parent.getWidth(), parent.getHeight());
+                if (updateTopBand(parent, ambientRect, 1f, 1f, false, false)) {
+                    overlayLayer.invalidate();
+                }
+                return;
+            }
+            boolean exitingAmbient = wasAmbient;
+            wasAmbient = false;
             Art best = null;
-            float area = 0;
-            if (RuntimeExtras.enabled(getContext(), "fullscreenArt"))
-                for (Art candidate : new ArrayList<>(art.values())) {
-                    if (candidate.target.get() == null) continue;
-                    View moving = candidate.moving();
-                    View overlay = candidate.overlayHost.get();
-                    boolean inOverlay =
-                            candidate.overlayActive
-                                    && overlay != null
-                                    && overlay.getWindowToken() == parent.getWindowToken();
-                    if (moving == null
-                            || (!inOverlay
-                                    && (!moving.isShown()
-                                            || moving.getWindowToken() == null
-                                            || moving.getWindowToken() != parent.getWindowToken()))
-                            || candidate.bitmap() == null) continue;
-                    float size =
-                            moving.getWidth()
-                                    * moving.getHeight()
-                                    * moving.getScaleX()
-                                    * moving.getScaleY();
-                    if (size > area) {
-                        best = candidate;
-                        area = size;
+            if (fullscreenEnabled) {
+                if (!candidatesDirty && current != null && isUsable(current, parent)) {
+                    best = current;
+                } else if (!showing && !candidatesDirty) {
+                    Art recent = lastArt.get();
+                    if (recent != null && isUsable(recent, parent)) candidatesDirty = true;
+                }
+                if (best == null && (candidatesDirty || showing || current != null)) {
+                    float area = 0;
+                    candidateScratch.clear();
+                    candidateScratch.addAll(art.values());
+                    for (int i = 0, n = candidateScratch.size(); i < n; i++) {
+                        Art candidate = candidateScratch.get(i);
+                        if (!isUsable(candidate, parent)) continue;
+                        View moving = candidate.moving();
+                        float size =
+                                moving.getWidth()
+                                        * moving.getHeight()
+                                        * moving.getScaleX()
+                                        * moving.getScaleY();
+                        if (size > area) {
+                            best = candidate;
+                            area = size;
+                        }
+                    }
+                    candidateScratch.clear();
+                    if (best == null) {
+                        Art stale = lastArt.get();
+                        if (stale != null && stale.target.get() == null) lastArt.clear();
+                        candidatesDirty = false;
+                    } else {
+                        if (lastArt.get() != best) lastArt = new WeakReference<>(best);
+                        boolean settled =
+                                !best.closing
+                                        && best.small.get() == null
+                                        && best.progress() >= 0.998f;
+                        candidatesDirty = !settled;
                     }
                 }
+            } else {
+                candidatesDirty = true;
+            }
             if (best == null) {
                 if (showing) {
+                    liveCover.reset();
+                    songFade.clear();
+                    lastLiveVisible = false;
+                    controlsBandOpacity = 0f;
+                    topBandOpacity = 0f;
+                    preAmbientNative = wakeHoldBitmap = wakeHoldStale = null;
+                    wakeHoldUntilMs = 0L;
                     restore();
                     MediaClockContrast.clear(parent);
                     WidgetMediaOcclusion.publish(parent, null);
                     showing = false;
                     bitmap = null;
                     current = null;
+                    hiddenDirty = true;
                     for (View clock : new ArrayList<>(clockPaths.keySet()))
                         if (clock != null && clock.isAttachedToWindow())
                             try {
@@ -480,7 +757,7 @@ final class MediaFullscreenExtras {
                     clockMaskDirty = true;
                     maskVisibility.clear();
                     maskSources = -1;
-                    blurredArt.discardDisplayList();
+                    artworkBlur.discardDisplayLists();
                     setVisibility(INVISIBLE);
                     returnLayer.setVisibility(INVISIBLE);
                 }
@@ -497,12 +774,18 @@ final class MediaFullscreenExtras {
                 }
             }
             if (best != current || page != boundPage) {
-                if (best != current) blurBandReady = false;
+                if (best != current) {
+                    bandTopNorm = .58f;
+                    bandSolidNorm = .83f;
+                }
                 restore();
                 current = best;
                 boundPage = page;
-                collect(parent);
-                collect(target);
+                View mediaCard = BlurAppearance.nowBarCardOwner(page);
+                if (mediaCard == null) mediaCard = BlurAppearance.nowBarCardOwner(target);
+                collect(parent, mediaCard);
+                collect(target, mediaCard);
+                hiddenDirty = true;
                 android.util.Log.i(
                         DressroomModule.TAG,
                         "Artwork layer active: bitmap="
@@ -516,7 +799,7 @@ final class MediaFullscreenExtras {
                                 + " replacements="
                                 + hidden.size());
             }
-            for (Saved saved : hidden.values()) saved.apply();
+            boolean forceApplyHidden = hiddenDirty || best.closing;
             View nativeThumbnail = best.small.get();
             if (nativeThumbnail != null) {
                 MediaBlurHost.hold(nativeThumbnail);
@@ -524,6 +807,35 @@ final class MediaFullscreenExtras {
             }
 
             Bitmap image = best.bitmap();
+            boolean releasedWakeHold = false;
+            if (exitingAmbient) {
+                Bitmap wakeArt = liveCover.consumeWakeAmbientArt();
+                if (wakeArt != null
+                        && !wakeArt.isRecycled()
+                        && preAmbientNative != null
+                        && image == preAmbientNative) {
+                    wakeHoldBitmap = wakeArt;
+                    wakeHoldStale = preAmbientNative;
+                    wakeHoldUntilMs =
+                            android.os.SystemClock.uptimeMillis() + WAKE_HOLD_TIMEOUT_MS;
+                }
+                preAmbientNative = null;
+            }
+            if (wakeHoldBitmap != null) {
+                if (!wakeHoldBitmap.isRecycled()
+                        && shouldHoldWakeArtwork(
+                                true,
+                                image == wakeHoldStale,
+                                android.os.SystemClock.uptimeMillis(),
+                                wakeHoldUntilMs)) {
+                    image = wakeHoldBitmap;
+                } else {
+                    wakeHoldBitmap = null;
+                    wakeHoldStale = null;
+                    wakeHoldUntilMs = 0L;
+                    releasedWakeHold = true;
+                }
+            }
             View moving = best.moving();
             if (moving == null) return;
             global.reset();
@@ -557,6 +869,12 @@ final class MediaFullscreenExtras {
             local.mapRect(next);
             nativeArtBounds.set(next);
             float p = best.progress();
+            if (best.closing
+                    || best.small.get() != null
+                    || best.reveal.running()
+                    || (p > 0.002f && p < 0.998f)) {
+                LockscreenFrameBoost.pulse(this, 220L);
+            }
             if (best.closing || best.small.get() != null) {
                 float reveal = compactReveal(p);
                 for (View shortcut : shortcuts.keySet()) {
@@ -574,57 +892,52 @@ final class MediaFullscreenExtras {
                     next.top * (1 - p),
                     next.right + (parent.getWidth() - next.right) * p,
                     next.bottom + (parent.getHeight() - next.bottom) * p);
+            int generation = image.getGenerationId();
+            boolean geometryChanged = !showing || !destination.equals(next);
+            boolean contentChanged = !showing || bitmap != image || bitmapGeneration != generation;
+            boolean changed = geometryChanged || contentChanged;
+            if (best.reveal.update()) {
+                changed = true;
+                contentChanged = true;
+            }
+            if (best.reveal.running()) postInvalidateOnAnimation();
+            if (forceApplyHidden || contentChanged || geometryChanged) {
+                for (Saved saved : hidden.values()) saved.apply();
+                hiddenDirty = false;
+            }
+            if (contentChanged) MediaClockContrast.prefetch(image);
             try {
-                if (best.closing || best.small.get() != null) MediaClockContrast.clear(parent);
-                else MediaClockContrast.apply(parent, image, next);
+                if (best.closing || best.small.get() != null || p < .50f) {
+                    if (MediaClockContrast.isActive(parent)) MediaClockContrast.clear(parent);
+                } else {
+                    MediaClockContrast.apply(parent, image, next, overlayLayer);
+                }
             } catch (RuntimeException error) {
                 MediaClockContrast.clear(parent);
             }
-            int generation = image.getGenerationId();
-            boolean geometryChanged = !showing || !destination.equals(next);
-            boolean changed = geometryChanged || bitmap != image || bitmapGeneration != generation;
-            boolean coverChanged = changed;
-            if (best.reveal.update()) {
-                changed = true;
-                coverChanged = true;
-            }
-            if (best.reveal.running()) postInvalidateOnAnimation();
             View controls = best.controls.get();
             View controlHost = best.controlHost.get();
-            float controlsOpacity =
-                    controls == null || !controls.isShown()
-                            ? 0
-                            : controls.getAlpha()
-                                    * (controlHost == null ? 1 : controlHost.getAlpha());
-            controlsOpacity = clamp(controlsOpacity) * clamp(p);
-            if (controlAlpha != controlsOpacity) {
-                controlAlpha = controlsOpacity;
-                changed = true;
+            if ((exitingAmbient || releasedWakeHold) && !best.reveal.running()) {
+                best.reveal.progress(1f);
             }
-            if (controls != null && controls.isShown()) {
-                global.reset();
-                controls.transformMatrixToGlobal(global);
-                local.setConcat(inverse, global);
-                controlRect.set(0, 0, controls.getWidth(), controls.getHeight());
-                local.mapRect(controlRect);
-                if (controlsTop != controlRect.top) {
-                    controlsTop = controlRect.top;
-                    changed = true;
-                }
-                if (!best.closing
-                        && best.small.get() == null
-                        && controls.getWidth() > 0
-                        && controls.getHeight() > 0) {
-                    float density = getResources().getDisplayMetrics().density,
-                            height = Math.max(1, next.height());
-                    float top = Math.max(next.top, controlsTop - 64 * density),
-                            bottom = Math.min(next.bottom, controlsTop + 48 * density);
-                    if (bottom > top) {
-                        bandTopNorm = clamp((top - next.top) / height);
-                        bandSolidNorm = clamp((bottom - next.top) / height);
-                        blurBandReady = true;
-                    }
-                }
+            if (exitingAmbient || releasedWakeHold) {
+                best.bitmapChangedBeforeReveal = false;
+            }
+            boolean nativeRevealActive = best.reveal.isActive();
+            if (nativeRevealActive) {
+                if (songFade.running()) songFade.cancelTo(image);
+                else songFade.update(image, false);
+            } else {
+                songFade.update(
+                        image,
+                        shouldStartSongCrossfade(
+                                showing,
+                                current == best,
+                                best.closing,
+                                best.small.get() != null,
+                                p,
+                                exitingAmbient || releasedWakeHold,
+                                false));
             }
             compact = best.small.get() != null;
             bitmap = image;
@@ -646,6 +959,25 @@ final class MediaFullscreenExtras {
                 local.mapRect(next);
                 if (best.returnHeight > 0)
                     next.top = Math.max(next.top, next.bottom - best.returnHeight);
+                // Title text is above the backdrop. Let the same moving cover pass over it
+                // without changing the title fade or broadening the bridge over the controls.
+                controlRect.setEmpty();
+                if (compactReveal(p) > 0) {
+                    View title = find(best.normalContent.get(), "stack_card_main_text");
+                    if (visibleControls(title)) {
+                        global.reset();
+                        title.transformMatrixToGlobal(global);
+                        local.setConcat(inverse, global);
+                        controlRect.set(0, 0, title.getWidth(), title.getHeight());
+                        local.mapRect(controlRect);
+                        if (!controlRect.intersect(next) || !controlRect.intersect(destination))
+                            controlRect.setEmpty();
+                    }
+                }
+                if (!returnTitleBounds.equals(controlRect)) {
+                    returnTitleBounds.set(controlRect);
+                    changed = true;
+                }
                 // Fullscreen interpolation extends behind controls; the foreground bridge must not.
                 returnBridgeBounds(next, next, nativeArtBounds);
                 if (!returnBounds.equals(next)) {
@@ -676,9 +1008,165 @@ final class MediaFullscreenExtras {
                 alpha *= state != null && state.hideView ? state.alpha : v.getAlpha();
             }
             if (getAlpha() != alpha) setAlpha(alpha);
-            if (coverChanged) blurDirty = true;
-            if (changed || maskChanged) invalidate();
+            changed |= updateControlsBand(
+                    parent, controls, destination, p, alpha, best.closing, compact);
+            changed |= updateTopBand(parent, destination, p, alpha, best.closing, compact);
+            if (contentChanged) blurDirty = true;
+            boolean liveExpanded =
+                    current != null
+                            && !compact
+                            && !current.closing
+                            && current.small.get() == null
+                            && current.progress() >= 0.98f;
+            boolean closing = current == null || compact || current.closing || current.small.get() != null;
+            liveCover.holdVideoRevealDuringPoster(liveExpanded
+                    && (best.reveal.hasActiveMask(image) || songFade.running()));
+            liveCover.update(
+                    fullscreenEnabled,
+                    liveExpanded,
+                    closing,
+                    destination.left,
+                    destination.top,
+                    destination.right,
+                    destination.bottom,
+                    coverCorner(),
+                    1f);
+            boolean liveNow = liveCover.isVideoVisible();
+            if (lastLiveVisible != liveNow) {
+                lastLiveVisible = liveNow;
+                blurDirty = true;
+                changed = true;
+            }
+            if (changed || maskChanged) {
+                invalidate();
+                overlayLayer.invalidate();
+            }
             if (changed && returnLayer.getVisibility() == VISIBLE) returnLayer.invalidate();
+        }
+
+        private boolean updateControlsBand(
+                ViewGroup parent,
+                View controls,
+                RectF coverBounds,
+                float progress,
+                float artworkAlpha,
+                boolean closing,
+                boolean compact) {
+            if (artworkAlpha <= .005f || coverBounds.isEmpty()) {
+                boolean changed = controlsBandOpacity != 0f;
+                controlsBandOpacity = 0f;
+                return changed;
+            }
+            float rawControlsAlpha = controlsAlpha(controls);
+            boolean hasLiveControls =
+                    rawControlsAlpha > .005f
+                            && controls != null
+                            && controls.getWidth() > 0
+                            && controls.getHeight() > 0
+                            && controls.getRootView() == parent;
+            // The backdrop already fades with the music page. Only apply the extra fade
+            // from the native controls here, regardless of the cover spring's progress.
+            float liveOpacity = hasLiveControls ? clamp(rawControlsAlpha / artworkAlpha) : 0f;
+            float density = getResources().getDisplayMetrics().density;
+            float top, solid;
+            if (hasLiveControls) {
+                global.reset();
+                controls.transformMatrixToGlobal(global);
+                local.setConcat(inverse, global);
+                controlRect.set(0, 0, controls.getWidth(), controls.getHeight());
+                local.mapRect(controlRect);
+                float liveTop = controlRect.top - 64f * density;
+                float liveSolid = controlRect.top + 48f * density;
+                if (!closing && !compact && parent.getHeight() > 0 && liveSolid > liveTop) {
+                    bandTopNorm = clamp(liveTop / parent.getHeight());
+                    bandSolidNorm = clamp(liveSolid / parent.getHeight());
+                }
+                if (!closing && !compact && progress >= .98f) {
+                    top = liveTop;
+                    solid = liveSolid;
+                } else {
+                    top = coverBounds.top + bandTopNorm * coverBounds.height();
+                    solid = coverBounds.top + bandSolidNorm * coverBounds.height();
+                }
+            } else {
+                top = coverBounds.top + bandTopNorm * coverBounds.height();
+                solid = coverBounds.top + bandSolidNorm * coverBounds.height();
+            }
+            float opacity =
+                    solid > top ? controlsBandOpacity(liveOpacity, progress, closing, compact) : 0f;
+            boolean changed =
+                    controlsBandTop != top
+                            || controlsBandSolid != solid
+                            || controlsBandOpacity != opacity;
+            controlsBandTop = top;
+            controlsBandSolid = solid;
+            controlsBandOpacity = opacity;
+            return changed;
+        }
+
+        private boolean updateTopBand(
+                ViewGroup parent,
+                RectF coverBounds,
+                float progress,
+                float artworkAlpha,
+                boolean closing,
+                boolean compact) {
+            boolean disabled =
+                    isTopBlurDisabled(
+                            RuntimeExtras.enabled(getContext(), MediaClockVisibility.KEY),
+                            MediaClockVisibility.hidden(parent));
+            if (disabled || artworkAlpha <= .005f || coverBounds.isEmpty()) {
+                boolean changed = topBandOpacity != 0f;
+                topBandOpacity = 0f;
+                return changed;
+            }
+            boolean hasClock = MediaClockContrast.clockBounds(parent, clockRect);
+            float density = getResources().getDisplayMetrics().density;
+            if (hasClock && clockRect.bottom > 0f) {
+                lastClockBottom = clockRect.bottom;
+                if (!closing && !compact && parent.getHeight() > 0) {
+                    float[] fullRange =
+                            ArtworkBlurFilter.topBandRange(
+                                    0f, clockRect.bottom, density, parent.getHeight());
+                    if (fullRange[1] > fullRange[0]) {
+                        topBandSolidNorm = clamp(fullRange[0] / parent.getHeight());
+                        topBandEndNorm = clamp(fullRange[1] / parent.getHeight());
+                    }
+                }
+            }
+            float solid, end;
+            if (!closing
+                    && !compact
+                    && progress >= .98f
+                    && hasClock
+                    && clockRect.bottom > coverBounds.top) {
+                float[] range =
+                        ArtworkBlurFilter.topBandRange(
+                                coverBounds.top, clockRect.bottom, density, coverBounds.bottom);
+                solid = range[0];
+                end = range[1];
+            } else {
+                solid = coverBounds.top + topBandSolidNorm * coverBounds.height();
+                end = coverBounds.top + topBandEndNorm * coverBounds.height();
+            }
+            float opacity = end > solid ? topBandOpacity(progress, closing, compact, false) : 0f;
+            boolean changed =
+                    topBandSolid != solid || topBandEnd != end || topBandOpacity != opacity;
+            topBandSolid = solid;
+            topBandEnd = end;
+            topBandOpacity = opacity;
+            return changed;
+        }
+
+        private void collectAmbientArtwork(View view) {
+            if (view instanceof ImageView && isArtworkImage(name(view))) {
+                Saved saved = hidden.computeIfAbsent(view, Saved::new);
+                saved.hidePixels = true;
+                saved.apply();
+            } else if (view instanceof ViewGroup group) {
+                for (int i = 0; i < group.getChildCount(); i++)
+                    collectAmbientArtwork(group.getChildAt(i));
+            }
         }
 
         private static boolean contributesClockMask(View clock, ViewGroup parent) {
@@ -687,14 +1175,12 @@ final class MediaFullscreenExtras {
                     && !ClockBlurMotion.outgoing(clock);
         }
 
-        void collect(View view) {
+        void collect(View view, View mediaCard) {
+            if (view != mediaCard && BlurAppearance.isNowBarCardType(view.getClass())) return;
             String n = name(view);
             if (n.equals("left_shortcut_area") || n.equals("right_shortcut_area"))
                 shortcuts.put(view, true);
-            boolean pixels =
-                    n.equals("facewidget_album_art_background")
-                            || n.equals("now_bar_media_prev_album_art")
-                            || n.equals("now_bar_media_expand_album_art_aod_mask");
+            boolean pixels = isArtworkImage(n);
             boolean whole =
                     n.equals("now_bar_media_album_art_circle_reveal")
                             || n.equals("now_bar_media_album_art_circle_ripple_parent");
@@ -703,7 +1189,6 @@ final class MediaFullscreenExtras {
                     n.equals("keyguard_status_view")
                             || n.equals("expand_content_rootview")
                             || n.equals("nowbar_expandview_background")
-                            || n.equals("nowbar_cardview_background")
                             || n.equals("nowbar_cardview_bgview_for_media_setting");
             if ((pixels || whole || bg || liveBlur) && !hidden.containsKey(view)) {
                 Saved saved = new Saved(view);
@@ -714,18 +1199,33 @@ final class MediaFullscreenExtras {
                 hidden.put(view, saved);
             }
             if (view instanceof ViewGroup group)
-                for (int i = 0; i < group.getChildCount(); i++) collect(group.getChildAt(i));
+                for (int i = 0; i < group.getChildCount(); i++)
+                    collect(group.getChildAt(i), mediaCard);
+        }
+
+        private static boolean isArtworkImage(String id) {
+            return id.equals("facewidget_album_art_background")
+                    || id.equals("now_bar_media_prev_album_art")
+                    || id.equals("now_bar_media_expand_album_art_aod_mask");
         }
 
         private void detachReturnLayer() {
             returnLayer.setVisibility(INVISIBLE);
             returnBounds.setEmpty();
+            returnTitleBounds.setEmpty();
             returnExclusion.setEmpty();
         }
 
         void beginClosing(Art state) {
             if (!showing || current != state) return;
             state.closing = true;
+            if (nativeAmbientState) {
+                if (closeAmbient()) return;
+                liveCover.beginCollapse();
+            } else if (!liveCover.retainOnWallpaperAod(bitmap)) liveCover.beginCollapse();
+            lastLiveVisible = false;
+            blurDirty = true;
+            overlayLayer.invalidate();
             for (View shortcut : shortcuts.keySet()) {
                 MediaBlurHost.fade(shortcut, 0);
                 revealHeld.put(shortcut, true);
@@ -735,6 +1235,18 @@ final class MediaFullscreenExtras {
                 MediaBlurHost.fade(normal, 0);
                 revealHeld.put(normal, true);
             }
+        }
+
+        boolean closeAmbient() {
+            boolean ambient = liveCover.ambientHandoff();
+            boolean visible =
+                    showing || liveCover.isAmbientVisible() || getVisibility() == VISIBLE;
+            liveCover.releaseAmbient();
+            if (!ambient || !visible) return false;
+            // Closed while dozing: the old artwork view can still be attached to the stack.
+            ambientCollapsed = true;
+            resetWindow(true);
+            return true;
         }
 
         private void releaseReveal() {
@@ -751,7 +1263,11 @@ final class MediaFullscreenExtras {
                 MediaBlurHost.release(small);
                 current.thumbnailMuted = false;
             }
-            if (current != null) current.reveal.discard();
+            if (current != null) {
+                current.reveal.discard();
+                current.previousBitmap = null;
+                current.bitmapChangedBeforeReveal = false;
+            }
             for (Saved saved : hidden.values()) saved.restore();
             hidden.clear();
             boundPage = null;
@@ -774,12 +1290,37 @@ final class MediaFullscreenExtras {
             outline.addRoundRect(destination, radius, radius, Path.Direction.CW);
             int save = canvas.save();
             canvas.clipPath(outline);
-            drawPixels(canvas);
+            drawPixels(canvas, destination);
             canvas.restoreToCount(save);
         }
 
-        private void drawPixels(Canvas canvas) {
-            if (current != null) current.reveal.draw(canvas, bitmap, destination, paint);
+        private void drawPixels(Canvas canvas, RectF bounds) {
+            drawPixels(canvas, bounds, true);
+        }
+
+        private void drawBlurPixels(Canvas canvas, RectF bounds) {
+            drawPixels(canvas, bounds, false);
+        }
+
+        private void drawPixels(Canvas canvas, RectF bounds, boolean hardwareReveal) {
+            if (current == null || bounds.isEmpty()) return;
+            Bitmap closingStill = liveCover.closingStill();
+            if ((compact || current.closing) && closingStill != null && !closingStill.isRecycled()) {
+                NativeArtworkReveal.bitmap(canvas, closingStill, bounds, 1f, 1f, paint, cover);
+                return;
+            }
+            if (songFade.running() && !current.reveal.hasActiveMask(bitmap)) {
+                if (hardwareReveal) {
+                    songFade.draw(canvas, bitmap, bounds, paint);
+                    current.reveal.drawLighting(canvas, bounds);
+                } else {
+                    songFade.drawSimple(canvas, bitmap, bounds, paint);
+                }
+            } else if (hardwareReveal) {
+                current.reveal.draw(canvas, bitmap, bounds, paint);
+            } else {
+                current.reveal.drawSimple(canvas, bitmap, bounds, paint);
+            }
         }
 
         private void updateRegularWidgets(ViewGroup parent) {
@@ -847,99 +1388,115 @@ final class MediaFullscreenExtras {
 
         @Override
         protected void onDraw(Canvas canvas) {
-            drawArtwork(canvas);
+            if (!liveCover.drawAmbient(canvas, root.get(), this)) drawArtwork(canvas);
+        }
+
+        private void drawForegroundBlur(Canvas canvas) {
+            ViewGroup parent = root.get();
+            boolean topBlurDisabled =
+                    isTopBlurDisabled(
+                            RuntimeExtras.enabled(getContext(), MediaClockVisibility.KEY),
+                            parent != null && MediaClockVisibility.hidden(parent));
+            if (liveCover.isAmbientVisible()) {
+                ArtworkBlurFilter.Layers ambient = liveCover.ambientArtworkBlur();
+                if (canvas.isHardwareAccelerated() && ambient != null) {
+                    ambientRect.set(0f, 0f, getWidth(), getHeight());
+                    ambient.drawFadedBand(
+                            canvas,
+                            ambientRect,
+                            getHeight() * bandTopNorm,
+                            getHeight() * bandSolidNorm,
+                            getHeight(),
+                            1f,
+                            null);
+                    if (!topBlurDisabled && topBandEndNorm > topBandSolidNorm) {
+                        ambient.drawTopProgressiveBand(
+                                canvas,
+                                ambientRect,
+                                getHeight() * topBandSolidNorm,
+                                getHeight() * topBandEndNorm,
+                                1f,
+                                null);
+                    }
+                }
+                return;
+            }
             Bitmap image = bitmap;
             if (!showing || image == null || image.isRecycled() || destination.isEmpty()) return;
             if (canvas.isHardwareAccelerated()) {
-                float height = destination.height();
-                float start = destination.top + bandTopNorm * height;
-                float solid = destination.top + bandSolidNorm * height;
-                float end = destination.bottom;
-                float bandAlpha = compact ? clamp(current.progress()) : controlAlpha;
-                boolean band = blurBandReady && end > start && solid > start && bandAlpha > 0;
-                ViewGroup parent = root.get();
-                boolean aura =
-                        !compact
-                                && current != null
-                                && !current.closing
-                                && MediaClockContrast.hasAura(parent);
-                if (band || aura || clockMaskDirty || !clockMask.isEmpty()) {
-                    float corner = coverCorner();
+                boolean band = controlsBandOpacity > .005f && destination.bottom > controlsBandTop;
+                boolean topBand =
+                        !topBlurDisabled
+                                && topBandOpacity > .005f
+                                && topBandEnd > topBandSolid
+                                && destination.top < topBandEnd;
+                boolean showClock = parent != null && !MediaClockVisibility.hidden(parent);
+                boolean glass = current != null && MediaClockContrast.hasGlass(parent);
+                if (band || topBand || glass || (showClock && (clockMaskDirty || !clockMask.isEmpty()))) {
                     if (blurDirty
-                            || blurredArt.getWidth() != getWidth()
-                            || blurredArt.getHeight() != getHeight()
-                            || !blurBounds.equals(destination)
-                            || blurCorner != corner) {
-                        blurredArt.setPosition(0, 0, getWidth(), getHeight());
-                        Canvas record = blurredArt.beginRecording();
-                        int clipped = record.save();
-                        record.clipPath(outline);
-                        drawPixels(record);
-                        record.restoreToCount(clipped);
-                        blurredArt.endRecording();
-                        blurBounds.set(destination);
-                        blurCorner = corner;
+                            || liveBlurDirty
+                            || artworkBlur.needsRecording(getWidth(), getHeight())) {
+                        Canvas record = artworkBlur.beginRecording(getWidth(), getHeight());
+                        RectF blurRect = artworkBlur.sourceBounds();
+                        drawBlurPixels(record, blurRect);
+                        liveCover.drawBlurFrames(record, parent, blurRect, destination, paint);
+                        artworkBlur.endRecording();
                         blurDirty = false;
+                        liveBlurDirty = false;
                     }
-                    if (clockMaskDirty) {
+                    if (showClock && clockMaskDirty) {
                         clockMask.reset();
                         maskParent.reset();
-                        boolean mapped = false;
-                        if (parent != null) {
-                            parent.transformMatrixToGlobal(maskParent);
-                            mapped = maskParent.invert(maskLocal);
-                        }
-                        if (parent != null)
+                        parent.transformMatrixToGlobal(maskParent);
+                        if (maskParent.invert(maskLocal))
                             for (Map.Entry<View, ClockPath> entry : clockPaths.entrySet()) {
                                 View clock = entry.getKey();
                                 if (!contributesClockMask(clock, parent)) continue;
                                 ClockPath shape = entry.getValue();
                                 maskScratch.set(shape.path);
                                 maskScratch.offset(shape.x, shape.y);
-                                if (mapped) {
-                                    maskScratch.transform(maskLocal);
-                                    clockMask.addPath(maskScratch);
-                                }
+                                maskScratch.transform(maskLocal);
+                                clockMask.addPath(maskScratch);
                             }
                         clockMaskDirty = false;
                     }
-                    if (!clockMask.isEmpty()) {
+                    // The cached outline draws a second clock, independently of View alpha.
+                    if (showClock && !glass && !compact && current != null && !current.closing
+                            && current.progress() >= .50f && !clockMask.isEmpty()) {
                         int clip = canvas.save();
+                        canvas.clipPath(outline);
                         canvas.clipPath(clockMask);
-                        canvas.drawRenderNode(blurredArt);
+                        artworkBlur.draw(canvas, destination);
                         canvas.restoreToCount(clip);
                     }
-                    if (aura) {
-                        MediaClockContrast.drawAura(
-                                canvas,
+                    if (glass) {
+                        MediaClockContrast.artwork(
                                 parent,
-                                blurredArt,
+                                artworkBlur.blurred(),
+                                artworkBlur.revision(),
                                 destination,
                                 outline,
                                 current.progress());
                     }
-                    if (!band) return;
-                    if (fadeTop != start || fadeBottom != solid) {
-                        fadeTop = start;
-                        fadeBottom = solid;
-                        fadePaint.setShader(
-                                new LinearGradient(
-                                        0,
-                                        start,
-                                        0,
-                                        solid,
-                                        0x00ffffff,
-                                        0xffffffff,
-                                        Shader.TileMode.CLAMP));
+                    if (band) {
+                        artworkBlur.drawFadedBand(
+                                canvas,
+                                destination,
+                                controlsBandTop,
+                                controlsBandSolid,
+                                destination.bottom,
+                                controlsBandOpacity,
+                                outline);
                     }
-                    blurOpacity.setAlpha(Math.round(bandAlpha * 255));
-                    int coverClip = canvas.save();
-                    canvas.clipPath(outline);
-                    int layer = canvas.saveLayer(0, start, getWidth(), end, blurOpacity);
-                    canvas.drawRenderNode(blurredArt);
-                    canvas.drawRect(0, start, getWidth(), end, fadePaint);
-                    canvas.restoreToCount(layer);
-                    canvas.restoreToCount(coverClip);
+                    if (topBand) {
+                        artworkBlur.drawTopProgressiveBand(
+                                canvas,
+                                destination,
+                                topBandSolid,
+                                topBandEnd,
+                                topBandOpacity,
+                                outline);
+                    }
                 }
             }
         }
@@ -949,6 +1506,8 @@ final class MediaFullscreenExtras {
             throws ReflectiveOperationException {
         module = owner;
         OneUi9MediaBinding.HolderContract contract = OneUi9MediaBinding.holderContract(loader);
+        installNativeDoze(owner, contract);
+        installNativeMediaState(owner, loader);
         for (java.lang.reflect.Constructor<?> constructor : contract.type().getDeclaredConstructors())
             owner.hook(constructor)
                     .setId("dressroom-advanced.media-art-owner")
@@ -961,18 +1520,25 @@ final class MediaFullscreenExtras {
                                     ImageView image = (ImageView) contract.albumArtBg().get(object);
                                     if (view != null) {
                                         art.put(view, new Art(view, image, object, contract));
+                                        markCandidatesDirty();
                                         try {
                                             MediaInteraction.bind(owner, object, view);
                                         } catch (Exception error) {
                                             owner.report("Media touch binding unavailable", error);
                                         }
+                                        view.addOnLayoutChangeListener(
+                                                (v, l, t, r, b, ol, ot, or, ob) ->
+                                                        markCandidatesDirty());
                                         view.addOnAttachStateChangeListener(
                                                 new View.OnAttachStateChangeListener() {
                                                     public void onViewAttachedToWindow(View v) {
+                                                        markCandidatesDirty();
                                                         bind(v);
                                                     }
 
-                                                    public void onViewDetachedFromWindow(View v) {}
+                                                    public void onViewDetachedFromWindow(View v) {
+                                                        markCandidatesDirty();
+                                                    }
                                                 });
                                         bind(view);
                                     }
@@ -994,9 +1560,13 @@ final class MediaFullscreenExtras {
         }
         RuntimeExtras.listen(
                 () -> {
+                    markCandidatesDirty();
                     for (WeakReference<Backdrop> reference : new ArrayList<>(hosts.values())) {
                         Backdrop backdrop = reference.get();
                         if (backdrop != null) {
+                            backdrop.update();
+                            backdrop.invalidate();
+                            backdrop.overlayLayer.invalidate();
                             ViewGroup root = backdrop.root.get();
                             if (root != null) root.invalidate();
                         }
@@ -1005,12 +1575,155 @@ final class MediaFullscreenExtras {
         android.util.Log.i(DressroomModule.TAG, "Native media artwork source binding installed");
     }
 
+    private static void applyNativeMediaState(
+            Backdrop backdrop, boolean previous, boolean expanded) {
+        if (backdrop == null) return;
+        backdrop.candidatesDirty = true;
+        backdrop.hiddenDirty = true;
+        if (expanded) {
+            if (!previous || backdrop.ambientCollapsed) {
+                backdrop.ambientCollapsed = false;
+                backdrop.update();
+                backdrop.invalidate();
+                backdrop.overlayLayer.invalidate();
+                ViewGroup root = backdrop.root.get();
+                if (root != null) root.invalidate();
+            }
+        } else if (shouldCloseAmbient(
+                false,
+                previous,
+                backdrop.liveCover.isAmbientVisible(),
+                backdrop.showing,
+                backdrop.liveCover.ambientHandoff())) {
+            backdrop.closeAmbient();
+        }
+    }
+
+    private static void installNativeMediaState(DressroomModule module, ClassLoader loader) {
+        try {
+            var binding = OneUi95MediaState.resolve(loader);
+            module.hook(binding.changed()).setId("dressroom-advanced.ambient-media-state")
+                    .intercept(chain -> {
+                        Object observer = chain.getThisObject();
+                        boolean previous;
+                        try {
+                            previous = binding.expanded().getBoolean(observer);
+                        } catch (ReflectiveOperationException unavailable) {
+                            return chain.proceed();
+                        }
+                        Object result = chain.proceed();
+                        try {
+                            boolean expanded = binding.expanded().getBoolean(observer);
+                            ViewGroup targetRoot =
+                                    binding.status().get(observer) instanceof View status
+                                                    && status.getRootView() instanceof ViewGroup r
+                                            ? r
+                                            : null;
+                            WeakReference<Backdrop> direct =
+                                    targetRoot == null ? null : hosts.get(targetRoot);
+                            Backdrop matched = direct == null ? null : direct.get();
+                            if (matched != null) {
+                                applyNativeMediaState(matched, previous, expanded);
+                            } else if (previous != expanded || !expanded) {
+                                for (WeakReference<Backdrop> ref : new ArrayList<>(hosts.values())) {
+                                    applyNativeMediaState(ref.get(), previous, expanded);
+                                }
+                            }
+                        } catch (ReflectiveOperationException | RuntimeException unavailable) {
+                            DressroomModule.note("Ambient media state unavailable", unavailable);
+                        }
+                        return result;
+                    });
+            module.deoptimize(binding.changed());
+            nativeAmbientState = true;
+        } catch (ReflectiveOperationException | java.io.IOException | RuntimeException | LinkageError error) {
+            DressroomModule.note("Optional ambient media state binding", error);
+        }
+    }
+
+    private static void installNativeDoze(DressroomModule module,
+            OneUi9MediaBinding.HolderContract contract) {
+        try {
+            ArrayList<Method> candidates = new ArrayList<>();
+            for (Method method : contract.type().getDeclaredMethods()) {
+                if (method.getReturnType() != void.class || method.getParameterCount() != 2
+                        || method.getParameterTypes()[0].isPrimitive()
+                        || method.getParameterTypes()[1] != boolean.class) continue;
+                var body = DexSignatures.body(method);
+                boolean wallpaper = body.calls().stream().anyMatch(call ->
+                        call.owner().equals("Lcom/android/systemui/plugins/aod/PluginAODSystemUIConfiguration;")
+                                && call.name().equals("get") && call.result().equals("I")
+                                && call.parameters().equals(java.util.List.of("I", "I")));
+                boolean tint = body.calls().stream().anyMatch(call ->
+                        call.owner().equals("Landroid/widget/ImageView;")
+                                && call.name().equals("setImageTintList"));
+                if (wallpaper && tint) candidates.add(method);
+            }
+            if (candidates.size() != 1) throw new NoSuchMethodException("Music page AOD appearance");
+            Method apply = candidates.get(0);
+            apply.setAccessible(true);
+            module.hook(apply).setId("dressroom-advanced.media-wallpaper-aod")
+                    .intercept(chain -> {
+                        try {
+                            Object target = contract.albumArtParent().get(chain.getThisObject());
+                            if (target instanceof View artwork && artwork.isAttachedToWindow()
+                                    && artwork.getRootView() instanceof ViewGroup root) {
+                                WeakReference<Backdrop> ref = hosts.get(root);
+                                Backdrop host = ref == null ? null : ref.get();
+                                if (host != null) {
+                                    host.hiddenDirty = true;
+                                    host.liveCover.nativeDozeChanged(Boolean.TRUE.equals(chain.getArg(1)));
+                                }
+                            }
+                        } catch (ReflectiveOperationException | RuntimeException error) {
+                            DressroomModule.note("Media artwork AOD state", error);
+                        }
+                        return chain.proceed();
+                    });
+            module.deoptimize(apply);
+        } catch (ReflectiveOperationException | java.io.IOException | RuntimeException | LinkageError error) {
+            DressroomModule.note("Optional native media doze binding", error);
+        }
+    }
+
     private static void invalidateSong(Art state) {
+        markCandidatesDirty();
         for (WeakReference<Backdrop> reference : hosts.values()) {
             Backdrop host = reference.get();
             if (host != null && host.current == state && host.showing) {
                 host.blurDirty = true;
                 host.invalidate();
+                host.overlayLayer.invalidate();
+            }
+        }
+    }
+
+    private static boolean shouldDeferNativeReveal(Art state, Bitmap currentArt) {
+        if (state == null || currentArt == null || currentArt.isRecycled()) return false;
+        for (WeakReference<Backdrop> reference : hosts.values()) {
+            Backdrop host = reference.get();
+            if (host != null
+                    && host.current == state
+                    && host.showing
+                    && shouldDeferToRunningCrossfade(
+                            host.songFade.running(),
+                            host.songFade.target() == currentArt,
+                            host.songFade.fraction())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static void handoffCrossfadeToNativeReveal(Art state, Bitmap currentArt) {
+        if (state == null) return;
+        for (WeakReference<Backdrop> reference : hosts.values()) {
+            Backdrop host = reference.get();
+            if (host != null
+                    && host.current == state
+                    && host.showing
+                    && host.songFade.running()) {
+                host.songFade.cancelTo(currentArt);
             }
         }
     }
@@ -1053,14 +1766,29 @@ final class MediaFullscreenExtras {
                                                 if (state != null) {
                                                     float value =
                                                             ((Number) chain.getArg(0)).floatValue();
-                                                    if (value == 0
+                                                    Bitmap currentArt = state.bitmap();
+                                                    if (value == 0f
                                                             && RuntimeExtras.enabled(
                                                                     ((View) chain.getThisObject())
                                                                             .getContext(),
                                                                     "fullscreenArt")) {
-                                                        Bitmap previous = state.displayedBitmap;
-                                                        state.reveal.begin(
-                                                                previous, state.bitmap());
+                                                        if (shouldDeferNativeReveal(
+                                                                state, currentArt)) {
+                                                            state.bitmapChangedBeforeReveal = false;
+                                                            state.reveal.progress(1f);
+                                                            return result;
+                                                        }
+                                                        Bitmap previous =
+                                                                state.bitmapChangedBeforeReveal
+                                                                        ? state.previousBitmap
+                                                                        : currentArt;
+                                                        state.bitmapChangedBeforeReveal = false;
+                                                        handoffCrossfadeToNativeReveal(
+                                                                state, currentArt);
+                                                        state.reveal.begin(previous, currentArt);
+                                                    } else if (shouldDeferNativeReveal(
+                                                            state, currentArt)) {
+                                                        return result;
                                                     }
                                                     state.reveal.progress(value);
                                                     invalidateSong(state);
@@ -1103,7 +1831,9 @@ final class MediaFullscreenExtras {
                                             chain -> {
                                                 Object result = chain.proceed();
                                                 Art state = nativeSong.get();
-                                                if (state != null) {
+                                                if (state != null
+                                                        && !shouldDeferNativeReveal(
+                                                                state, state.displayedBitmap)) {
                                                     state.reveal.animation(
                                                             (android.animation.Animator)
                                                                     chain.getThisObject());
@@ -1123,13 +1853,13 @@ final class MediaFullscreenExtras {
     }
 
     private static void bind(View view) {
-        if (view.getRootView() instanceof ViewGroup root) main.post(() -> ensureHost(root));
+        if (view.getRootView() instanceof ViewGroup root) Main.HANDLER.post(() -> ensureHost(root));
         for (View v = view; v != null; v = v.getParent() instanceof View p ? p : null)
             if (v.getClass()
                     .getName()
                     .equals("com.samsung.android.app.facewidget.pages.music.FaceWidgetMusicPage")) {
                 ClassLoader loader = v.getClass().getClassLoader();
-                main.post(() -> installMotion(loader));
+                Main.HANDLER.post(() -> installMotion(loader));
                 break;
             }
     }
@@ -1186,6 +1916,7 @@ final class MediaFullscreenExtras {
                                 if (state != null && target != null) {
                                     state.startScale = target.getScaleX();
                                     state.overlayActive = before != target.getParent();
+                                    markCandidatesDirty();
                                 }
                                 return result;
                             });
@@ -1195,6 +1926,7 @@ final class MediaFullscreenExtras {
                     .setId("dressroom-advanced.media-native-reveal")
                     .intercept(
                             chain -> {
+                                boolean animatedFullscreenReturn = false;
                                 try {
                                     View page =
                                             (View)
@@ -1207,8 +1939,19 @@ final class MediaFullscreenExtras {
                                                             page,
                                                             "facewidget_album_art_vi_container_parent"));
                                     if (state != null) {
+                                        markCandidatesDirty();
                                         state.closing = Boolean.FALSE.equals(chain.getArg(0));
+                                        if (Boolean.TRUE.equals(chain.getArg(0))) {
+                                            for (WeakReference<Backdrop> reference :
+                                                    hosts.values()) {
+                                                Backdrop host = reference.get();
+                                                if (host != null) host.ambientCollapsed = false;
+                                            }
+                                        }
                                         if (state.closing) {
+                                            View closingCard = (View) chain.getThisObject();
+                                            animatedFullscreenReturn = RuntimeExtras.enabled(
+                                                    closingCard.getContext(), "fullscreenArt");
                                             state.normalContent =
                                                     new WeakReference<>(
                                                             (View)
@@ -1226,7 +1969,13 @@ final class MediaFullscreenExtras {
                                     module.report(
                                             "Media compact-content reveal unavailable", error);
                                 }
-                                return chain.proceed();
+                                Object result = chain.proceed();
+                                if (Boolean.FALSE.equals(chain.getArg(0))
+                                        && !animatedFullscreenReturn
+                                        && chain.getThisObject() instanceof View mediaCard) {
+                                    finishCompactCollapse(mediaCard, cardContract);
+                                }
+                                return result;
                             });
             module.deoptimize(stateChanged);
 
@@ -1277,6 +2026,7 @@ final class MediaFullscreenExtras {
                                         MediaBlurHost.hold(small);
                                         state.thumbnailMuted = true;
                                     }
+                                    markCandidatesDirty();
                                 }
                                 return result;
                             });
@@ -1291,6 +2041,7 @@ final class MediaFullscreenExtras {
                                 Art state = collapsing.remove(small);
                                 Object result = chain.proceed();
                                 if (state != null) {
+                                    View closingCard = state.returningCard.get();
                                     if (state.thumbnailMuted) {
                                         MediaBlurHost.release(small);
                                         state.thumbnailMuted = false;
@@ -1302,6 +2053,12 @@ final class MediaFullscreenExtras {
                                     state.overlayHost.clear();
                                     state.returningCard.clear();
                                     state.normalContent.clear();
+                                    markCandidatesDirty();
+                                    if (closingCard != null && RuntimeExtras.enabled(
+                                            closingCard.getContext(), "fullscreenArt")) {
+                                        // The compact pill can settle once the artwork reaches its thumbnail.
+                                        finishCompactCollapse(closingCard, cardContract);
+                                    }
                                 }
                                 return result;
                             });
@@ -1319,6 +2076,7 @@ final class MediaFullscreenExtras {
                                     state.overlayActive = false;
                                     state.overlayHost.clear();
                                     state.startScale = 1;
+                                    markCandidatesDirty();
                                 }
                                 return result;
                             });
@@ -1332,16 +2090,82 @@ final class MediaFullscreenExtras {
         return clamp((.2f - coverProgress) / .2f);
     }
 
+    static void finishCompactCollapse(
+            View mediaCard, OneUi9MediaBinding.CardContract contract) {
+        if (mediaCard == null || contract == null) return;
+        boolean awake = true;
+        try {
+            if (Reflect.call(mediaCard, "getDarkAmount") instanceof Number dark)
+                awake = dark.floatValue() == 0f;
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+        }
+        try {
+            Method cancelSpring = contract.springCancel();
+            if (cancelSpring != null) {
+                for (Field field : contract.cardSpringFields()) {
+                    Object spring = field.get(mediaCard);
+                    if (spring != null) cancelSpring.invoke(spring);
+                }
+            }
+        } catch (ReflectiveOperationException | RuntimeException error) {
+            DressroomModule.note("Media pill spring settle", error);
+        }
+        try {
+            if (Reflect.call(mediaCard, "getNormalCardRadius") instanceof Number radius)
+                Reflect.call(mediaCard, "setCurrentRadius", radius.floatValue());
+        } catch (ReflectiveOperationException | RuntimeException error) {
+            DressroomModule.note("Media pill radius settle", error);
+        }
+        try {
+            for (Field field : contract.cardAnimatorFields()) {
+                if (field.get(mediaCard) instanceof android.animation.ObjectAnimator animator
+                        && (animator.isStarted() || animator.isRunning())) {
+                    animator.end();
+                }
+            }
+        } catch (ReflectiveOperationException | RuntimeException error) {
+            DressroomModule.note("Media pill alpha animator settle", error);
+        }
+        try {
+            if (Reflect.call(mediaCard, "getBlurContainer") instanceof View blur) {
+                blur.setVisibility(View.VISIBLE);
+                NowBarGlass.ensurePillBlur(mediaCard, blur);
+                Drawable background = blur.getBackground();
+                if (background != null) background.setAlpha(255);
+            }
+            if ( awake && Reflect.call(mediaCard, "getBorderStrokeView") instanceof View border) {
+                border.setVisibility(View.VISIBLE);
+                border.setAlpha(1f);
+            }
+        } catch (ReflectiveOperationException | RuntimeException error) {
+            DressroomModule.note("Media pill blur restore", error);
+        }
+        if (awake && mediaCard.getParent() instanceof ViewGroup stack) {
+            for (int i = 0; i < stack.getChildCount(); i++) {
+                View sibling = stack.getChildAt(i);
+                if (sibling != null
+                        && sibling != mediaCard
+                        && sibling.getVisibility() == View.INVISIBLE) {
+                    sibling.setVisibility(View.VISIBLE);
+                }
+            }
+        }
+    }
+
     static boolean visibleControls(View view) {
-        if (view == null || !view.isShown()) return false;
+        return controlsAlpha(view) > .01f;
+    }
+
+    private static float controlsAlpha(View view) {
+        if (view == null || !view.isShown()) return 0f;
         float alpha = 1;
         for (View current = view;
                 current != null;
                 current = current.getParent() instanceof View parent ? parent : null) {
             alpha *= current.getAlpha();
-            if (alpha <= .01f) return false;
+            if (alpha <= .005f) return 0f;
         }
-        return true;
+        return alpha;
     }
 
     private static View find(View root, String name) {

@@ -42,7 +42,7 @@ final class WidgetPanel {
         PanelKeyboard.attach(content);
     }
 
-    void show(Object ui) throws Exception {
+    private View buildTabs() throws Exception {
         View tabs = nativeView(EditorBinding.Row.TABS);
         NativeTabs nativeTabs = NativeTabs.of(tabs);
         nativeTabs.add(tabs, "Widgets", true);
@@ -71,7 +71,41 @@ final class WidgetPanel {
                             return null;
                         });
         nativeTabs.listen(tabs, events);
+        return tabs;
+    }
+
+    void showDialog(boolean widgetsAvailable) throws Exception {
+        LinearLayout panel = new LinearLayout(context);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        extrasSelected = !widgetsAvailable;
+        if (widgetsAvailable) panel.addView(buildTabs(), new LinearLayout.LayoutParams(-1, -2));
+        android.widget.ScrollView scroll = new android.widget.ScrollView(context);
+        scroll.addView(content);
+        panel.addView(scroll, new LinearLayout.LayoutParams(-1, -2));
         render();
+        android.app.AlertDialog dialog = new android.app.AlertDialog.Builder(context)
+                .setTitle(widgetsAvailable ? "Widgets and Extras" : "Extras")
+                .setView(panel)
+                .setPositiveButton("Done", null)
+                .create();
+        if (dialog.getWindow() != null)
+            dialog.getWindow().setSoftInputMode(
+                    android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+        dialog.show();
+    }
+
+    void show(Object ui) throws Exception {
+        View tabs = buildTabs();
+        render();
+        java.lang.reflect.Method earlyShow = editor.earlyPanelShow();
+        if (earlyShow != null) {
+            LinearLayout panel = new LinearLayout(context);
+            panel.setOrientation(LinearLayout.VERTICAL);
+            panel.addView(tabs, new LinearLayout.LayoutParams(-1, -2));
+            panel.addView(content, new LinearLayout.LayoutParams(-1, -2));
+            earlyShow.invoke(ui, panel, null, null, dp(376), dp(376), null, false, null);
+            return;
+        }
         Object nativePanel = findNativePanel(ui);
         enableNestedScroll(nativePanel);
         NativeContract.method(
@@ -235,12 +269,19 @@ final class WidgetPanel {
                 new PanelTabs(
                         pageStrip,
                         loader,
-                        new String[] {"Layout", "Position", "Effects"},
+                        !editor.scaleAvailable()
+                                ? new String[] {"Position", "Effects"}
+                                : new String[] {"Layout", "Position", "Effects"},
                         widgetPage,
                         page -> {
                             widgetPage = page;
                             content.requestLayout();
                         });
+        if (editor.scaleAvailable()) renderWidgetSizing(b);
+        renderWidgetPlacement(b);
+    }
+
+    private void renderWidgetSizing(Bundle b) throws Exception {
         section("Layout & size");
         if (editor.customGridAvailable()) {
             toggle(
@@ -302,7 +343,9 @@ final class WidgetPanel {
                         true);
                 note("Grid capacity: " + b.getInt("columns") + " × " + b.getInt("rows") + ".");
             }
-        } else note("Custom grid is unavailable for this editor/provider combination.");
+        } else if (!editor.earlyClockEditor()) {
+            note("Custom grid is unavailable for this editor/provider combination.");
+        }
         slider(
                 "Widget scale",
                 50,
@@ -311,6 +354,9 @@ final class WidgetPanel {
                 "%",
                 (next, value) -> next.putFloat("scale", value / 100f),
                 false);
+    }
+
+    private void renderWidgetPlacement(Bundle b) throws Exception {
         section("Placement");
         choice(
                 "Attach to clock",
@@ -415,10 +461,12 @@ final class WidgetPanel {
                         error(e);
                     }
                 });
-        TextView wipe = label("Wipe all widgets");
-        PanelRows.action(
-                wipe, "Wipe all widgets", "Remove all lockscreen widgets and reset layout");
-        wipe.setOnClickListener(v -> confirmWipeWidgets());
+        if (!editor.earlyClockEditor()) {
+            TextView wipe = label("Wipe all widgets");
+            PanelRows.action(
+                    wipe, "Wipe all widgets", "Remove all lockscreen widgets and reset layout");
+            wipe.setOnClickListener(v -> confirmWipeWidgets());
+        }
         group = content;
         status = label("");
         status.setVisibility(View.GONE);
@@ -478,12 +526,22 @@ final class WidgetPanel {
                 next -> next.putBoolean("keepCharging", !b.getBoolean("keepCharging")),
                 false);
 
-        toggle(
-                "Full-screen album artwork",
-                b.getBoolean("fullscreenArt"),
-                next -> next.putBoolean("fullscreenArt", !b.getBoolean("fullscreenArt")),
-                false);
-        extraToggle(b, "Fade widgets when opening the player", MediaWidgetFade.KEY);
+        extraToggle(b, "Full-screen album artwork", "fullscreenArt");
+        if (b.getBoolean("fullscreenArt")) {
+            extraToggle(b, "Live animated artwork", LiveCoverController.KEY);
+            note("Uses motion covers from music catalogs when available.");
+            if (b.getBoolean(LiveCoverController.KEY)) {
+                boolean wifiOnly = b.getBoolean(LiveCoverController.WIFI_ONLY, true);
+                toggle(
+                        "Only download on Wi-Fi",
+                        wifiOnly,
+                        next -> next.putBoolean(LiveCoverController.WIFI_ONLY, !wifiOnly),
+                        false);
+            }
+        }
+        extraToggle(b, "Hide clock in expanded player", MediaClockVisibility.KEY);
+        if (!editor.earlyClockEditor())
+            extraToggle(b, "Fade widgets when opening the player", MediaWidgetFade.KEY);
         if (editor.stackAvailable()) {
             slider(
                     "Visible cards",
@@ -504,6 +562,24 @@ final class WidgetPanel {
             text("Title", "title", b.getString("title"), 80);
             text("Message", "message", b.getString("message"), 180);
         }
+        PanelRows.heading(label("Clock"));
+        boolean inlineSec = b.getBoolean(ClockInlineSeconds.KEY, true);
+        toggle(
+                "Inline clock seconds",
+                inlineSec,
+                next -> next.putBoolean(ClockInlineSeconds.KEY, !inlineSec),
+                false);
+        toggle(
+                "Keep seconds open",
+                b.getBoolean(ClockInlineSeconds.KEEP_OPEN),
+                inlineSec,
+                next -> next.putBoolean(ClockInlineSeconds.KEEP_OPEN,
+                        !b.getBoolean(ClockInlineSeconds.KEEP_OPEN)),
+                false);
+        note("Replaces the full-screen seconds view when tapping a digital clock.");
+        PanelRows.heading(label("Widgets"));
+        extraToggle(b, "Disable widget clicks", WidgetClickBlock.KEY);
+        note("Prevents tapping lockscreen widgets from opening apps while keeping swipe-to-unlock working.");
         if (!editor.legacy()) {
             PanelRows.heading(label("Always On Display"));
             toggle(
@@ -516,6 +592,7 @@ final class WidgetPanel {
             PanelRows.heading(label("Automatic stretch"));
             extraToggle(b, "Allow more stretch shapes", StretchSuggestions.KEY);
         }
+        renderUpdatesSection();
         TextView reset = label("Reset extra settings");
         PanelRows.action(reset, "Reset extra settings", "");
         reset.setOnClickListener(
@@ -528,6 +605,77 @@ final class WidgetPanel {
                         error(e);
                     }
                 });
+        renderExtraBlur(b, extraPages);
+        group = content;
+        status = label("");
+        status.setVisibility(View.GONE);
+    }
+
+    private void renderUpdatesSection() {
+        PanelRows.heading(label("Updates"));
+        boolean prerelease = false;
+        String installed = "";
+        try {
+            Bundle prefs =
+                    context.getContentResolver()
+                            .call(SettingsProvider.URI, "getUpdatePreferences", null, null);
+            if (prefs != null) {
+                prerelease = prefs.getBoolean("prerelease");
+                installed = prefs.getString("installed", "");
+            }
+        } catch (RuntimeException ignored) {
+        }
+        CompoundButton pre = (CompoundButton) nativeView(EditorBinding.Row.TOGGLE);
+        pre.setText("Pre-release updates");
+        pre.setChecked(prerelease);
+        add(pre);
+        boolean[] updating = {false};
+        pre.setOnCheckedChangeListener(
+                (v, value) -> {
+                    if (binding || updating[0]) return;
+                    updating[0] = true;
+                    try {
+                        Bundle arg = new Bundle();
+                        arg.putBoolean("prerelease", value);
+                        context.getContentResolver()
+                                .call(SettingsProvider.URI, "setPrereleaseUpdates", null, arg);
+                    } catch (Exception e) {
+                        pre.setChecked(!value);
+                        error(e);
+                    } finally {
+                        updating[0] = false;
+                    }
+                });
+        String baseNote =
+                "Receive dev pre-release builds and newer stable releases. Defaults to on for dev"
+                        + " builds.";
+        note(installed.isEmpty() ? baseNote : "Installed: " + installed + ". " + baseNote);
+        TextView check = label("Check for updates");
+        PanelRows.action(check, "Check for updates", "");
+        check.setOnClickListener(
+                v -> {
+                    android.app.Activity activity = findActivity(context);
+                    if (activity == null) {
+                        android.widget.Toast.makeText(
+                                        context,
+                                        "Reopen the editor to check for updates",
+                                        android.widget.Toast.LENGTH_SHORT)
+                                .show();
+                        return;
+                    }
+                    UpdatePrompt.checkNow(activity);
+                });
+    }
+
+    private static android.app.Activity findActivity(Context ctx) {
+        while (ctx instanceof android.content.ContextWrapper wrapper) {
+            if (ctx instanceof android.app.Activity activity) return activity;
+            ctx = wrapper.getBaseContext();
+        }
+        return null;
+    }
+
+    private void renderExtraBlur(Bundle b, PanelTabs extraPages) throws Exception {
         group = extraPages.group(content, 1);
         note("Customizes existing blur. System blur restrictions still apply.");
         if (android.os.Build.VERSION.SDK_INT >= 37) {
@@ -536,7 +684,7 @@ final class WidgetPanel {
             if (!BlurAppearance.available(context, "clockBlur"))
                 group.getChildAt(group.getChildCount() - 1).setEnabled(false);
         }
-        blurSection(b, "Clock", "clockBlur");
+        if (!editor.earlyClockEditor()) blurSection(b, "Clock", "clockBlur");
         blurSection(b, "Widgets", "widgetBlur");
         blurSection(b, "Now Bar", "nowBarBlur");
         if (android.os.Build.VERSION.SDK_INT >= 37 && BlurAppearance.liveWindowBlurAllowed(context)) {
@@ -544,9 +692,6 @@ final class WidgetPanel {
             extraToggle(b, "Blur behind colorized cards", NotificationBlurOptions.COLORIZED);
             extraToggle(b, "Blur behind custom cards", NotificationBlurOptions.CUSTOM);
         }
-        group = content;
-        status = label("");
-        status.setVisibility(View.GONE);
     }
 
     private void blurSection(Bundle b, String title, String key) throws Exception {
@@ -574,13 +719,13 @@ final class WidgetPanel {
         if (key.equals("nowBarBlur") && android.os.Build.VERSION.SDK_INT >= 37
                 && BlurAppearance.liveWindowBlurAllowed(context))
             extraToggle(b, "Glass backgrounds for colored pills", NowBarGlass.KEY);
-        if (key.equals("widgetBlur")
+        if (key.equals("widgetBlur") && !editor.earlyClockEditor()
                 && BlurAppearance.liveWindowBlurAllowed(context)) {
             extraToggle(b, "Blur behind the camera widget", WidgetBackgroundOptions.CAMERA);
             extraToggle(b, "Remove Picture Frame dimming", WidgetBackgroundOptions.PICTURE_FRAME);
         }
         if (b.getBoolean(key + "Custom")) blurControls(b, key);
-        if (key.equals("widgetBlur") && WallpaperAod.supported()
+        if (key.equals("widgetBlur") && !editor.earlyClockEditor() && WallpaperAod.supported()
                 && BlurAppearance.windowBlur(context)) {
             PanelRows.heading(label("Widgets on AOD"));
             note("Apply, then enter AOD with your wallpaper showing to see changes.");
@@ -823,6 +968,7 @@ final class WidgetPanel {
                     case "Appearance" -> 2;
                     default -> 0;
                 };
+        if (!editor.scaleAvailable()) page = Math.max(0, page - 1);
         boolean separated = pages.hasGroup(page);
         group = pages.group(content, page);
         int divider =

@@ -451,6 +451,210 @@ public final class DepthContractsTest {
         }
     }
 
+    private static void verifyEffectSourceContracts(Path tempRoot) throws Exception {
+        check(
+                WallpaperSourceBinding.nonEmpty(
+                                new Object() {
+                                    @Override
+                                    public String toString() {
+                                        return "";
+                                    }
+                                })
+                        .isEmpty(),
+                "Empty Uri-like toString must be treated as empty");
+        check(
+                "content://a/b".equals(WallpaperSourceBinding.nonEmpty("content://a/b")),
+                "Non-empty key was stripped");
+
+        WallpaperSourceBinding.Source legacySource =
+                new WallpaperSourceBinding.Source("data", "k", true);
+        check(!legacySource.effectApplied(), "3-arg Source constructor must default effectApplied=false");
+
+        Map<String, String> src = commonDressroomSources();
+        src.put(
+                "com/samsung/android/app/dressroom/data/profile/wallpaper/EditorData.java",
+                "package com.samsung.android.app.dressroom.data.profile.wallpaper;\n"
+                        + "import android.net.Uri;\n"
+                        + "public class EditorData {\n"
+                        + "    public Uri originalUri;\n"
+                        + "    public Uri uri;\n"
+                        + "    public String originalFilePath;\n"
+                        + "    public String path;\n"
+                        + "    public String extraPath;\n"
+                        + "    public String previewPath;\n"
+                        + "    public String fileName;\n"
+                        + "    public String weatherId;\n"
+                        + "    public int subType;\n"
+                        + "    public int parentSubType;\n"
+                        + "    public boolean isCover;\n"
+                        + "    public boolean applyEffect;\n"
+                        + "    public String imageFilterInfo;\n"
+                        + "    public Uri getOriginalUri() { return originalUri; }\n"
+                        + "    public Uri getUri() { return uri; }\n"
+                        + "    public String getOriginalFilePath() { return originalFilePath; }\n"
+                        + "    public String getStorageFilePath() { return path; }\n"
+                        + "    public String getPath() { return extraPath; }\n"
+                        + "    public String getPreviewPath() { return previewPath; }\n"
+                        + "    public String getFileName() { return fileName; }\n"
+                        + "    public String getWeatherId() { return weatherId; }\n"
+                        + "    public int getWallpaperSubType() { return subType; }\n"
+                        + "    public int getWallpaperParentSubType() { return parentSubType; }\n"
+                        + "    public boolean getIsCover() { return isCover; }\n"
+                        + "    public boolean isApplyEffect() { return applyEffect; }\n"
+                        + "    public String getImageFilterInfo() { return imageFilterInfo; }\n"
+                        + "}\n");
+        src.put(
+                "com/effect/Ctrl.java",
+                "package com.effect;\n"
+                        + "import com.samsung.android.app.dressroom.data.profile.wallpaper.EditorData;\n"
+                        + "public class Ctrl {\n"
+                        + "    public EditorData slot;\n"
+                        + "    public void setSlot(EditorData d) { this.slot = d; }\n"
+                        + "}\n");
+        src.put(
+                "com/effect/Host.java",
+                "package com.effect;\n"
+                        + "public class Host { public Ctrl ctrl = new Ctrl(); public void check() {} }\n");
+        src.put(
+                "com/effect/Entry.java",
+                "package com.effect;\n"
+                        + "public class Entry { public Host host = new Host(); }\n");
+        src.put(
+                "com/samsung/android/app/dressroom/presentation/preview/activity/EditBaseActivity.java",
+                "package com.samsung.android.app.dressroom.presentation.preview.activity;\n"
+                        + "public class EditBaseActivity { public com.effect.Entry entry = new com.effect.Entry(); }\n");
+
+        String edDesc = "Lcom/samsung/android/app/dressroom/data/profile/wallpaper/EditorData;";
+        DexSignatures.Body hostBody =
+                new DexSignatures.Body(
+                        "Lcom/effect/Host;",
+                        "check",
+                        List.of(),
+                        "V",
+                        Modifier.PUBLIC,
+                        Map.of("need_to_recreate_preview", 0),
+                        List.of(
+                                new DexSignatures.Read(
+                                        2,
+                                        new DexSignatures.Member(
+                                                "Lcom/effect/Host;", "ctrl", "Lcom/effect/Ctrl;"))),
+                        List.of(),
+                        List.of(
+                                new DexSignatures.Call(
+                                        4,
+                                        "Lcom/effect/Ctrl;",
+                                        "setSlot",
+                                        List.of(edDesc),
+                                        "V",
+                                        false)));
+        DexSignatures.Body setBody =
+                new DexSignatures.Body(
+                        "Lcom/effect/Ctrl;",
+                        "setSlot",
+                        List.of(edDesc),
+                        "V",
+                        Modifier.PUBLIC,
+                        Map.of(),
+                        List.of(),
+                        List.of(
+                                new DexSignatures.Write(
+                                        0, new DexSignatures.Member("Lcom/effect/Ctrl;", "slot", edDesc))),
+                        List.of());
+        WallpaperSourceBinding.DexResolver dex =
+                new WallpaperSourceBinding.DexResolver() {
+                    @Override
+                    public List<DexSignatures.Body> find(Set<String> anchors) {
+                        return List.of(hostBody);
+                    }
+
+                    @Override
+                    public DexSignatures.Body body(Method method) {
+                        return "check".equals(method.getName()) ? hostBody : setBody;
+                    }
+                };
+
+        try (URLClassLoader loader = compileFixture(tempRoot.resolve("effects"), src)) {
+            WallpaperSourceBinding binding = new WallpaperSourceBinding(loader, false, dex);
+            Object activity =
+                    loader.loadClass(
+                                    "com.samsung.android.app.dressroom.presentation.preview.activity.EditBaseActivity")
+                            .getDeclaredConstructor()
+                            .newInstance();
+            Object entry = activity.getClass().getField("entry").get(activity);
+            Object host = entry.getClass().getField("host").get(entry);
+            Object ctrl = host.getClass().getField("ctrl").get(host);
+            Object data = binding.dataType.getDeclaredConstructor().newInstance();
+            binding.changed.invoke(ctrl, data);
+
+            // Cover frame (subType=5, isCover=true) accepted; main multipack (isCover=false) rejected
+            binding.dataType.getField("subType").setInt(data, 5);
+            binding.dataType.getField("isCover").setBoolean(data, true);
+            binding.dataType.getField("path").set(data, "/cover-frame.jpg");
+            WallpaperSourceBinding.Source coverFrame = binding.read(activity);
+            check(
+                    coverFrame != null
+                            && coverFrame.image()
+                            && "/cover-frame.jpg".equals(coverFrame.key()),
+                    "Cover frame subType=5 was rejected");
+
+            binding.dataType.getField("isCover").setBoolean(data, false);
+            WallpaperSourceBinding.Source multipack = binding.read(activity);
+            check(
+                    multipack != null && !multipack.image(),
+                    "Main-screen multipack subType=5 must not be marked as still image");
+
+            // Fallback getters: originalFilePath, extraPath, previewPath, fileName, weatherId
+            binding.dataType.getField("subType").setInt(data, 12);
+            binding.dataType.getField("path").set(data, "");
+            binding.dataType.getField("originalFilePath").set(data, "/orig-path.jpg");
+            WallpaperSourceBinding.Source origPathSrc = binding.read(activity);
+            check(
+                    origPathSrc != null
+                            && origPathSrc.image()
+                            && "/orig-path.jpg".equals(origPathSrc.key()),
+                    "originalFilePath fallback failed");
+
+            binding.dataType.getField("subType").setInt(data, 409);
+            binding.dataType.getField("originalFilePath").set(data, "");
+            binding.dataType.getField("previewPath").set(data, "/motion-preview.jpg");
+            WallpaperSourceBinding.Source motionPreview = binding.read(activity);
+            check(
+                    motionPreview != null
+                            && motionPreview.image()
+                            && "/motion-preview.jpg".equals(motionPreview.key()),
+                    "previewPath fallback failed for MotionPhoto");
+
+            binding.dataType.getField("previewPath").set(data, "");
+            binding.dataType.getField("fileName").set(data, "named.jpg");
+            WallpaperSourceBinding.Source namedSrc = binding.read(activity);
+            check(
+                    namedSrc != null && namedSrc.image() && "named.jpg".equals(namedSrc.key()),
+                    "fileName fallback failed");
+
+            binding.dataType.getField("subType").setInt(data, 402);
+            binding.dataType.getField("fileName").set(data, "");
+            binding.dataType.getField("weatherId").set(data, "rain_03");
+            WallpaperSourceBinding.Source weatherSrc = binding.read(activity);
+            check(
+                    weatherSrc != null
+                            && weatherSrc.image()
+                            && "weather:rain_03".equals(weatherSrc.key()),
+                    "Weather ID fallback failed for subType=402");
+
+            // Effect metadata propagation: isApplyEffect vs imageFilterInfo
+            binding.dataType.getField("imageFilterInfo").set(data, "Original");
+            binding.dataType.getField("applyEffect").setBoolean(data, false);
+            check(!binding.read(activity).effectApplied(), "Original filter falsely flagged effectApplied");
+
+            binding.dataType.getField("imageFilterInfo").set(data, "OilPaint");
+            check(binding.read(activity).effectApplied(), "Style imageFilterInfo missed effectApplied");
+
+            binding.dataType.getField("imageFilterInfo").set(data, "Original");
+            binding.dataType.getField("applyEffect").setBoolean(data, true);
+            check(binding.read(activity).effectApplied(), "isApplyEffect missed effectApplied");
+        }
+    }
+
     private static byte[] buildShifted85Dex() {
         String hostDesc = "LX2/B;";
         String ctrlDesc = "LX2/W;";
@@ -868,6 +1072,7 @@ public final class DepthContractsTest {
             verifyShifted85WithAdverseAlphabeticalDormantField(tempRoot);
             verifySubclassPruningAndTieBreaker(tempRoot);
             verifyRenamedMultiSegmentAndWeatherHooks(tempRoot);
+            verifyEffectSourceContracts(tempRoot);
         } finally {
             deleteTree(tempRoot);
         }

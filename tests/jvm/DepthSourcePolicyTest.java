@@ -29,10 +29,14 @@ public final class DepthSourcePolicyTest {
         check(!state.observe("photo-b"), "Repeated source notification reset depth");
         state.reset();
         check(!state.observe("photo-b"), "New editor retained old source identity");
-        for (int type : new int[] {0, 19, 23, 401, 402, 408})
+        for (int type : new int[] {0, 12, 16, 17, 19, 23, 401, 402, 408, 409})
             check(DepthSourcePolicy.image(type, 0), "Still-image effect rejected: " + type);
         for (int type : new int[] {1, 3, 5, 7, 8, 9, 15, 202, 403, 999})
             check(!DepthSourcePolicy.image(type, 0), "Unsupported renderer accepted: " + type);
+        check(DepthSourcePolicy.image(5, 0, true), "Cover frame still-image rejected");
+        check(DepthSourcePolicy.image(5, 16, true), "Cover frame with cover still parent rejected");
+        check(!DepthSourcePolicy.image(5, 0, false), "Main-screen multipack accepted as cover frame");
+        check(!DepthSourcePolicy.image(8, 0, true), "Cover video accepted as still-image");
         check(!DepthSourcePolicy.image(0, 8), "Video parent accepted through image child");
         check(
                 DepthSourcePolicy.image(402, 401),

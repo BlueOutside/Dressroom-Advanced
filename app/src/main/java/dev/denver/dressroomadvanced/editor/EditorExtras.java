@@ -58,8 +58,7 @@ final class EditorExtras {
         if (draft == null || saved == null) return;
         if (ScreenIdentity.value(draft) != ScreenIdentity.value(saved)) return;
         if (!BlurAppearanceSettings.same(draft, saved)) return;
-        for (String key : ExtrasPreferences.FLAGS)
-            if (draft.getBoolean(key) != saved.getBoolean(key)) return;
+        if (!ExtrasPreferences.sameFlags(draft, saved)) return;
         if (draft.getInt("stackCards", 3) != saved.getInt("stackCards", 3)) return;
         if (!draft.getString("title", "").equals(saved.getString("title", ""))
                 || !draft.getString("message", "").equals(saved.getString("message", ""))) return;
@@ -79,8 +78,7 @@ final class EditorExtras {
     private static boolean same(Bundle a, Bundle b) {
         if (a == null || b == null) return false;
         if (!BlurAppearanceSettings.same(a, b)) return false;
-        for (String key : ExtrasPreferences.FLAGS)
-            if (a.getBoolean(key) != b.getBoolean(key)) return false;
+        if (!ExtrasPreferences.sameFlags(a, b)) return false;
         return a.getInt("stackCards", 3) == b.getInt("stackCards", 3)
                 && a.getString("title", "").equals(b.getString("title", ""))
                 && a.getString("message", "").equals(b.getString("message", ""));

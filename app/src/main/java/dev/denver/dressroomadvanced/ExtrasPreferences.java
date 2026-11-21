@@ -7,20 +7,35 @@ import org.json.JSONObject;
 
 final class ExtrasPreferences {
     static final String[] FLAGS = {
-        "keepCharging", "fullscreenArt", "keepStretch", "textCard", "swipeBlur",
-        AodWidgetAppearance.KEY, WallpaperAod.CLOCK_BLUR, StretchSuggestions.KEY,
+        "keepCharging", "fullscreenArt", LiveCoverController.KEY, "keepStretch", "textCard",
+        "swipeBlur", AodWidgetAppearance.KEY, WallpaperAod.CLOCK_BLUR, StretchSuggestions.KEY,
         WidgetBackgroundOptions.CAMERA, WidgetBackgroundOptions.PICTURE_FRAME,
         ClockBlurDelays.KEY, NotificationBlurOptions.COLORIZED, NotificationBlurOptions.CUSTOM,
         BlurAppearanceSettings.NEUTRAL_CLOCK, MediaWidgetFade.KEY, AodWidgetAppearance.NEUTRAL,
-        NowBarGlass.KEY
+        NowBarGlass.KEY, ClockInlineSeconds.KEEP_OPEN, MediaClockVisibility.KEY,
+        WidgetClickBlock.KEY
+    };
+
+    static final String[] DEFAULT_TRUE_FLAGS = {
+        ClockInlineSeconds.KEY, LiveCoverController.WIFI_ONLY
     };
 
     private ExtrasPreferences() {}
+
+    static boolean sameFlags(Bundle a, Bundle b) {
+        if (a == null || b == null) return false;
+        for (String flag : DEFAULT_TRUE_FLAGS)
+            if (a.getBoolean(flag, true) != b.getBoolean(flag, true)) return false;
+        for (String flag : FLAGS) if (a.getBoolean(flag) != b.getBoolean(flag)) return false;
+        return true;
+    }
 
     static Bundle clean(Bundle input) {
         Bundle b = new Bundle();
         if (input != null) ScreenIdentity.copy(input, b);
         for (String flag : FLAGS) b.putBoolean(flag, input != null && input.getBoolean(flag));
+        for (String flag : DEFAULT_TRUE_FLAGS)
+            b.putBoolean(flag, input == null || input.getBoolean(flag, true));
         b.putInt(
                 "stackCards",
                 Math.max(3, Math.min(8, input == null ? 3 : input.getInt("stackCards", 3))));
@@ -86,6 +101,7 @@ final class ExtrasPreferences {
             Bundle b = clean(input);
             JSONObject json = new JSONObject();
             for (String flag : FLAGS) json.put(flag, b.getBoolean(flag));
+            for (String flag : DEFAULT_TRUE_FLAGS) json.put(flag, b.getBoolean(flag, true));
             json.put("stackCards", b.getInt("stackCards", 3));
             json.put("title", b.getString("title"));
             json.put("message", b.getString("message"));
@@ -100,6 +116,7 @@ final class ExtrasPreferences {
         Bundle b = new Bundle();
         if (input != null) ScreenIdentity.copy(input, b);
         for (String flag : FLAGS) b.putBoolean(flag, json.optBoolean(flag));
+        for (String flag : DEFAULT_TRUE_FLAGS) b.putBoolean(flag, json.optBoolean(flag, true));
         b.putInt("stackCards", json.optInt("stackCards", 3));
         b.putString("title", json.optString("title"));
         b.putString("message", json.optString("message"));

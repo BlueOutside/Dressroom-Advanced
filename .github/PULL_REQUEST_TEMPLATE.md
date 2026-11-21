@@ -1,3 +1,5 @@
+<!-- Target the `dev` branch for pull requests. `main` is reserved for stable releases. -->
+
 ## Changes
 
 Describe the problem and resulting behavior.

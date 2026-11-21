@@ -22,11 +22,15 @@ public final class ExtrasContractProbe {
     private static void run() {
         Bundle clean = ExtrasPreferences.clean(null);
         for (String flag : ExtrasPreferences.FLAGS) check(!clean.getBoolean(flag));
+        check(clean.getBoolean(ClockInlineSeconds.KEY));
         Bundle input = new Bundle();
+        input.putBoolean(ClockInlineSeconds.KEY, false);
+        input.putBoolean(ClockInlineSeconds.KEEP_OPEN, true);
         input.putBoolean("keepCharging", true);
         input.putBoolean("keepStretch", true);
         input.putBoolean("fullscreenArt", true);
         input.putBoolean("textCard", true);
+        input.putBoolean(WidgetClickBlock.KEY, true);
         input.putBoolean("forceNowBarBlur", true);
         input.putBoolean("forceWidgetBlur", true);
         input.putInt("wallpaperId", 55);
@@ -35,8 +39,10 @@ public final class ExtrasContractProbe {
         input.putString("title", "  Hello\u0000🌹  ");
         input.putString("message", "🌹".repeat(200));
         clean = ExtrasPreferences.clean(input);
+        check(!clean.getBoolean(ClockInlineSeconds.KEY) && clean.getBoolean(ClockInlineSeconds.KEEP_OPEN));
         check(clean.getBoolean("keepCharging") && clean.getBoolean("keepStretch"));
         check(clean.getBoolean("fullscreenArt") && clean.getBoolean("textCard"));
+        check(clean.getBoolean(WidgetClickBlock.KEY));
         check(!clean.containsKey("forceNowBarBlur") && !clean.containsKey("forceWidgetBlur"));
         check(
                 !clean.containsKey("wallpaperId")

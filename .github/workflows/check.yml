@@ -2,7 +2,7 @@ name: Build
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
   pull_request:
   workflow_dispatch:
 
@@ -37,6 +37,7 @@ jobs:
           ./scripts/check-repository.ps1
           ./scripts/check-layout.ps1
           python scripts/compatibility-inventory.py --check
+          python scripts/dev-version.py --self-test
       - name: Build unsigned APK
         id: build
         shell: pwsh

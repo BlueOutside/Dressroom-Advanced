@@ -61,6 +61,8 @@ final class DepthEffects {
     private static final Map<View, LocalPath> localPaths = new WeakHashMap<>();
     private static final java.util.Set<View> blurRefreshPending =
             Collections.newSetFromMap(new WeakHashMap<>());
+    private static final Set<Class<?>> withoutNativeBlur =
+            Collections.newSetFromMap(new WeakHashMap<>());
     private static final java.util.Set<View> mediaClocks =
             Collections.newSetFromMap(new WeakHashMap<>());
     private static final java.util.Set<View> dozingViews =
@@ -279,7 +281,8 @@ final class DepthEffects {
     }
 
     private static void refreshNativeBlur(View view) {
-        if (!isClockView(view) || !blurRefreshPending.add(view)) return;
+        if (withoutNativeBlur.contains(view.getClass())
+                || !isClockView(view) || !blurRefreshPending.add(view)) return;
         java.lang.ref.WeakReference<View> reference = new java.lang.ref.WeakReference<>(view);
         view.post(
                 () -> {
@@ -289,6 +292,9 @@ final class DepthEffects {
                     if (!current.isAttachedToWindow()) return;
                     try {
                         Reflect.call(current, "setClockTextBlur");
+                    } catch (NoSuchMethodException noNativeBlur) {
+                        // The first stretch clocks have no separate blur layer to rebuild.
+                        withoutNativeBlur.add(current.getClass());
                     } catch (Exception error) {
                         android.util.Log.w(
                                 DressroomModule.TAG, "Depth blur rebuild unavailable", error);
@@ -843,14 +849,26 @@ final class DepthEffects {
                     .intercept(
                             chain -> {
                                 View view = (View) chain.getThisObject();
-                                if (view.isShown()
+                                if (!EditorBlurCapture.capturingWallpaper() && view.isShown()
                                         && view.getWidth() > 0
-                                        && view.getHeight() > 0)
-                                    editorWallpaper = new java.lang.ref.WeakReference<>(view);
-                                if (wallpaperListener != null && view.isShown())
-                                    wallpaperListener.accept(view);
-                                if (activeSubject != null && activeSubject.image.get() == view)
-                                    updateLiveMask();
+                                        && view.getHeight() > 0) {
+                                    View primary = EditorWallpaperSource.primaryCropView(view);
+                                    boolean overlay = primary != null && primary != view;
+                                    if (primary != null && (!overlay || !primary.isShown())) {
+                                        if (overlay
+                                                || (primary.getWidth() > 0
+                                                        && primary.getHeight() > 0)) {
+                                            editorWallpaper =
+                                                    new java.lang.ref.WeakReference<>(primary);
+                                        }
+                                        if (wallpaperListener != null)
+                                            wallpaperListener.accept(primary);
+                                        if (activeSubject != null
+                                                && activeSubject.image.get() == primary) {
+                                            updateLiveMask();
+                                        }
+                                    }
+                                }
                                 return chain.proceed();
                             });
             module.deoptimize(draw);
@@ -880,7 +898,7 @@ final class DepthEffects {
                                     chain -> {
                                         Object result = chain.proceed();
                                         View surface = (View) chain.getThisObject();
-                                        View crop = findCropView(surface.getRootView(), false);
+                                        View crop = findCropView(enclosingPreviewRoot(surface), false);
                                         if (crop != null) {
                                             EditorWallpaperSource.bind(crop, surface);
                                             if (wallpaperListener != null)
@@ -994,9 +1012,33 @@ final class DepthEffects {
         }
     }
 
+    private static volatile String activeSourceKey = "";
+    private static volatile boolean activeEffectApplied;
+
+    static void sourceKey(String key, boolean effectApplied) {
+        activeSourceKey = key == null ? "" : key;
+        activeEffectApplied = effectApplied;
+        LiveSubject current = activeSubject;
+        if (current != null && !activeSourceKey.isEmpty()) {
+            current.adoptSourceKey(activeSourceKey);
+        }
+    }
+
+    static String currentSourceKey() {
+        return activeSourceKey;
+    }
+
+    static boolean effectApplied() {
+        return activeEffectApplied;
+    }
+
     static View wallpaper(View clock) {
         View image = findCropView(clock.getRootView());
         return image == null ? editorWallpaper.get() : image;
+    }
+
+    static boolean hasSubjectFor(View image) {
+        return activeSubject != null && activeSubject.image.get() == image;
     }
 
     static boolean hasLiveSource(View image) {
@@ -1198,12 +1240,32 @@ final class DepthEffects {
         return findCropView(root, true);
     }
 
+    private static View enclosingPreviewRoot(View view) {
+        if (view == null) return null;
+        for (android.view.ViewParent parent = view.getParent();
+                parent instanceof View group;
+                parent = group.getParent()) {
+            int id = group.getId();
+            if (id != View.NO_ID) {
+                try {
+                    String name = group.getResources().getResourceEntryName(id);
+                    if ("preview_single_view_root".equals(name)
+                            || "lock_preview".equals(name)
+                            || "home_preview".equals(name)) {
+                        return group;
+                    }
+                } catch (android.content.res.Resources.NotFoundException ignored) {
+                }
+            }
+        }
+        return view.getRootView();
+    }
+
     private static View findCropView(View root, boolean visible) {
+        if (root == null) return null;
         View largest =
-                root.getClass()
-                                        .getName()
-                                        .equals(
-                                                "com.samsung.android.app.dressroom.presentation.preview.widget.CropImageView")
+                EditorWallpaperSource.isCropView(root)
+                                && !EditorWallpaperSource.isEffectOverlay(root)
                                 && (!visible || EditorWallpaperSource.available(root))
                         ? root
                         : null;
@@ -1241,6 +1303,7 @@ final class DepthEffects {
     static android.os.Bundle freezeMask(android.os.Bundle draft) {
         if (draft == null) return null;
         android.os.Bundle copy = new android.os.Bundle(draft);
+        if (!copy.getBoolean("depthEnabled") && copy.getInt("depth") != 1) return copy;
         boolean stale =
                 sourcePending
                         || (activeSubject != null

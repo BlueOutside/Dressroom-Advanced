@@ -24,6 +24,11 @@ final class LiveSubject {
                             return method;
                         } catch (NoSuchMethodException ignored) {
                         }
+                    for (Class<?> owner = type; owner != null; owner = owner.getSuperclass())
+                        try {
+                            return OneUi80Depth.cropDrawable(owner);
+                        } catch (NoSuchMethodException ignored) {
+                        }
                     throw new IllegalArgumentException(
                             "Wallpaper drawable accessor unavailable: " + type.getName());
                 }
@@ -45,6 +50,15 @@ final class LiveSubject {
     private android.view.ViewTreeObserver observer;
     private android.view.ViewTreeObserver.OnPreDrawListener listener;
 
+    volatile String sourceKey = DepthEffects.currentSourceKey();
+    private volatile Object acceptedStamp;
+
+    void adoptSourceKey(String key) {
+        if ((sourceKey == null || sourceKey.isEmpty()) && key != null && !key.isEmpty()) {
+            sourceKey = key;
+        }
+    }
+
     static boolean isSameWallpaper(Object s1, Object s2) {
         if (java.util.Objects.equals(s1, s2)) return true;
         if (s1 instanceof Stamp stamp1 && s2 instanceof Stamp stamp2) {
@@ -54,7 +68,22 @@ final class LiveSubject {
         return false;
     }
 
-    private record Stamp(Drawable drawable, Bitmap bitmap, int generation, Object original) {}
+    static boolean samePhotoGeometry(Object s1, Object s2) {
+        if (!(s1 instanceof Stamp a) || !(s2 instanceof Stamp b)) return false;
+        if (a.width <= 0 || a.height <= 0 || b.width <= 0 || b.height <= 0) return false;
+        if (Math.max(a.width, a.height) < 128 || Math.max(b.width, b.height) < 128) return false;
+        long lhs = (long) a.width * b.height;
+        long rhs = (long) b.width * a.height;
+        return Math.abs(lhs - rhs) * 20L <= Math.max(lhs, rhs);
+    }
+
+    private record Stamp(
+            Drawable drawable,
+            Bitmap bitmap,
+            int generation,
+            Object original,
+            int width,
+            int height) {}
 
     private LiveSubject(View image, Drawable drawable, int width, int height, String fingerprint)
             throws Exception {
@@ -78,13 +107,30 @@ final class LiveSubject {
     static Object stamp(View image) throws Exception {
         Drawable inner = inner(image);
         Drawable plain = ((android.widget.ImageView) image).getDrawable();
-        Bitmap bitmap = plain instanceof BitmapDrawable b ? b.getBitmap() : null;
+        Bitmap bitmap =
+                plain instanceof BitmapDrawable b
+                        ? b.getBitmap()
+                        : (inner instanceof BitmapDrawable b ? b.getBitmap() : null);
         Object original = null;
         try {
             original = image.getClass().getMethod("getOriginalDrawable").invoke(image);
         } catch (NoSuchMethodException ignored) {
         }
-        return new Stamp(inner, bitmap, bitmap == null ? 0 : bitmap.getGenerationId(), original);
+        int width =
+                bitmap != null
+                        ? bitmap.getWidth()
+                        : (inner != null ? inner.getIntrinsicWidth() : 0);
+        int height =
+                bitmap != null
+                        ? bitmap.getHeight()
+                        : (inner != null ? inner.getIntrinsicHeight() : 0);
+        return new Stamp(
+                inner,
+                bitmap,
+                bitmap == null ? 0 : bitmap.getGenerationId(),
+                original,
+                width,
+                height);
     }
 
     static record Capture(LiveSubject subject, Bitmap bitmap) {}
@@ -272,11 +318,26 @@ final class LiveSubject {
             try {
                 Object current = stamp(view);
                 if (source.equals(current)) return true;
-                if (source instanceof Stamp s1 && current instanceof Stamp s2) {
-                    if (s1.original != null && s1.original.equals(s2.original)) return true;
+                Object accepted = acceptedStamp;
+                if (accepted != null && accepted.equals(current)) return true;
+                if (isSameWallpaper(source, current)) {
+                    acceptedStamp = current;
+                    return true;
+                }
+                String currentKey = DepthEffects.currentSourceKey();
+                if (sourceKey != null
+                        && !sourceKey.isEmpty()
+                        && sourceKey.equals(currentKey)
+                        && samePhotoGeometry(source, current)) {
+                    acceptedStamp = current;
+                    return true;
                 }
                 String fp = fingerprint(view);
-                return fp != null && fp.equals(this.fingerprint);
+                if (fp != null && fp.equals(this.fingerprint)) {
+                    acceptedStamp = current;
+                    return true;
+                }
+                return false;
             } catch (Exception ignored) {
                 return false;
             }

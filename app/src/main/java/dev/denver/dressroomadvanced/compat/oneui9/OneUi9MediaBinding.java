@@ -44,6 +44,9 @@ final class OneUi9MediaBinding {
     private static final String LIGHTING_ANCHOR =
             "Canceled pending color change due to new animation request";
     private static final String CARD_STATE_ANCHOR = "onExpandStateChanged expand ";
+    private static final String CANCEL_ANIMATES_ANCHOR = "cancelAnimates";
+    private static final String SPRING_DESCRIPTOR =
+            "Landroidx/dynamicanimation/animation/SpringAnimation;";
     private static final String EXPAND_TARGET_ANCHOR = "startAlbumArtExpandAnimation,  targetView is null";
     private static final String COLLAPSE_GEOMETRY_ANCHOR =
             "runCollapseAnimation,  sourceParent is null";
@@ -96,7 +99,39 @@ final class OneUi9MediaBinding {
             Field expandCaseField,
             int expandCase,
             Field expandPage,
-            Field expandOverlay) {}
+            Field expandOverlay,
+            Method springCancel,
+            List<Field> cardSpringFields,
+            List<Field> cardAnimatorFields) {
+        CardContract(
+                Class<?> cardType,
+                Method cardStateChanged,
+                Field expandedMediaView,
+                Method collapseGeometry,
+                Method collapseCleanup,
+                Method expansionCleanup,
+                Method expandInvoke,
+                Field expandCaseField,
+                int expandCase,
+                Field expandPage,
+                Field expandOverlay) {
+            this(
+                    cardType,
+                    cardStateChanged,
+                    expandedMediaView,
+                    collapseGeometry,
+                    collapseCleanup,
+                    expansionCleanup,
+                    expandInvoke,
+                    expandCaseField,
+                    expandCase,
+                    expandPage,
+                    expandOverlay,
+                    null,
+                    List.of(),
+                    List.of());
+        }
+    }
 
     private OneUi9MediaBinding() {}
 
@@ -397,7 +432,7 @@ final class OneUi9MediaBinding {
         Method collapseCleanup =
                 findAnchoredStaticMethod(card, void.class, COLLAPSE_CLEANUP_ANCHOR, 7);
         Method expansionCleanup =
-                findAnchoredStaticMethod(card, void.class, EXPANSION_CLEANUP_ANCHOR, 9);
+                findAnchoredStaticMethod(card, void.class, EXPANSION_CLEANUP_ANCHOR, 9, true);
 
         Class<?> expandClass = findExpandLambdaClass(loader, cardStateChanged);
         Method expandInvoke = NativeContract.findMethod(expandClass, "invoke", Object.class);
@@ -442,7 +477,40 @@ final class OneUi9MediaBinding {
                 caseField,
                 expandCase,
                 expandPage,
-                expandOverlay);
+                expandOverlay,
+                findSpringCancel(loader, card),
+                fieldsByTypeName(card, "androidx.dynamicanimation.animation.SpringAnimation"),
+                fieldsByTypeName(card, "android.animation.ObjectAnimator"));
+    }
+
+    private static Method findSpringCancel(ClassLoader loader, Class<?> card) {
+        try {
+            Method cancel = findAnchoredMethod(card, void.class, CANCEL_ANIMATES_ANCHOR);
+            for (var call : DexSignatures.body(cancel).calls()) {
+                if (!call.isStatic()
+                        && SPRING_DESCRIPTOR.equals(call.owner())
+                        && "V".equals(call.result())
+                        && call.parameters().isEmpty()) {
+                    Method method = call.method(loader);
+                    method.setAccessible(true);
+                    return method;
+                }
+            }
+        } catch (ReflectiveOperationException | IOException ignored) {
+            // Optional on synthetic test fixtures.
+        }
+        return null;
+    }
+
+    private static List<Field> fieldsByTypeName(Class<?> owner, String typeName) {
+        List<Field> matches = new ArrayList<>();
+        for (Field field : owner.getDeclaredFields()) {
+            if (typeName.equals(field.getType().getName())) {
+                field.setAccessible(true);
+                matches.add(field);
+            }
+        }
+        return List.copyOf(matches);
     }
 
     private static Class<?> findExpandLambdaClass(ClassLoader loader, Method cardStateChanged)
@@ -500,13 +568,21 @@ final class OneUi9MediaBinding {
     private static Method findAnchoredStaticMethod(
             Class<?> owner, Class<?> returnType, String anchor, int paramCount)
             throws ReflectiveOperationException, IOException {
+        return findAnchoredStaticMethod(owner, returnType, anchor, paramCount, false);
+    }
+
+    private static Method findAnchoredStaticMethod(
+            Class<?> owner, Class<?> returnType, String anchor, int paramCount,
+            boolean extraExpansionContainer)
+            throws ReflectiveOperationException, IOException {
         List<Method> matches = new ArrayList<>();
         for (Method method : owner.getDeclaredMethods()) {
             if (!Modifier.isStatic(method.getModifiers())
-                    || method.getReturnType() != returnType
-                    || method.getParameterCount() != paramCount) {
+                    || method.getReturnType() != returnType) {
                 continue;
             }
+            if (method.getParameterCount() != paramCount
+                    && !(extraExpansionContainer && OneUi95Aod.artworkCleanup(method, owner))) continue;
             if (DexSignatures.body(method, Set.of(anchor)).anchors().containsKey(anchor)) {
                 method.setAccessible(true);
                 matches.add(method);

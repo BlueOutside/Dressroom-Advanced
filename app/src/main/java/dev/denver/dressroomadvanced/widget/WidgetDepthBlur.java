@@ -48,6 +48,10 @@ final class WidgetDepthBlur {
     private WidgetDepthBlur() {}
 
     static synchronized void install(DressroomModule module, ClassLoader loader) {
+        install(module, loader, false);
+    }
+
+    static synchronized void install(DressroomModule module, ClassLoader loader, boolean early) {
         UnlockBlur.installProvider(module, loader);
         AodWidgetAppearance.install(module, loader);
         WidgetBackgroundOptions.install(module, loader);
@@ -66,10 +70,12 @@ final class WidgetDepthBlur {
                         module.report("Optional editor blur capture unavailable", error);
                     }
                 }
-                try {
-                    ClockBlurSync.install(module);
-                } catch (ReflectiveOperationException | RuntimeException error) {
-                    module.report("Blur appearance draw synchronization unavailable", error);
+                if (!early) {
+                    try {
+                        ClockBlurSync.install(module);
+                    } catch (ReflectiveOperationException | RuntimeException error) {
+                        module.report("Blur appearance draw synchronization unavailable", error);
+                    }
                 }
                 try (HookTransaction hooks = new HookTransaction()) {
                     hooks.add(module.hook(submit)
@@ -80,11 +86,13 @@ final class WidgetDepthBlur {
                                     Object original = chain.getArg(0);
                                     if (EditorWidgetBlur.isCanvasRequest(original)) return chain.proceed();
                                     if (module.inEditorProcess()) EditorBlurCapture.clear(view);
-                                    if (original == null && (MediaWidgetFade.holdClear(view)
+                                    if (original == null && !NowBarGlass.replacing(view)
+                                            && (MediaWidgetFade.holdClear(view)
                                             || UnlockBlur.holdContainerClear(view)))
                                         return null;
                                     boolean widget = isBackground(view);
                                     boolean clock = isClockBlurHost(view);
+                                    if (early && clock) return chain.proceed();
                                     if (clock && OneUi85FullscreenArt.suppressClockBlur(view, original))
                                         return chain.proceed(new Object[] {null});
                                     String surface = BlurAppearance.surface(view, clock, widget);
@@ -105,6 +113,10 @@ final class WidgetDepthBlur {
                                         }
                                         Object result = styled == original ? chain.proceed()
                                                 : chain.proceed(new Object[] {styled});
+                                        if (clock && !module.inEditorProcess()
+                                                && "clockBlur".equals(surface))
+                                            MediaClockVisibility.blurSubmitted(view);
+                                        BlurAppearance.tintSubmitted(view, styled, surface);
                                         NowBarGlass.submitted(view, original);
                                         DepthBlurHooks.clockBlurSubmitted(view, styled);
                                         UnlockBlur.submitted(view, styled != null, surface);
@@ -122,7 +134,7 @@ final class WidgetDepthBlur {
                                                 original == null
                                                         ? null
                                                         : WidgetMediaOcclusion.localPath(view);
-                                        if (original != null
+                                        if (original != null && copies.supportsPathClip()
                                                 && (subject != null || cover != null)
                                                 && view.getWidth() > 0
                                                 && view.getHeight() > 0) {
@@ -170,6 +182,7 @@ final class WidgetDepthBlur {
                                     Object result = submitted == original
                                             ? chain.proceed()
                                             : chain.proceed(new Object[] {submitted});
+                                    BlurAppearance.tintSubmitted(view, submitted, surface);
                                     if (!module.inEditorProcess() && submitted != null
                                             && BlurAppearance.hasWindowDrawable(view))
                                         rememberWindowOwner(view);
@@ -184,7 +197,10 @@ final class WidgetDepthBlur {
                         DressroomModule.TAG, "Final complication blur clipping installed");
             }
             if (!deoptimized.contains(loader)) {
-                if (ClockBinding.of(
+                if (early) {
+                    for (Method method : OneUi80WidgetRuntime.blurSubmissions(loader))
+                        module.deoptimize(method);
+                } else if (ClockBinding.of(
                                 Class.forName(
                                         "com.samsung.android.uniform.widget.clock.AbsClockView",
                                         false,
@@ -269,7 +285,8 @@ final class WidgetDepthBlur {
         Object tag = view.getTag();
         if ("lock_clock_blur".equals(tag)
                 || "lock_clock_blur_on_lockeditor".equals(tag)
-                || "Clock_Blur_Container".equals(tag)) {
+                || "Clock_Blur_Container".equals(tag)
+                || ClockInlineSeconds.BLUR_TAG.equals(tag)) {
             return true;
         }
         try {

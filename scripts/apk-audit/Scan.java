@@ -42,8 +42,11 @@ public final class Scan {
             while (entries.hasMoreElements()) {
                 var entry = entries.nextElement();
                 if (!entry.getName().matches("classes[0-9]*\\.dex")) continue;
+                byte[] bytes;
                 try (var in = new BufferedInputStream(zip.getInputStream(entry))) {
-                    var dex = DexBackedDexFile.fromInputStream(Opcodes.getDefault(), in);
+                    bytes = in.readAllBytes();
+                }
+                for (DexBackedDexFile dex : dexSections(bytes)) {
                     for (var cls : dex.getClasses()) {
                         List<Rule> selected = new ArrayList<>();
                         for (Rule rule : rules) {
@@ -85,6 +88,46 @@ public final class Scan {
         for (Rule rule : rules)
             out.add(rule.id + "\t" + rule.hits.size() + "\t" + String.join("; ", rule.hits));
         Files.write(Path.of(args[3]), out);
+    }
+
+    private static List<DexBackedDexFile> dexSections(byte[] bytes) {
+        if (bytes.length < 120) {
+            return List.of(new DexBackedDexFile(Opcodes.getDefault(), bytes));
+        }
+        int headerSize = u32(bytes, 36);
+        int fileSize = u32(bytes, 32);
+        if (headerSize < 120) {
+            return List.of(new DexBackedDexFile(Opcodes.getDefault(), bytes));
+        }
+        int containerSize = u32(bytes, 112);
+        int declaredOffset = u32(bytes, 116);
+        if (declaredOffset != 0 || containerSize > bytes.length || containerSize <= fileSize) {
+            return List.of(new DexBackedDexFile(Opcodes.getDefault(), bytes));
+        }
+        List<DexBackedDexFile> sections = new ArrayList<>();
+        int offset = 0;
+        while (offset < containerSize && containerSize - offset >= 120) {
+            int sectionSize = u32(bytes, offset + 32);
+            int sectionHeader = u32(bytes, offset + 36);
+            int sectionOffset = u32(bytes, offset + 116);
+            if (sectionHeader < 120
+                    || sectionSize <= 0
+                    || sectionOffset != offset
+                    || sectionSize > containerSize - offset) {
+                throw new IllegalArgumentException("Invalid DEX container section at " + offset);
+            }
+            int header = offset;
+            sections.add(new DexBackedDexFile(Opcodes.getDefault(), bytes, 0, true, header) {});
+            offset += sectionSize;
+        }
+        return sections;
+    }
+
+    private static int u32(byte[] data, int offset) {
+        return (data[offset] & 255)
+                | ((data[offset + 1] & 255) << 8)
+                | ((data[offset + 2] & 255) << 16)
+                | ((data[offset + 3] & 255) << 24);
     }
 
     private static String proto(MethodReference method) {

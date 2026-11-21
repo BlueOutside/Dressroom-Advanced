@@ -351,14 +351,18 @@ final class UnlockBlur {
         try {
             for (var entry : snapshot(clockAlpha.entrySet(), clockAlpha)) {
                 View view = entry.getKey();
-                if (view != null && view.isAttachedToWindow())
+                if (view != null && view.isAttachedToWindow()) {
+                    LockscreenFrameBoost.pulse(view, 220L);
                     view.setAlpha(entry.getValue() * alpha);
+                }
             }
             for (var entry : snapshot(backgrounds.entrySet(), backgrounds)) {
                 Background state = entry.getValue();
                 View view = state.view.get();
-                if (view != null && view.isAttachedToWindow() && state.baseline > 0)
+                if (view != null && view.isAttachedToWindow() && state.baseline > 0) {
+                    LockscreenFrameBoost.pulse(view, 220L);
                     entry.getKey().setAlpha(fadedOpacity(state.baseline, view));
+                }
             }
         } finally {
             writing.remove();
@@ -503,7 +507,9 @@ final class UnlockBlur {
     }
 
     static PointF hostOrigin(View clock, View host, PointF nativeOrigin) {
-        return active || ClockBlurMotion.moving(clock) ? globalOrigin(host) : nativeOrigin;
+        return active || ClockBlurMotion.moving(clock) || ClockInlineSeconds.active(clock)
+                ? globalOrigin(host)
+                : nativeOrigin;
     }
 
     private static PointF globalOrigin(View host) {
@@ -517,7 +523,8 @@ final class UnlockBlur {
     static Path liveClockPath(
             View clock, PointF origin, ImageView icon, Object weather, Path nativePath,
             Method glyphOutline) {
-        if (!active && !ClockBlurMotion.moving(clock)) return nativePath;
+        if (!active && !ClockBlurMotion.moving(clock) && !ClockInlineSeconds.active(clock))
+            return nativePath;
         WeakReference<java.util.List<?>> reference = glyphs.get(clock);
         java.util.List<?> views = reference == null ? null : reference.get();
         if (views == null) return nativePath;

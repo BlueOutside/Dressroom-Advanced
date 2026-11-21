@@ -10,6 +10,8 @@
 
 - [Compatibility audit](compatibility/README.md): One UI 8.0+ surface audit and requirements.
 - [Implementation status](compatibility/IMPLEMENTATION.md): supported bindings, capabilities and gaps.
+- [One UI 8.0 preview](compatibility/ONE_UI_8_0.md): One UI 8.0 compatibility notes and tested APKs.
+- [One UI 9.5 beta](compatibility/ONE_UI_9_5_BETA.md): One UI 9.5 beta shim bindings and audit status.
 - [Adapter design](compatibility/ADAPTER_DESIGN.md): capability-gated shim model.
 - [Shim map](compatibility/SHIMS.md): runtime shims and inspected package mappings.
 - [APK feature audit](compatibility/APK_FEATURE_AUDIT.md): cross-APK feature and signature checks.
@@ -30,7 +32,7 @@
 
 ## Feature & Pipeline Notes
 
-- **Clock & blur**: [Clock layer handoffs](research/CLOCK_LAYER_HANDOFFS.md), [Clock pipeline audit](research/CLOCK_PIPELINE_AUDIT.md), [Clock rendering](research/CLOCK_RENDERING.md), [AOD render pipeline](research/AOD_RENDER_PIPELINE.md), [Unlock blur](research/UNLOCK_BLUR.md), [Forced blur experiment](research/FORCED_BLUR_EXPERIMENT.md).
+- **Clock & blur**: [Clock layer handoffs](research/CLOCK_LAYER_HANDOFFS.md), [Clock pipeline audit](research/CLOCK_PIPELINE_AUDIT.md), [Clock rendering](research/CLOCK_RENDERING.md), [AOD render pipeline](research/AOD_RENDER_PIPELINE.md), [Unlock blur](research/UNLOCK_BLUR.md), [Forced blur experiment](research/FORCED_BLUR_EXPERIMENT.md), [UI polish notes](research/UI_POLISH.md).
 - **Widgets**: [AOD widget pipeline](research/AOD_WIDGET_PIPELINE.md), [Widget customization audit](research/WIDGET_CUSTOMIZATION_AUDIT.md), [Widget native features](research/WIDGET_NATIVE_FEATURES.md), [Widget outline audit](research/WIDGET_OUTLINE_AUDIT.md).
 - **Now Bar & media**: [Now Bar stack](research/NOW_BAR_STACK.md), [Media 8.5 notes](research/MEDIA_8.5.md), [Media return investigation](research/MEDIA_RETURN_INVESTIGATION.md).
 - **Depth & audits**: [Depth research](research/DEPTH_RESEARCH.md), [Depth upgrade research](research/DEPTH_UPGRADE_RESEARCH.md), [Native limits](research/NATIVE_LIMITS.md), [8.5 lifecycle audit](research/AUDIT_8.5_LIFECYCLE.md), [0.10 bug audit](research/BUG_AUDIT_0.10.md).

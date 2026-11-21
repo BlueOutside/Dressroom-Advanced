@@ -50,7 +50,7 @@ final class NowBarStackRepair {
                                                     repair.beforeRefresh(
                                                             (ViewGroup) chain.getThisObject(),
                                                             (CopyOnWriteArrayList<?>)
-                                                                    chain.getArg(0));
+                                                                    chain.getArg(binding.refreshItemsArgument()));
                                                 } catch (ReflectiveOperationException
                                                         | RuntimeException error) {
                                                     module.report(
@@ -138,21 +138,28 @@ final class NowBarStackRepair {
             if (expanding.getBoolean(stack) || Boolean.TRUE.equals(expanded.invoke(stack))) return;
             for (int i = 0; i < stack.getChildCount(); i++) {
                 View child = stack.getChildAt(i);
-                View content = (View) normalContent.invoke(child);
-                if (content == null
-                        || content.getParent() != child
-                        || content.getWidth() <= 0
-                        || content.getHeight() <= 0) continue;
-                // Some cards retain a tall, invisible expanded container. Scaling around
-                // that wrapper's center pulls the actual pill into the card above it.
-                float x = content.getLeft() + content.getWidth() * .5f;
-                float y = content.getTop() + content.getHeight() * .5f;
-                if (Math.abs(child.getPivotX() - x) > .01f) child.setPivotX(x);
-                if (Math.abs(child.getPivotY() - y) > .01f) child.setPivotY(y);
+                updatePillPivot(child, (View) normalContent.invoke(child));
             }
         } catch (ReflectiveOperationException | RuntimeException error) {
             module.report("Now Bar pill pivot unavailable", error);
         }
+    }
+
+    static boolean updatePillPivot(View card, View content) {
+        // Media nests its normal content inside the pill background. Both the
+        // native stack and extra layers must scale around that same ancestor.
+        while (content != null
+                && content.getParent() instanceof View parent
+                && parent != card) content = parent;
+        if (content == null
+                || content.getParent() != card
+                || content.getWidth() <= 0
+                || content.getHeight() <= 0) return false;
+        float x = content.getLeft() + content.getWidth() * .5f;
+        float y = content.getTop() + content.getHeight() * .5f;
+        if (Math.abs(card.getPivotX() - x) > .01f) card.setPivotX(x);
+        if (Math.abs(card.getPivotY() - y) > .01f) card.setPivotY(y);
+        return true;
     }
 
     private String name(Object model) throws IllegalAccessException {

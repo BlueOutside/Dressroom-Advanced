@@ -26,7 +26,7 @@ final class PlatformGate {
         int oneUi = oneUiVersion();
         if (oneUi <= 0) return true;
         int major = oneUi / 10000;
-        return (major == 8 && oneUi >= 80500) || (major == 9 && oneUi >= 90000);
+        return major == 8 || major == 9;
     }
 
     static int oneUiVersion() {

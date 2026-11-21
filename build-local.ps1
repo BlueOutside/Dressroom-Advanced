@@ -3,6 +3,11 @@ param(
     [string]$ApiAar = '',
     [string]$BuildDir = '',
     [string]$Keystore = '',
+    [string]$VersionName = '',
+    [int]$VersionCode = 0,
+    [string]$KeyAlias = 'alpha',
+    [string]$StorePass = 'android',
+    [string]$KeyPass = 'android',
     [switch]$Unsigned
 )
 $ErrorActionPreference = 'Stop'
@@ -10,6 +15,8 @@ Set-StrictMode -Version Latest
 $project = $PSScriptRoot
 . (Join-Path $project 'scripts/tooling.ps1')
 $config = Get-ProjectConfig $project
+if ($VersionName) { $config.versionName = $VersionName }
+if ($VersionCode -gt 0) { $config.versionCode = $VersionCode }
 if (-not $BuildDir) { $BuildDir = Join-Path $project '.build' }
 $buildRoot = [IO.Path]::GetFullPath($BuildDir)
 if (-not $Keystore) { $Keystore = Join-Path $project '.signing/alpha-debug.jks' }
@@ -45,8 +52,12 @@ try {
 $apiJar = Join-Path $apiDir 'classes.jar'
 $classes = Join-Path $buildRoot 'classes'
 $dex = Join-Path $buildRoot 'dex'
-$sources = @(Get-ChildItem (Join-Path $project 'app/src/main/java') -Recurse -Filter '*.java' | ForEach-Object FullName)
-Invoke-ProjectTool 'javac' (@('--release','17','-encoding','UTF-8','-classpath',"$androidJar;$apiJar",'-d',$classes) + $sources)
+$sourceList = Join-Path $buildRoot 'javac-sources.txt'
+$sources = Get-ChildItem (Join-Path $project 'app/src/main/java') -Recurse -Filter '*.java' |
+    ForEach-Object { '"' + $_.FullName.Replace('\', '/') + '"' }
+# Keep long checkout paths and the growing source list off the Windows command line.
+[IO.File]::WriteAllLines($sourceList, [string[]]$sources, [Text.UTF8Encoding]::new($false))
+Invoke-ProjectTool 'javac' @('--release','17','-encoding','UTF-8','-classpath',"$androidJar;$apiJar",'-d',$classes,"@$sourceList")
 $moduleJar = Join-Path $buildRoot 'module.jar'
 Invoke-ProjectTool 'jar' @('--create','--file',$moduleJar,'-C',$classes,'.')
 Invoke-ProjectTool (Join-Path $tools 'd8.bat') @('--lib',$androidJar,'--classpath',$apiJar,'--min-api',"$($config.minSdk)",'--output',$dex,$moduleJar)
@@ -78,6 +89,15 @@ if ($Unsigned) {
     Write-Output "Built unsigned APK (sign before installing): $output"
     return
 }
-Invoke-ProjectTool (Join-Path $tools 'apksigner.bat') @('sign','--ks',$Keystore,'--ks-key-alias','alpha','--ks-pass','pass:android','--key-pass','pass:android','--out',$output,$aligned)
+$prevKsPass = $env:APKSIGNER_KS_PASS
+$prevKeyPass = $env:APKSIGNER_KEY_PASS
+$env:APKSIGNER_KS_PASS = $StorePass
+$env:APKSIGNER_KEY_PASS = $KeyPass
+try {
+    Invoke-ProjectTool (Join-Path $tools 'apksigner.bat') @('sign','--ks',$Keystore,'--ks-key-alias',$KeyAlias,'--ks-pass','env:APKSIGNER_KS_PASS','--key-pass','env:APKSIGNER_KEY_PASS','--out',$output,$aligned)
+} finally {
+    $env:APKSIGNER_KS_PASS = $prevKsPass
+    $env:APKSIGNER_KEY_PASS = $prevKeyPass
+}
 Invoke-ProjectTool (Join-Path $tools 'apksigner.bat') @('verify','--verbose',$output)
 Write-Output "Built: $output"

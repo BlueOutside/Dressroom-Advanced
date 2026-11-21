@@ -15,6 +15,7 @@ import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.List;
+import java.util.Set;
 
 /** Read-only compatibility audit across Mods #1-#9. Each group runs independently. */
 public final class CompatibilityBatchProbe {
@@ -26,6 +27,7 @@ public final class CompatibilityBatchProbe {
     static final class Audit {
         int passed;
         int failed;
+        int skipped;
         final List<String> lines = new ArrayList<>();
 
         void check(String label, Check action) {
@@ -46,6 +48,11 @@ public final class CompatibilityBatchProbe {
                 }
             }
         }
+
+        void skip(String label, String reason) {
+            skipped++;
+            lines.add("SKIP " + label + " (" + reason + ")");
+        }
     }
 
     private CompatibilityBatchProbe() {}
@@ -57,7 +64,12 @@ public final class CompatibilityBatchProbe {
             DexSignatures.cached(() -> {
                 audit.check(
                         "editor clock panel",
-                        () -> EditorBinding.resolve(editor, editorVersion));
+                        () -> {
+                            EditorBinding binding = EditorBinding.resolve(editor, editorVersion);
+                            if (!binding.supportsPosition()) {
+                                throw new NoSuchMethodException("Advanced clock size and position");
+                            }
+                        });
                 audit.check(
                         "editor native tabs",
                         () -> NativeTabs.forType(
@@ -103,9 +115,16 @@ public final class CompatibilityBatchProbe {
                                     type, "setFontHeightRects", void.class, List.class);
                         });
                 if (legacyEditor) {
-                    audit.check(
-                            "editor widget toolbar/preview/metrics",
-                            () -> new WidgetEditorBinding(editor));
+                    audit.check("editor widget toolbar/preview/metrics", () -> {
+                        var widgets = new WidgetEditorBinding(editor);
+                        if (widgets.earlyPanel != null) {
+                            audit.check("8.0 editor custom grid", () ->
+                                    new OneUi85WidgetLayout(
+                                            editor, widgets.create.getDeclaringClass(), true));
+                            audit.check("8.0 editor widget catalog", () ->
+                                    OneUi80WidgetPanel.catalog(widgets.create.getDeclaringClass()));
+                        }
+                    });
                     if (editorVersion >= 296000000L) {
                         audit.check(
                                 "editor widget rotation/restore",
@@ -133,6 +152,15 @@ public final class CompatibilityBatchProbe {
                     audit.check("9.0 widget adapter", () -> OneUi9WidgetEditor.adapter(editor));
                     audit.check("9.0 widget toolbar", () -> OneUi9WidgetEditor.toolbar(editor));
                     audit.check("9.0 widget create", () -> OneUi9WidgetEditor.create(editor));
+                    audit.check("modern widget grid and cell measurements", () -> {
+                        Class<?> align = load(editor,
+                                "com.samsung.android.clockpack.plugins.briefwidget.WidgetAlignType");
+                        String prefix = "com.samsung.android.lockscreen.editor.item.domain.entity.item.widget.";
+                        Class<?> grid = load(editor, prefix + "WidgetGridData");
+                        Class<?> size = load(editor, prefix + "WidgetSizeData");
+                        OneUi9WidgetEditor.gridMetrics(editor, grid, align);
+                        OneUi9WidgetEditor.cellMetrics(editor, grid, size);
+                    });
                     audit.check(
                             "9.0 widget restore & store wiper",
                             () -> {
@@ -184,7 +212,11 @@ public final class CompatibilityBatchProbe {
                     audit.check("provider native clock blur", () -> ClockBlurBinding.resolve(base));
                     audit.check(
                             "provider clock blur retry",
-                            () -> ClockBlurRetryBinding.of(base));
+                            () -> {
+                                ClockBlurRetryBinding blur = ClockBlurRetryBinding.of(base);
+                                if (!family.legacy && blur.task == null)
+                                    OneUi95BlurHost.resolve(blur);
+                            });
                     audit.check(
                             "provider widget blur submissions",
                             () -> {
@@ -195,8 +227,68 @@ public final class CompatibilityBatchProbe {
                 audit.check("provider font axes", () -> FontBinding.of(base));
                 audit.check(
                         "provider source/measurement callers",
-                        () -> new ClockSourceBinding(provider, family));
+                        () -> {
+                            ClockSourceBinding source = new ClockSourceBinding(provider, family);
+                            if (!family.clockStyle && source.wallpaper == null) {
+                                OneUi95ClockPlacement.resolve(provider);
+                                OneUi95ClockPlacement.detachedClock(provider);
+                                boolean measuresPage = false;
+                                String anchor = "captureClockContainerRealHeight";
+                                for (Method method : source.callers) {
+                                    if (method.getDeclaringClass().getSimpleName()
+                                            .equals("FaceWidgetClockPage")
+                                            && DexSignatures.body(method, Set.of(anchor))
+                                                    .anchors().containsKey(anchor)) {
+                                        measuresPage = true;
+                                        break;
+                                    }
+                                }
+                                if (!measuresPage) {
+                                    throw new NoSuchMethodException("Clock page height measurement");
+                                }
+                            }
+                        });
+                if (!family.legacy && !family.clockStyle
+                        && ClockBlurRetryBinding.of(base).task == null) {
+                    audit.check("beta media collapse state", () -> {
+                        Class<?> card = load(provider,
+                                "com.samsung.android.app.facewidget.presentation.NowBarCardViewModel");
+                        OneUi95MediaCollapse.mediaProvider(card, OneUi95MediaCollapse.viewModel(provider));
+                        OneUi95MediaState.resolve(provider);
+                        Class<?> page = load(provider,
+                                "com.samsung.android.app.facewidget.pages.clock.FaceWidgetClockPage");
+                        String clock = DexSignatures.descriptor(base);
+                        var observer = OneUi95Editor.unique(DexSignatures.find(provider,
+                                        Set.of(OneUi95MediaState.PAGE_LOG)).stream()
+                                .filter(body -> body.calls().stream().anyMatch(call ->
+                                        call.owner().equals(clock) && call.name().equals("setMediaExpanded")))
+                                .toList(), "clock page media observer");
+                        OneUi95MediaState.pageExpanded(observer, DexSignatures.descriptor(page),
+                                clock, provider);
+                    });
+                    audit.check("beta widget layout completion and active clock", () -> {
+                        Class<?> widget = load(provider,
+                                "com.samsung.android.app.facewidget.complication.ComplicationWidgetPluginController");
+                        OneUi95WidgetRuntime.layout(widget);
+                        OneUi95WidgetRuntime.currentClock(load(provider, OneUi95WidgetRuntime.CLOCK_PAGE));
+                    });
+                    audit.check("beta directional AOD widget blur", () -> {
+                        String prefix = "com.samsung.android.app.facewidget.complication.";
+                        Class<?> host = load(provider, prefix + "ComplicationWidgetHostViewContainer");
+                        Method refresh = NativeContract.method(host, "refreshBlur", void.class, float.class);
+                        Class<?> curves = load(provider, prefix + "WidgetBlurTypeKt");
+                        Class<?> preset = load(provider, prefix + "WidgetBlurType");
+                        if (AodWidgetAppearance.directionalCurves(refresh, curves, preset).size() != 2)
+                            throw new NoSuchMethodException("Directional widget blur and tint");
+                    });
+                }
                 audit.check("provider glyph font cache", () -> GlyphFontCache.resolve(base));
+                audit.check(
+                        "provider inline clock seconds",
+                        () -> {
+                            ClockSecondsBinding.resolve(base);
+                            if (family.early) OneUi80ClockSeconds.dashboard(provider);
+                        });
                 if (!family.legacy) {
                     audit.check("provider clock transition", () -> ClockTransitionBinding.of(base));
                 }
@@ -229,13 +321,33 @@ public final class CompatibilityBatchProbe {
                                 NativeContract.method(
                                         decorator, "getAODDimColor", Integer.class, String.class);
                             });
-                    if (family.legacy) {
-                        audit.check(
-                                "provider widget lifecycle",
-                                () -> RuntimeWidgetHooks.legacyUpdates(load(
-                                        provider,
-                                        "com.samsung.android.app.facewidget.complication.ComplicationWidgetPluginController")));
-                    }
+                }
+                if (family.legacy) {
+                    audit.check(
+                            "provider widget lifecycle",
+                            () -> {
+                                Class<?> controller = load(provider,
+                                        "com.samsung.android.app.facewidget.complication.ComplicationWidgetPluginController");
+                                if (family.early) OneUi80WidgetRuntime.updates(controller);
+                                else RuntimeWidgetHooks.legacyUpdates(controller);
+                            });
+                }
+                if (family.early)
+                    audit.check("8.0 custom Now Bar filter", () -> OneUi80NowBarText.filter(provider));
+                if (family.early) {
+                    audit.check("8.0 widget host scale", () -> {
+                        OneUi80WidgetRuntime.addHost(provider);
+                        WidgetHostSizing.validateResize(provider);
+                    });
+                    audit.check("8.0 widget/Now Bar blur submission",
+                            () -> OneUi80WidgetRuntime.blurSubmissions(provider));
+                    audit.check("8.0 provider grid container",
+                            () -> OneUi80WidgetRuntime.grid(load(provider, WidgetEngine.GRID)));
+                    audit.check("8.0 native media clock",
+                            () -> {
+                                OneUi95MediaState.resolve(provider);
+                                OneUi80MediaHooks.clockField(provider, base);
+                            });
                 }
                 audit.check("provider Now Bar stack", () -> NowBarStackBinding.of(base));
                 audit.check(
@@ -251,21 +363,37 @@ public final class CompatibilityBatchProbe {
                             NativeContract.method(card, "getDarkAmount", float.class);
                             card.getMethod("getBlurContainer");
                             NowBarGlass.resolveBriefBlurMethods(brief, card, provider);
+                            if (!family.legacy && !family.clockStyle) {
+                                NowBarGlass.validatePillBackground(media, load(provider,
+                                        "com.android.systemui.plugins.keyguardstatusview.NowBarItem"));
+                            }
                         });
                 if (!family.legacy) {
                     audit.check(
                             "provider Now Brief GenUI StyleBox blur",
-                            () -> NowBriefFill.resolveStyleBoxUpdateBlur(
-                                    provider,
-                                    load(
-                                            provider,
-                                            "com.samsung.android.genui.model.style.BaseStyle")));
+                            () -> {
+                                Class<?> style = load(provider,
+                                        "com.samsung.android.genui.model.style.BaseStyle");
+                                NowBriefFill.resolveStyleBoxUpdateBlur(provider, style);
+                                try {
+                                    load(provider, "com.samsung.android.genui.kit.style.GenUIStyleKit");
+                                } catch (ClassNotFoundException beta) {
+                                    new OneUi95BriefFill(provider, load(provider,
+                                            "com.samsung.android.genui.model.GenUINode"), style);
+                                }
+                            });
                 }
                 if (family.legacy && !family.clockStyle) {
                     audit.check("provider media depth", () -> new OneUi85MediaBinding(base));
+                }
+                if (family.early || (family.legacy && !family.clockStyle)) {
                     audit.check(
                             "provider full-screen artwork",
-                            () -> new OneUi85ArtworkBinding(base));
+                            () -> {
+                                var binding = new OneUi85ArtworkBinding(base);
+                                if (family.early && binding.sourceArtwork == null)
+                                    throw new NoSuchFieldException("8.0 original artwork bitmap");
+                            });
                     audit.check(
                             "provider wallpaper fade",
                             () -> new OneUi85WallpaperFadeBinding(base));
@@ -332,15 +460,6 @@ public final class CompatibilityBatchProbe {
                                     || !BlurAppearance.isNowBarCardType(media)) {
                                 throw new IllegalStateException("NowBar card type rejected");
                             }
-                            if (!family.clockStyle) {
-                                Class<?> sub = load(
-                                        provider,
-                                        "com.samsung.android.app.sublauncher.presentation.view.nowbar.SubLauncherNowBarMediaCardView");
-                                if (!BlurAppearance.isNowBarCardType(sub)) {
-                                    throw new IllegalStateException(
-                                            "SubLauncher NowBar card type rejected");
-                                }
-                            }
                             load(
                                     provider,
                                     "com.samsung.android.app.facewidget.complication.ComplicationWidgetHostViewContainer");
@@ -355,6 +474,19 @@ public final class CompatibilityBatchProbe {
                                         "Missing ClockBlurController$ alpha listener");
                             }
                         });
+                if (!family.clockStyle) {
+                    String cover = "provider cover-screen Now Bar cards";
+                    try {
+                        Class<?> card = load(provider,
+                                "com.samsung.android.app.sublauncher.presentation.view.nowbar.SubLauncherNowBarMediaCardView");
+                        audit.check(cover, () -> {
+                            if (!BlurAppearance.isNowBarCardType(card))
+                                throw new IllegalStateException("SubLauncher Now Bar card type rejected");
+                        });
+                    } catch (ClassNotFoundException absent) {
+                        audit.skip(cover, "cover media card absent from this provider APK");
+                    }
+                }
                 return null;
             });
         } catch (Exception error) {
@@ -468,9 +600,9 @@ public final class CompatibilityBatchProbe {
                                         ui, "forceDismissRunnable", Runnable.class);
                                 List<Method> callbacks =
                                         NowBarExtras.resolveEndCallbacks(sysui, ui, card);
-                                if (callbacks.size() != 2) {
+                                if (callbacks.size() < 2 || callbacks.size() > 3) {
                                     throw new IllegalStateException(
-                                            "Expected 2 end callbacks, found " + callbacks.size());
+                                            "Expected 2 or 3 end callbacks, found " + callbacks.size());
                                 }
                             } else {
                                 Class<?> owner = load(
@@ -547,6 +679,7 @@ public final class CompatibilityBatchProbe {
     private static void print(Audit source, Audit total) {
         total.passed += source.passed;
         total.failed += source.failed;
+        total.skipped += source.skipped;
         for (String line : source.lines) {
             System.out.println(line);
         }
@@ -572,7 +705,8 @@ public final class CompatibilityBatchProbe {
             if (args.length >= 5 && !args[4].isEmpty()) {
                 print(auditWallpaper(new PathClassLoader(args[4], parent)), total);
             }
-            System.out.println("AUDIT: " + total.passed + " passed, " + total.failed + " failed");
+            System.out.println("AUDIT: " + total.passed + " passed, " + total.failed + " failed"
+                    + (total.skipped == 0 ? "" : ", " + total.skipped + " skipped"));
             System.exit(total.failed == 0 ? 0 : 2);
         } catch (Throwable error) {
             error.printStackTrace(System.out);

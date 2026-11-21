@@ -37,10 +37,15 @@ final class ClockGlassBinding {
         java.util.Set<Method> inRemove = selfVoidCalls(base, absDesc, "removeBlur");
         java.util.Set<Method> inEnable =
                 selfVoidCalls(base, absDesc, "setBlurEffectEnabled", boolean.class);
-        inRemove.retainAll(inEnable);
-        if (inRemove.size() != 1)
-            throw new NoSuchMethodException("Ambiguous clock glass refresh: " + inRemove.size());
-        return inRemove.iterator().next();
+        java.util.List<Method> shared = inRemove.stream().filter(inEnable::contains).toList();
+        if (shared.size() == 1) return shared.get(0);
+        if (shared.isEmpty() && inEnable.contains(base.getDeclaredMethod("removeBlur"))) {
+            java.util.Set<String> anchor = java.util.Set.of("refreshColor: ");
+            for (Method method : inRemove)
+                if (DexSignatures.body(method, anchor).anchors().keySet().containsAll(anchor))
+                    return method;
+        }
+        throw new NoSuchMethodException("Ambiguous clock glass refresh: " + shared.size());
     }
 
     private static java.util.Set<Method> selfVoidCalls(

@@ -22,6 +22,7 @@ final class WidgetPlacement {
         WeakReference<ViewTreeObserver> observer = new WeakReference<>(null);
         View.OnLayoutChangeListener layoutListener;
         Bundle settings;
+        boolean useNativePage;
         final RectF lastClockRect = new RectF();
         float deltaX, deltaY, appliedX, appliedY;
 
@@ -39,8 +40,9 @@ final class WidgetPlacement {
             View window = view.getRootView();
             View time = clock.get();
             if (time == null || !time.isAttachedToWindow() || time.getRootView() != window
-                    || time.getWidth() == 0 || time.getHeight() == 0) {
-                time = findClock(window);
+                    || time.getWidth() == 0 || time.getHeight() == 0
+                    || (useNativePage && !shown(time))) {
+                time = useNativePage ? findPageClock(window) : findClock(window);
                 clock = new WeakReference<>(time);
             }
             if (time == null && lastClockRect.isEmpty() && settings.getInt("anchor") != 5) return true;
@@ -89,6 +91,7 @@ final class WidgetPlacement {
             if (Math.abs(tx - appliedX) > .01f) deltaX = 0;
             if (Math.abs(ty - appliedY) > .01f) deltaY = 0;
             if (Math.abs(tx - targetTx) > .25f || Math.abs(ty - targetTy) > .25f) {
+                LockscreenFrameBoost.pulse(view, 220L);
                 deltaX = targetTx - (tx - deltaX);
                 deltaY = targetTy - (ty - deltaY);
                 appliedX = targetTx;
@@ -123,7 +126,9 @@ final class WidgetPlacement {
         State state = states.computeIfAbsent(root, State::new);
         state.settings = new Bundle(settings);
         state.settings.putInt("anchor", anchor);
-        if (provider != null)
+        state.useNativePage = provider != null && PlatformGate.oneUiVersion() >= 90500;
+        if (state.useNativePage) state.clock.clear();
+        if (provider != null && !state.useNativePage)
             try {
                 Object clock = Reflect.field(provider, "clockView");
                 if (clock instanceof View view) state.clock = new WeakReference<>(view);
@@ -140,6 +145,7 @@ final class WidgetPlacement {
             root.addOnLayoutChangeListener(state.layoutListener);
         }
         WidgetDepthBlur.afterPlacement(root);
+        EditorBlurCapture.afterPlacement(root);
         // Non-foldables use the canvas-motion watcher instead of the separate
         // outline watcher. Both must sample after this frame's placement.
         DepthViewMotion.afterPlacement(root);
@@ -187,6 +193,31 @@ final class WidgetPlacement {
     private static View findClock(View root) {
         View visible = findClock(root, false);
         return visible != null ? visible : findClock(root, true);
+    }
+
+    private static View findPageClock(View root) {
+        if (!shown(root)) return null;
+        for (Class<?> type = root.getClass(); type != null; type = type.getSuperclass()) {
+            if (!type.getName().equals(OneUi95WidgetRuntime.CLOCK_PAGE)) continue;
+            try {
+                Object clock = OneUi95WidgetRuntime.currentClock(type).invoke(root);
+                if (clock instanceof View view && view.isAttachedToWindow() && shown(view)
+                        && view.getWidth() > 0 && view.getHeight() > 0) return view;
+            } catch (ReflectiveOperationException | RuntimeException unavailable) {
+                DressroomModule.note("Widget placement clock page unavailable", unavailable);
+            }
+            return null;
+        }
+        if (root instanceof ViewGroup group)
+            for (int i = 0; i < group.getChildCount(); i++) {
+                View clock = findPageClock(group.getChildAt(i));
+                if (clock != null) return clock;
+            }
+        return null;
+    }
+
+    private static boolean shown(View view) {
+        return view.isShown() && view.getAlpha() > 0f;
     }
 
     private static View findClock(View root, boolean allowHidden) {

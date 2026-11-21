@@ -24,7 +24,7 @@ final class NowBarStackLayers {
     private final DressroomModule module;
     private final NowBarStackBinding binding;
     private final Class<?> stackClass;
-    private final Field items, restricted, mode, screenOn;
+    private final Field items, restricted, mode;
     private final Method expanded, content;
     private final Field dragging, reordering, dismissing, animationManager, animationsEnabled;
     private final ThreadLocal<Release> release = new ThreadLocal<>();
@@ -42,7 +42,6 @@ final class NowBarStackLayers {
         items = binding.items;
         restricted = binding.restricted;
         mode = binding.mode;
-        screenOn = binding.screenOn;
         expanded = binding.expanded;
         content = binding.content;
         stackSize = binding.stackSize;
@@ -343,7 +342,7 @@ final class NowBarStackLayers {
     }
 
     private void refreshCount(ViewGroup root) throws ReflectiveOperationException {
-        binding.refresh.invoke(root, new CopyOnWriteArrayList<>((List<?>) items.get(root)));
+        binding.refreshCards(root, new CopyOnWriteArrayList<>((List<?>) items.get(root)));
     }
 
     private void queueCountRefresh(ViewGroup root) {
@@ -464,9 +463,7 @@ final class NowBarStackLayers {
             // immediately through the existing Extras observer.
             if (!tails.containsKey(root)) tails.put(root, new WeakReference<>(null));
             int count = count(root);
-            if (count <= 3
-                    || !root.isAttachedToWindow()
-                    || Boolean.TRUE.equals(expanded.invoke(root))) return;
+            if (count <= 3 || !root.isAttachedToWindow()) return;
             clear(root);
             if (!(root.getParent() instanceof FrameLayout parent)) return;
             Tail tail = tail(root);
@@ -480,7 +477,7 @@ final class NowBarStackLayers {
             }
             List<?> values = (List<?>) items.get(root);
             Object currentMode = mode.get(root);
-            boolean dozing = !screenOn.getBoolean(root);
+            boolean dozing = binding.isDozing(root);
             for (int rank = Math.min(count, values.size() - 1); rank >= 3; rank--) {
                 Object value = values.get(rank);
                 View card = inflate(root, value);
@@ -489,18 +486,17 @@ final class NowBarStackLayers {
                 Reflect.call(card, "setViewMode", currentMode);
                 Reflect.call(card, "setInitialDozing", dozing);
                 binding.bindItem.invoke(card, value, Integer.valueOf(2));
-                binding.hideContents.invoke(card, 2, false);
+                hideRearContents(card, value);
                 card.setClickable(false);
                 card.setFocusable(false);
                 tail.ranks.put(card, new Rank(rank, count));
                 card.setAlpha(rank < count ? 1f : 0f);
                 tail.addView(card, new FrameLayout.LayoutParams(-1, -1));
-                binding.hideContents.invoke(card, 2, false);
+                hideRearContents(card, value);
             }
             tail.cardMode = currentMode;
             tail.cardsDozing = dozing;
             position(root);
-            tail.setVisibility(View.VISIBLE);
             sync(root);
         } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
             clear(root);
@@ -517,15 +513,34 @@ final class NowBarStackLayers {
                     case 4 -> "nowbar_battery_layout";
                     case 5 -> "nowbar_contact_layout";
                     case 6, 7 -> "nowbar_external_view_layout";
-                    case 8 -> "nowbar_brief_view_layout";
+                    // GenUI owns a shared live view. A second Brief card can reparent
+                    // or dispose it when the tail rebuilds; only the native stack
+                    // should create that card and handle its unlocked actions.
+                    case 8 -> "nowbar_ongoing_layout";
                     default -> "nowbar_ongoing_layout";
                 };
-        Bundle extras = (Bundle) Reflect.call(value, "getExtraData");
-        if (extras != null && extras.getBoolean("nowbar_key_app_search_data_card"))
-            layout = "nowbar_app_search_card_layout";
-        else if (Boolean.TRUE.equals(Reflect.call(value, "isCall"))) layout = "nowbar_call_layout";
+        if (style < 1 || style == 3 || style > 8) {
+            // Samsung chooses these fallbacks only after the dedicated styles.
+            Bundle extras = (Bundle) Reflect.call(value, "getExtraData");
+            if (extras != null && extras.getBoolean("nowbar_key_app_search_data_card"))
+                layout = "nowbar_app_search_card_layout";
+            else if (Boolean.TRUE.equals(Reflect.call(value, "isCall"))) layout = "nowbar_call_layout";
+        }
         int id = root.getResources().getIdentifier(layout, "layout", binding.resources);
-        return id == 0 ? null : LayoutInflater.from(root.getContext()).inflate(id, root, false);
+        if (id == 0) return null;
+        View card = LayoutInflater.from(root.getContext()).inflate(id, root, false);
+        if (style == 4) card.setTag(Reflect.call(value, "getPrimaryInfo"));
+        return card;
+    }
+
+    private void hideRearContents(View card, Object value) throws ReflectiveOperationException {
+        binding.hideContents.invoke(card, 2, false);
+        if (((Number) Reflect.call(value, "getNowBarViewStyle")).intValue() == 8) {
+            // Brief normally keeps its GenUI content visible at nonzero depth.
+            // This shell uses a separate background and hides ordinary contents.
+            View contents = (View) content.invoke(card);
+            if (contents != null) contents.setAlpha(0f);
+        }
     }
 
     private void position(ViewGroup root) {
@@ -562,11 +577,16 @@ final class NowBarStackLayers {
                             && !restricted.getBoolean(root)
                             && !Boolean.TRUE.equals(expanded.invoke(root))
                             && !currentMode.name().equals("AOD");
-            if (visible
-                    && tail.getChildCount() == 0
-                    && !tail.rebuilding
-                    && tail.getVisibility() != View.VISIBLE) {
+            if (visible && tail.getChildCount() == 0 && !tail.rebuilding) {
                 tail.rebuilding = true;
+                if (root.getWidth() > 0 && root.getHeight() > 0) {
+                    try {
+                        rebuild(root);
+                    } finally {
+                        tail.rebuilding = false;
+                    }
+                    return;
+                }
                 Tail pending = tail;
                 root.post(
                         () -> {
@@ -575,12 +595,13 @@ final class NowBarStackLayers {
                         });
             }
             if (!visible) tail.stop();
-            boolean dozing = !screenOn.getBoolean(root);
+            boolean dozing = binding.isDozing(root);
             if (tail.cardMode != currentMode || tail.cardsDozing != dozing) {
                 for (int i = 0; i < tail.getChildCount(); i++) {
                     View card = tail.getChildAt(i);
                     Reflect.call(card, "setViewMode", currentMode);
                     Reflect.call(card, "setInitialDozing", dozing);
+                    hideRearContents(card, binding.item.invoke(card));
                 }
                 tail.cardMode = currentMode;
                 tail.cardsDozing = dozing;
@@ -765,15 +786,8 @@ final class NowBarStackLayers {
                 Rank rank = ranks.get(card);
                 if (rank == null) continue;
                 try {
-                    View pill = (View) content.invoke(card);
-                    // Media nests the normal container inside its background; find the
-                    // direct ancestor before deriving its center in card coordinates.
-                    while (pill != null
-                            && pill.getParent() instanceof View parent
-                            && parent != card) pill = parent;
-                    if (pill == null || pill.getHeight() <= 0) continue;
-                    card.setPivotX(pill.getLeft() + pill.getWidth() * .5f);
-                    card.setPivotY(pill.getTop() + pill.getHeight() * .5f);
+                    if (!NowBarStackRepair.updatePillPivot(card, (View) content.invoke(card)))
+                        continue;
                     if (outgoing != null) continue;
                     float scale = scale(rank.rank, rank.count);
                     card.setScaleX(scale);

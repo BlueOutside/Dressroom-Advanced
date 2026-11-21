@@ -12,20 +12,44 @@ final class WidgetEditorBinding {
     static final String REPOSITORIES =
             "com.samsung.android.lockscreen.editor.item.data.repository.item.widget.";
     final Method toolbar, create, getGrid, metrics, position;
+    final OneUi80WidgetPanel earlyPanel;
+    final java.lang.reflect.Field earlyToolbarView;
     private final Class<?> menuItem;
     private final java.lang.reflect.Field rootField;
 
     WidgetEditorBinding(ClassLoader loader) throws ReflectiveOperationException {
         Class<?> widgetData = entity(loader, "item.widget.WidgetData");
-        Class<?> preview =
-                NativeContract.findClass(
+        java.util.function.Predicate<Class<?>> previewShape =
+                cls -> NativeContract.hasField(cls, widgetData)
+                        && NativeContract.hasMethod(cls, View.class);
+        Class<?> preview;
+        try {
+            preview = NativeContract.findClass(
                         loader,
-                        cls ->
-                                NativeContract.hasField(cls, widgetData)
-                                        && NativeContract.hasMethod(cls, View.class),
+                        previewShape,
                         OneUi85WidgetEditor.PREVIEW,
                         "gb.l0");
+        } catch (NativeContract.AmbiguousClassException ambiguous) {
+            String anchor = "DRESSROOM_LOCK_COMPLICATION_CONTAINER";
+            try {
+                var matching = new ArrayList<Class<?>>();
+                for (var body : DexSignatures.find(loader, java.util.Set.of(anchor))) {
+                    if (body.parameters().isEmpty() && body.result().equals("Landroid/view/View;")) {
+                        Class<?> owner = body.loadOwner(loader);
+                        if (previewShape.test(owner) && !matching.contains(owner)) matching.add(owner);
+                    }
+                }
+                if (matching.size() != 1) throw ambiguous;
+                preview = matching.get(0);
+            } catch (java.io.IOException unavailable) {
+                ambiguous.addSuppressed(unavailable);
+                throw ambiguous;
+            }
+        }
         create = findPublicViewMethod(preview);
+        earlyPanel = NativeTabs.forType(Class.forName(
+                "com.google.android.material.tabs.TabLayout", false, loader)).early
+                ? OneUi80WidgetPanel.bind(create) : null;
         NativeContract.findField(preview, "I", widgetData);
         NativeContract.findField(preview, "J", ViewGroup.class);
         rootField = resolveRootField(preview, create);
@@ -73,6 +97,7 @@ final class WidgetEditorBinding {
                         OneUi85WidgetEditor.TOOLBAR,
                         "V3.r");
         toolbar = toolbarRenderer(loader, toolbarClass, menuArray);
+        earlyToolbarView = earlyPanel == null ? null : OneUi80WidgetPanel.toolbarView(toolbar);
         Class<?> uiController =
                 Class.forName(
                         "com.samsung.android.clockpack.plugins.appwidget.IWidgetUIController",
@@ -342,11 +367,20 @@ final class WidgetEditorBinding {
             if (direct != null) return direct;
         } catch (NoSuchMethodException ignored) {
         }
-        java.lang.reflect.Field providerField =
-                NativeContract.findField(
+        java.lang.reflect.Field providerField;
+        try {
+            providerField = NativeContract.findField(
                         metricsRepo.getClass(),
                         "b",
                         Class.forName("javax.inject.Provider", false, loader));
+        } catch (ClassNotFoundException | NoSuchFieldException newerSupplier) {
+            var providers = java.util.Arrays.stream(metricsRepo.getClass().getDeclaredFields())
+                    .filter(field -> !java.lang.reflect.Modifier.isStatic(field.getModifiers())
+                            && isZeroArgSupplier(field.getType()))
+                    .toList();
+            providerField = OneUi95Editor.unique(providers, "widget sizing provider");
+            providerField.setAccessible(true);
+        }
         Object provider = providerField.get(metricsRepo);
         Object wrapper = Reflect.call(provider, "get");
         return NativeContract.findField(wrapper.getClass(), null, sizeMgr).get(wrapper);
@@ -545,16 +579,87 @@ final class WidgetEditorBinding {
                 owner, "n", entity(owner.getClass().getClassLoader(), "item.widget.WidgetData"));
     }
 
+    static boolean isZeroArgSupplier(Class<?> type) {
+        if (type == null || !type.isInterface()) return false;
+        Method[] methods = type.getMethods();
+        if (methods.length != 1) return false;
+        Method m = methods[0];
+        return m.getName().equals("get")
+                && m.getParameterCount() == 0
+                && m.getReturnType() == Object.class;
+    }
+
+    static Object unwrapSupplier(Object owner, String preferredField, Class<?> expectedValue)
+            throws ReflectiveOperationException {
+        if (preferredField != null) {
+            try {
+                java.lang.reflect.Field f = owner.getClass().getDeclaredField(preferredField);
+                if (!java.lang.reflect.Modifier.isStatic(f.getModifiers())) {
+                    f.setAccessible(true);
+                    Object raw = f.get(owner);
+                    if (raw != null) {
+                        if (expectedValue.isInstance(raw)) return raw;
+                        if (isZeroArgSupplier(f.getType())) {
+                            Object supplied = Reflect.call(raw, "get");
+                            if (expectedValue.isInstance(supplied)) return supplied;
+                        }
+                    }
+                }
+            } catch (ReflectiveOperationException ignored) {
+            }
+        }
+        Object matched = null;
+        for (java.lang.reflect.Field f : owner.getClass().getDeclaredFields()) {
+            if (java.lang.reflect.Modifier.isStatic(f.getModifiers()) || f.getType().isPrimitive())
+                continue;
+            f.setAccessible(true);
+            Object raw = f.get(owner);
+            if (raw == null) continue;
+            Object candidate = null;
+            if (expectedValue.isInstance(raw)) {
+                candidate = raw;
+            } else if (isZeroArgSupplier(f.getType())) {
+                try {
+                    Object supplied = Reflect.call(raw, "get");
+                    if (expectedValue.isInstance(supplied)) candidate = supplied;
+                } catch (ReflectiveOperationException ignored) {
+                }
+            }
+            if (candidate != null) {
+                if (matched != null && matched != candidate) {
+                    throw new NoSuchFieldException(
+                            "Ambiguous supplier for "
+                                    + expectedValue.getName()
+                                    + " on "
+                                    + owner.getClass().getName());
+                }
+                matched = candidate;
+            }
+        }
+        if (matched == null) {
+            throw new NoSuchFieldException(
+                    "Missing supplier for "
+                            + expectedValue.getName()
+                            + " on "
+                            + owner.getClass().getName());
+        }
+        return matched;
+    }
+
     Object grid(Object owner) throws ReflectiveOperationException {
-        Class<?> lazyType = Class.forName("dagger.Lazy", false, owner.getClass().getClassLoader());
-        Object lazy = NativeContract.findField(owner.getClass(), "a", lazyType).get(owner);
-        return getGrid.invoke(Reflect.call(lazy, "get"));
+        Object wrapper = unwrapSupplier(owner, "a", getGrid.getDeclaringClass());
+        return getGrid.invoke(wrapper);
     }
 
     boolean main(Object owner) throws ReflectiveOperationException {
+        if (earlyPanel != null) return earlyPanel.main(owner);
         Class<?> uiMode = entity(owner.getClass().getClassLoader(), "preview.UIMode");
         Object mode = Reflect.call(findObservableData(owner, "c", uiMode), "getData");
         return Boolean.TRUE.equals(Reflect.call(mode, "isLockScreen"));
+    }
+
+    Object panel(Object owner) throws ReflectiveOperationException {
+        return earlyPanel == null ? findUiController(owner, "k") : earlyPanel.controller().get(owner);
     }
 
     void recalculate(Object owner) throws ReflectiveOperationException {

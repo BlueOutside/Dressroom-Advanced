@@ -13,7 +13,18 @@ final class DepthBinding {
     private DepthBinding() {}
 
     static void validateEditor(ClassLoader loader) throws ReflectiveOperationException {
-        Class<?> capture = Class.forName(SDK + "base.ObjectCapture", false, loader);
+        Class<?> crop = Class.forName(
+                "com.samsung.android.app.dressroom.presentation.preview.widget.CropImageView",
+                false, loader);
+        NativeContract.method(crop, "onDraw", void.class, android.graphics.Canvas.class);
+        Class<?> capture;
+        try {
+            capture = Class.forName(SDK + "base.ObjectCapture", false, loader);
+        } catch (ClassNotFoundException older) {
+            OneUi80Depth.resolve(loader);
+            OneUi80Depth.cropDrawable(crop);
+            return;
+        }
         Class<?> result = Class.forName(SDK + "base.ObjectResult", false, loader);
         Class<?> info = Class.forName(SDK + "base.ObjectInfo", false, loader);
         var factory =
@@ -21,6 +32,12 @@ final class DepthBinding {
                         .getDeclaredMethod("getInstance", Context.class);
         if (!Modifier.isStatic(factory.getModifiers()) || factory.getReturnType() != capture)
             throw new NoSuchMethodException("Object Capture factory changed");
+        validateDetector(capture, result, info);
+        NativeContract.method(crop, "getDrawableInner", Drawable.class);
+    }
+
+    static void validateDetector(Class<?> capture, Class<?> result, Class<?> info)
+            throws ReflectiveOperationException {
         NativeContract.method(capture, "isObjectCaptureSupported", boolean.class);
         NativeContract.method(capture, "init", void.class);
         NativeContract.method(capture, "release", void.class);
@@ -30,13 +47,6 @@ final class DepthBinding {
         NativeContract.method(result, "getObjects", java.util.List.class);
         NativeContract.method(info, "getObjBitmap", Bitmap.class);
         NativeContract.method(info, "getBoundRect", Rect.class);
-        Class<?> crop =
-                Class.forName(
-                        "com.samsung.android.app.dressroom.presentation.preview.widget.CropImageView",
-                        false,
-                        loader);
-        NativeContract.method(crop, "getDrawableInner", Drawable.class);
-        NativeContract.method(crop, "onDraw", void.class, android.graphics.Canvas.class);
     }
 
     static boolean provider(Object clock) {

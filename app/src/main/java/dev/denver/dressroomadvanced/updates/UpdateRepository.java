@@ -1,10 +1,12 @@
 package dev.denver.dressroomadvanced;
 
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
@@ -14,75 +16,281 @@ import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.security.MessageDigest;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 final class UpdateRepository {
     static final String PACKAGE = "dev.denver.dressroomadvanced";
+    static final String PREF_PRERELEASE = "prerelease_channel";
     private static final String REPO = "https://github.com/BlueOutside/Dressroom-Advanced/";
     private static final String API =
             "https://api.github.com/repos/BlueOutside/Dressroom-Advanced/releases/latest";
+    private static final String RELEASES_API =
+            "https://api.github.com/repos/BlueOutside/Dressroom-Advanced/releases?per_page=30";
     private static final long MAX_APK = 128L * 1024 * 1024;
     private static long checked;
-    private static JSONObject cached;
+    private static List<JSONObject> cachedReleases;
+    private static boolean cachedIncludePrerelease;
+
+    record ReleaseCandidate<T>(String tag, boolean draft, boolean prerelease, T payload) {}
+
+    record UpdateSelection<T>(ReleaseCandidate<T> stable, ReleaseCandidate<T> prerelease) {
+        boolean hasUpdate() {
+            return stable != null || prerelease != null;
+        }
+
+        boolean hasChoice() {
+            return stable != null && prerelease != null;
+        }
+    }
+
+    private record PreparedRelease(JSONObject release, JSONObject asset) {}
 
     private UpdateRepository() {}
 
-    // Separate from the settings monitor: a slow GitHub request must not hold up Apply.
+    static boolean prereleaseEnabled(
+            boolean hasExplicitPreference, boolean explicitPreference, String installedVersion) {
+        if (hasExplicitPreference) return explicitPreference;
+        try {
+            return ReleaseVersion.parse(installedVersion).isPrerelease();
+        } catch (IllegalArgumentException ignored) {
+            return false;
+        }
+    }
+
+    static <T> UpdateSelection<T> select(
+            List<ReleaseCandidate<T>> candidates,
+            String installedVersion,
+            boolean includePrerelease) {
+        if (candidates == null || candidates.isEmpty()) {
+            return new UpdateSelection<>(null, null);
+        }
+        ReleaseVersion installed = ReleaseVersion.parse(installedVersion);
+        ReleaseCandidate<T> bestStable = null;
+        ReleaseVersion bestStableVersion = null;
+        ReleaseCandidate<T> bestPrerelease = null;
+        ReleaseVersion bestPrereleaseVersion = null;
+        for (ReleaseCandidate<T> candidate : candidates) {
+            if (candidate == null || candidate.draft() || candidate.payload() == null) continue;
+            ReleaseVersion version;
+            try {
+                version = ReleaseVersion.parse(candidate.tag());
+            } catch (IllegalArgumentException ignored) {
+                continue;
+            }
+            boolean isPre = candidate.prerelease() || version.isPrerelease();
+            if (isPre && !includePrerelease) continue;
+            if (version.compareTo(installed) <= 0) continue;
+            if (isPre) {
+                if (bestPrereleaseVersion == null
+                        || version.compareTo(bestPrereleaseVersion) > 0) {
+                    bestPrerelease = candidate;
+                    bestPrereleaseVersion = version;
+                }
+            } else {
+                if (bestStableVersion == null || version.compareTo(bestStableVersion) > 0) {
+                    bestStable = candidate;
+                    bestStableVersion = version;
+                }
+            }
+        }
+        // Once a stable build equals or supersedes the newest pre-release, offer only stable.
+        if (bestStable != null
+                && bestPrerelease != null
+                && bestPrereleaseVersion.compareTo(bestStableVersion) <= 0) {
+            bestPrerelease = null;
+        }
+        return new UpdateSelection<>(bestStable, bestPrerelease);
+    }
+
+    private static String installedVersionName(Context context) {
+        try {
+            PackageInfo info = context.getPackageManager().getPackageInfo(PACKAGE, 0);
+            return info.versionName == null ? "" : info.versionName;
+        } catch (PackageManager.NameNotFoundException | RuntimeException ignored) {
+            return "";
+        }
+    }
+
+    static boolean isPrereleaseEnabled(Context context) {
+        SharedPreferences prefs = context.getSharedPreferences("updates", 0);
+        boolean hasExplicit = prefs.contains(PREF_PRERELEASE);
+        boolean explicit = prefs.getBoolean(PREF_PRERELEASE, false);
+        return prereleaseEnabled(hasExplicit, explicit, installedVersionName(context));
+    }
+
+    static synchronized Bundle preferences(Context context) {
+        Bundle result = new Bundle();
+        result.putBoolean("prerelease", isPrereleaseEnabled(context));
+        result.putString("installed", installedVersionName(context));
+        return result;
+    }
+
+    static synchronized Bundle setPrereleaseEnabled(Context context, boolean enabled) {
+        context.getSharedPreferences("updates", 0)
+                .edit()
+                .putBoolean(PREF_PRERELEASE, enabled)
+                .commit();
+        checked = 0;
+        cachedReleases = null;
+        return preferences(context);
+    }
+
     static synchronized Bundle check(Context context) throws Exception {
+        return check(context, false);
+    }
+
+    // Separate from the settings monitor: a slow GitHub request must not hold up Apply.
+    static synchronized Bundle check(Context context, boolean force) throws Exception {
+        boolean includePrerelease = isPrereleaseEnabled(context);
         long now = android.os.SystemClock.elapsedRealtime();
-        if (checked == 0 || now - checked > 15 * 60_000) {
-            cached = null;
-            cached = latest();
+        if (force
+                || checked == 0
+                || now - checked > 15 * 60_000
+                || cachedIncludePrerelease != includePrerelease
+                || cachedReleases == null) {
+            cachedReleases = null;
+            cachedReleases = fetchReleases(includePrerelease);
+            cachedIncludePrerelease = includePrerelease;
             checked = now;
         }
+        String installedVersion = installedVersionName(context);
         Bundle result = new Bundle();
-        if (cached == null) return result;
-        PackageInfo installed = context.getPackageManager().getPackageInfo(PACKAGE, 0);
-        String version = cached.getString("tag_name");
-        result.putString("latest", version);
-        result.putString("installed", installed.versionName);
-        if (ReleaseVersion.parse(version).compareTo(ReleaseVersion.parse(installed.versionName))
-                <= 0) return result;
-        JSONObject asset = asset(cached);
-        if (asset == null) return result;
-        String release = cached.toString();
-        String assetIdentity = String.join("\n", version, asset.optString("id"),
-                asset.getString("browser_download_url"), Long.toString(asset.getLong("size")),
-                asset.optString("digest"), asset.optString("updated_at"));
-        var requests = context.getSharedPreferences("updates", 0);
+        result.putString("installed", installedVersion);
+        result.putBoolean("prereleaseEnabled", includePrerelease);
+        if (cachedReleases == null || cachedReleases.isEmpty() || installedVersion.isEmpty()) {
+            return result;
+        }
+        List<ReleaseCandidate<PreparedRelease>> candidates =
+                new ArrayList<>(cachedReleases.size());
+        for (JSONObject release : cachedReleases) {
+            String tag = release.optString("tag_name", "");
+            boolean draft = release.optBoolean("draft");
+            boolean pre = release.optBoolean("prerelease");
+            JSONObject asset = null;
+            try {
+                asset = asset(release);
+            } catch (IOException ignored) {
+            }
+            candidates.add(
+                    new ReleaseCandidate<>(
+                            tag,
+                            draft,
+                            pre,
+                            asset == null ? null : new PreparedRelease(release, asset)));
+        }
+        UpdateSelection<PreparedRelease> selection =
+                select(candidates, installedVersion, includePrerelease);
+        if (!selection.hasUpdate()) return result;
+
+        SharedPreferences requests = context.getSharedPreferences("updates", 0);
         long wallTime = System.currentTimeMillis();
-        String token = requests.getString("token", null);
-        if (token == null || wallTime >= requests.getLong("expires", 0)
-                || !assetIdentity.equals(requests.getString("asset", null))) {
+        if (selection.hasChoice()) {
+            String stableToken = stageToken(requests, "stable", selection.stable(), wallTime);
+            String preToken = stageToken(requests, "prerelease", selection.prerelease(), wallTime);
+            result.putString("version", selection.stable().tag());
+            result.putString("token", stableToken);
+            result.putBoolean("prerelease", false);
+            result.putString("altVersion", selection.prerelease().tag());
+            result.putString("altToken", preToken);
+            result.putBoolean("altPrerelease", true);
+            result.putString("latest", selection.prerelease().tag());
+        } else if (selection.stable() != null) {
+            String token = stageToken(requests, "stable", selection.stable(), wallTime);
+            result.putString("version", selection.stable().tag());
+            result.putString("token", token);
+            result.putBoolean("prerelease", false);
+            result.putString("latest", selection.stable().tag());
+        } else {
+            String token = stageToken(requests, "prerelease", selection.prerelease(), wallTime);
+            result.putString("version", selection.prerelease().tag());
+            result.putString("token", token);
+            result.putBoolean("prerelease", true);
+            result.putString("latest", selection.prerelease().tag());
+        }
+        return result;
+    }
+
+    private static String stageToken(
+            SharedPreferences prefs,
+            String slot,
+            ReleaseCandidate<PreparedRelease> candidate,
+            long wallTime)
+            throws Exception {
+        String suffix = "_" + slot;
+        PreparedRelease prepared = candidate.payload();
+        JSONObject asset = prepared.asset();
+        String assetIdentity =
+                String.join(
+                        "\n",
+                        candidate.tag(),
+                        asset.optString("id"),
+                        asset.getString("browser_download_url"),
+                        Long.toString(asset.getLong("size")),
+                        asset.optString("digest"),
+                        asset.optString("updated_at"));
+        String token = prefs.getString("token" + suffix, null);
+        if (token == null
+                || wallTime >= prefs.getLong("expires" + suffix, 0)
+                || !assetIdentity.equals(prefs.getString("asset" + suffix, null))) {
             token = UUID.randomUUID().toString();
-            requests.edit()
-                    .putString("token", token)
-                    .putString("asset", assetIdentity)
-                    .putString("release", release)
-                    .putLong("expires", wallTime + 30 * 60_000)
+            prefs.edit()
+                    .putString("token" + suffix, token)
+                    .putString("asset" + suffix, assetIdentity)
+                    .putString("release" + suffix, prepared.release().toString())
+                    .putLong("expires" + suffix, wallTime + 30 * 60_000)
                     .apply();
         }
-        result.putString("version", version);
-        result.putString("installed", installed.versionName);
-        result.putString("token", token);
-        return result;
+        return token;
     }
 
     static JSONObject authorized(Context context, String token) throws Exception {
         var prefs = context.getSharedPreferences("updates", 0);
-        if (token == null
-                || !token.equals(prefs.getString("token", null))
-                || System.currentTimeMillis() > prefs.getLong("expires", 0))
-            throw new IOException("This update request expired. Reopen the editor to check again.");
-        return new JSONObject(prefs.getString("release", "{}"));
+        long now = System.currentTimeMillis();
+        for (String suffix : new String[] {"_stable", "_prerelease", ""}) {
+            if (token != null
+                    && token.equals(prefs.getString("token" + suffix, null))
+                    && now <= prefs.getLong("expires" + suffix, 0)) {
+                return new JSONObject(prefs.getString("release" + suffix, "{}"));
+            }
+        }
+        throw new IOException("This update request expired. Reopen the editor to check again.");
     }
 
     static File apk(Context context) {
         return new File(new File(context.getCacheDir(), "updates"), "release.apk");
     }
 
-    private static JSONObject latest() throws Exception {
-        HttpURLConnection connection = connect(API);
+    private static List<JSONObject> fetchReleases(boolean includePrerelease) throws Exception {
+        List<JSONObject> releases = new ArrayList<>();
+        if (!includePrerelease) {
+            String body = fetchJson(API);
+            if (body != null) releases.add(new JSONObject(body));
+            return releases;
+        }
+        String body = fetchJson(RELEASES_API);
+        boolean sawStable = false;
+        if (body != null) {
+            JSONArray array = new JSONArray(body);
+            for (int i = 0; i < array.length(); i++) {
+                JSONObject item = array.optJSONObject(i);
+                if (item == null) continue;
+                releases.add(item);
+                if (!item.optBoolean("draft") && !item.optBoolean("prerelease")) {
+                    sawStable = true;
+                }
+            }
+        }
+        if (!sawStable) {
+            String latestBody = fetchJson(API);
+            if (latestBody != null) releases.add(new JSONObject(latestBody));
+        }
+        return releases;
+    }
+
+    private static String fetchJson(String url) throws Exception {
+        HttpURLConnection connection = connect(url);
         try {
             if (connection.getResponseCode() == 404) return null;
             if (connection.getResponseCode() != 200) throw new IOException("Release check failed");
@@ -96,9 +304,7 @@ final class UpdateRepository {
                     data.write(buffer, 0, count);
                 }
             }
-            JSONObject release =
-                    new JSONObject(data.toString(java.nio.charset.StandardCharsets.UTF_8));
-            return release.optBoolean("draft") || release.optBoolean("prerelease") ? null : release;
+            return data.toString(java.nio.charset.StandardCharsets.UTF_8);
         } finally {
             connection.disconnect();
         }

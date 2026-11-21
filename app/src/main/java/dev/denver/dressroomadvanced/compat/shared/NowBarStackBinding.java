@@ -233,8 +233,63 @@ final class NowBarStackBinding {
         return NativeContract.field(stack, fallbackName, boolean.class);
     }
 
-    private static Method resolveRefresh(Class<?> stack) throws ReflectiveOperationException {
-        return NativeContract.findMethod(stack, "q", void.class, CopyOnWriteArrayList.class);
+    private static Method resolveRefresh(Class<?> stack, Class<?> item) throws ReflectiveOperationException {
+        try {
+            return NativeContract.findMethod(stack, "q", void.class, CopyOnWriteArrayList.class);
+        } catch (NoSuchMethodException changed) {
+            String anchor = "NowBar_NowBarCardStackView.#refreshAllViews";
+            ClassLoader loader = stack.getClassLoader();
+            try {
+                return OneUi95Editor.unique(DexSignatures.find(loader, Set.of(anchor)).stream()
+                        .filter(body -> body.owner().equals(DexSignatures.descriptor(stack))
+                                && (body.access() & 8) == 0 && body.result().equals("V")
+                                && body.parameters().equals(List.of(DexSignatures.descriptor(item),
+                                        "Ljava/util/concurrent/CopyOnWriteArrayList;")))
+                        .toList(), "Now Bar full refresh").method(loader);
+            } catch (java.io.IOException invalidDex) {
+                throw new ReflectiveOperationException("Now Bar refresh DEX unavailable", invalidDex);
+            }
+        }
+    }
+
+    int refreshItemsArgument() {
+        return refresh.getParameterCount() - 1;
+    }
+
+    void refreshCards(Object view, CopyOnWriteArrayList<?> current)
+            throws ReflectiveOperationException {
+        if (refreshItemsArgument() == 0) refresh.invoke(view, current);
+        else refresh.invoke(view, null, current);
+    }
+
+    boolean isDozing(ViewGroup view) throws IllegalAccessException {
+        return !screenOn.getBoolean(view);
+    }
+
+    private static DexSignatures.Body resolveMakeCardBody(Class<?> stack, Class<?> item)
+            throws ReflectiveOperationException, java.io.IOException {
+        String anchor = "NowBar_NowBarCardStackView.#makeNowBarCardView";
+        String stackType = DexSignatures.descriptor(stack);
+        return OneUi95Editor.unique(DexSignatures.find(stack.getClassLoader(), Set.of(anchor))
+                .stream().filter(candidate -> candidate.owner().equals(stackType)
+                        && candidate.result().equals("Landroid/view/View;")
+                        && candidate.parameters().equals(
+                                List.of(DexSignatures.descriptor(item), stackType, "I")))
+                .toList(), "Now Bar card creation");
+    }
+
+    private static Field resolveBetaDozing(
+            Class<?> stack, Class<?> card, DexSignatures.Body body)
+            throws ReflectiveOperationException {
+        String stackType = DexSignatures.descriptor(stack);
+        int setter = OneUi95Editor.call(body, DexSignatures.descriptor(card),
+                "setInitialDozing").offset();
+        DexSignatures.Read read = body.reads().stream()
+                .filter(field -> field.offset() < setter && field.field().owner().equals(stackType)
+                        && field.field().type().equals("Z"))
+                .reduce((first, last) -> last)
+                .orElseThrow(() -> new NoSuchFieldException("Now Bar initial dozing"));
+        return read.field().field(stack.getClassLoader());
     }
 
     static Field resolveScreenOnFromRefresh(
@@ -429,6 +484,17 @@ final class NowBarStackBinding {
             DexSignatures.Body refreshBody,
             String fallbackClass)
             throws ReflectiveOperationException {
+        return resolveStackSize(loader, stack, card, refreshBody, null, fallbackClass);
+    }
+
+    static Constructor<?> resolveStackSize(
+            ClassLoader loader,
+            Class<?> stack,
+            Class<?> card,
+            DexSignatures.Body refreshBody,
+            DexSignatures.Body makeCardBody,
+            String fallbackClass)
+            throws ReflectiveOperationException {
         Class<?> samType = null;
         for (Method m : card.getDeclaredMethods()) {
             if ("setGetStackSize".equals(m.getName()) && m.getParameterCount() == 1) {
@@ -436,10 +502,11 @@ final class NowBarStackBinding {
                 break;
             }
         }
-        if (refreshBody != null) {
-            String stackDesc = DexSignatures.descriptor(stack);
-            java.util.Set<Class<?>> types = new java.util.LinkedHashSet<>();
-            for (var call : refreshBody.calls()) {
+        String stackDesc = DexSignatures.descriptor(stack);
+        java.util.Set<Class<?>> types = new java.util.LinkedHashSet<>();
+        for (DexSignatures.Body body : new DexSignatures.Body[] {refreshBody, makeCardBody}) {
+            if (body == null) continue;
+            for (var call : body.calls()) {
                 if (!"<init>".equals(call.name())
                         || !call.parameters().equals(java.util.List.of(stackDesc, "I"))) {
                     continue;
@@ -453,12 +520,12 @@ final class NowBarStackBinding {
                     types.add(candidate);
                 }
             }
-            if (types.size() == 1) {
-                Constructor<?> ctor =
-                        types.iterator().next().getDeclaredConstructor(stack, int.class);
-                ctor.setAccessible(true);
-                return ctor;
-            }
+        }
+        if (types.size() == 1) {
+            Constructor<?> ctor =
+                    types.iterator().next().getDeclaredConstructor(stack, int.class);
+            ctor.setAccessible(true);
+            return ctor;
         }
         Class<?> sam = samType;
         Class<?> stackSizeClass =
@@ -658,19 +725,53 @@ final class NowBarStackBinding {
     }
 
     static Method cardBlurAlpha(Class<?> stack) throws ReflectiveOperationException {
-        Method method = NativeContract.findStaticMethod(
-                stack, "y", void.class, float.class, View.class);
+        return resolveCardBlurAlpha(stack);
+    }
+
+    static Class<?> resolveModelClass(ClassLoader loader, Class<?> card, Names names)
+            throws ClassNotFoundException {
         try {
-            var body = DexSignatures.body(method, java.util.Set.of("updateCardAlpha "));
-            boolean drawableAlpha = body.calls().stream().anyMatch(call ->
-                    call.owner().equals("Landroid/graphics/drawable/Drawable;")
-                            && call.name().equals("setAlpha"));
-            // Body.matches is for no-argument instance methods. This helper is static.
-            if (drawableAlpha && body.anchors().containsKey("updateCardAlpha ")) return method;
-        } catch (java.io.IOException error) {
-            throw new ReflectiveOperationException("Could not read Now Bar opacity binding", error);
+            Class<?> candidate = card.getDeclaredMethod("getShowHideAnimationData").getReturnType();
+            if (NativeContract.hasField(candidate, Animator.class)) return candidate;
+        } catch (NoSuchMethodException ignored) {
         }
-        throw new NoSuchMethodException("Now Bar opacity body does not match");
+        return NativeContract.findClass(
+                loader,
+                cls ->
+                        NativeContract.hasField(cls, Animator.class)
+                                && NativeContract.hasMethod(card, cls),
+                names.model,
+                "aod.kx4");
+    }
+
+    static Class<?> resolveManagerClass(
+            ClassLoader loader, Class<?> stack, Class<?> model, Names names)
+            throws ClassNotFoundException {
+        Class<?> matched = null;
+        for (Field field : stack.getDeclaredFields()) {
+            if (java.lang.reflect.Modifier.isStatic(field.getModifiers())) continue;
+            Class<?> type = field.getType();
+            if (type.isPrimitive() || type == Object.class) continue;
+            if (NativeContract.hasMethod(type, void.class, View.class, model, int.class)
+                    || NativeContract.hasMethod(type, void.class, View.class, model)) {
+                if (matched != null && matched != type) {
+                    matched = null;
+                    break;
+                }
+                matched = type;
+            }
+        }
+        if (matched != null) return matched;
+        return NativeContract.findClass(
+                loader,
+                cls ->
+                        NativeContract.hasField(stack, cls)
+                                && (NativeContract.hasMethod(
+                                                cls, void.class, View.class, model, int.class)
+                                        || NativeContract.hasMethod(
+                                                cls, void.class, View.class, model)),
+                names.manager,
+                "aod.cy6");
     }
 
     NowBarStackBinding(ClassLoader loader, Names names) throws ReflectiveOperationException {
@@ -691,27 +792,8 @@ final class NowBarStackBinding {
                                 NativeContract.hasMethod(cls, ViewGroup.class)
                                         && NativeContract.hasMethod(cls, itemType),
                         "com.samsung.android.app.facewidget.presentation.a");
-        model =
-                NativeContract.findClass(
-                        loader,
-                        cls ->
-                                NativeContract.hasField(cls, Animator.class)
-                                        && NativeContract.hasMethod(card, cls),
-                        names.model, "aod.kx4");
-        Class<?> manager =
-                NativeContract.findClass(
-                        loader,
-                        cls ->
-                                NativeContract.hasField(stack, cls)
-                                        && (NativeContract.hasMethod(
-                                                        cls,
-                                                        void.class,
-                                                        View.class,
-                                                        model,
-                                                        int.class)
-                                                || NativeContract.hasMethod(
-                                                        cls, void.class, View.class, model)),
-                        names.manager, "aod.cy6");
+        model = resolveModelClass(loader, card, names);
+        Class<?> manager = resolveManagerClass(loader, stack, model, names);
         animationManager = NativeContract.findField(stack, names.animationManager, manager);
         animationsEnabled =
                 NativeContract.findField(manager, names.animationsEnabled, boolean.class);
@@ -756,15 +838,21 @@ final class NowBarStackBinding {
                                 Field restrictedField =
                                         resolveRestricted(stack, names.restricted);
                                 Field modeField = resolveMode(stack, names.mode);
-                                Method refreshMethod = resolveRefresh(stack);
+                                Method refreshMethod = resolveRefresh(stack, itemType);
                                 DexSignatures.Body refreshBody = null;
                                 try {
                                     refreshBody = DexSignatures.body(refreshMethod);
                                 } catch (java.io.IOException ignored) {
                                 }
+                                DexSignatures.Body makeCardBody =
+                                        refreshMethod.getParameterCount() == 2
+                                                ? resolveMakeCardBody(stack, itemType)
+                                                : null;
                                 Field screenOnField =
-                                        resolveScreenOnFromRefresh(
-                                                stack, refreshBody, names.screenOn);
+                                        makeCardBody != null
+                                                ? resolveBetaDozing(stack, card, makeCardBody)
+                                                : resolveScreenOnFromRefresh(
+                                                        stack, refreshBody, names.screenOn);
                                 java.util.List<Field> flags =
                                         resolveMotionFlagsFromRefresh(
                                                 stack, refreshBody, names);
@@ -801,7 +889,12 @@ final class NowBarStackBinding {
                                 }
                                 Constructor<?> stackSizeCtor =
                                         resolveStackSize(
-                                                loader, stack, card, refreshBody, names.stackSize);
+                                                loader,
+                                                stack,
+                                                card,
+                                                refreshBody,
+                                                makeCardBody,
+                                                names.stackSize);
                                 Method waveMethod = resolveWave(loader, names.wave);
                                 Method scaleMethod = resolveScale(stack);
                                 Method offsetMethod = resolveOffset(stack);

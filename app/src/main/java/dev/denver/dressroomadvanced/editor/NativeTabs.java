@@ -4,7 +4,11 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 
 final class NativeTabs {
+    record Binding(Method create, Method text, Method add, Method listen, Method style,
+            Field position, Class<?> listener) {}
+
     final Class<?> listener;
+    final boolean early;
     private final Method create, text, add, listen, style, positionMethod;
     private final Field positionField;
     private static final ClassValue<NativeTabs> bindings =
@@ -29,6 +33,7 @@ final class NativeTabs {
 
     private NativeTabs(Class<?> strip) throws ReflectiveOperationException {
         ClassLoader loader = strip.getClassLoader();
+        boolean older = false;
         boolean legacy;
         try {
             strip.getDeclaredMethod("g0");
@@ -47,7 +52,7 @@ final class NativeTabs {
             style = NativeContract.method(strip, "r0", void.class);
             positionMethod = NativeContract.method(tab, "o", int.class);
             positionField = null;
-        } else {
+        } else if (hasReferenceFactory(strip)) {
             create = strip.getDeclaredMethod("p");
             create.setAccessible(true);
             Class<?> tab = create.getReturnType();
@@ -58,6 +63,37 @@ final class NativeTabs {
             style = NativeContract.method(strip, "t", void.class);
             positionField = NativeContract.field(tab, "d", int.class);
             positionMethod = null;
+        } else {
+            Binding beta;
+            try {
+                beta = OneUi95Tabs.bind(strip);
+            } catch (ReflectiveOperationException modern) {
+                try {
+                    beta = OneUi80Tabs.bind(strip);
+                    older = true;
+                } catch (ReflectiveOperationException unavailable) {
+                    unavailable.addSuppressed(modern);
+                    throw unavailable;
+                }
+            }
+            create = beta.create();
+            text = beta.text();
+            add = beta.add();
+            listen = beta.listen();
+            style = beta.style();
+            positionField = beta.position();
+            listener = beta.listener();
+            positionMethod = null;
+        }
+        early = older;
+    }
+
+    private static boolean hasReferenceFactory(Class<?> strip) {
+        try {
+            return strip.getDeclaredMethod("p").getReturnType().getPackageName()
+                    .equals(strip.getPackageName());
+        } catch (NoSuchMethodException ignored) {
+            return false;
         }
     }
 

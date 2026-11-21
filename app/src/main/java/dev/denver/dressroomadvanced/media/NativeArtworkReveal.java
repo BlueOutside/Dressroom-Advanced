@@ -66,6 +66,21 @@ final class NativeArtworkReveal {
 
     static RuntimeShader load(Context context) throws Exception {
         int id = resolveMaskingResource(context);
+        if (id == 0) {
+            for (String provider : new String[] {
+                    "com.samsung.android.app.aodservice", "com.samsung.android.app.clockpack"}) {
+                try {
+                    Context source = context.createPackageContext(provider, 0);
+                    int resource = resolveMaskingResource(source);
+                    if (resource == 0) continue;
+                    context = source;
+                    id = resource;
+                    break;
+                } catch (android.content.pm.PackageManager.NameNotFoundException unavailable) {
+                    // Only one of the clock providers is installed on some devices.
+                }
+            }
+        }
         if (id == 0) throw new IllegalStateException("Native artwork reveal asset is unavailable");
         JSONObject layer;
         try (var input = context.getResources().openRawResource(id)) {
@@ -88,14 +103,48 @@ final class NativeArtworkReveal {
                     shader.setFloatUniform(uniform.getString("name"), values);
                 }
             }
+        shader.setFloatUniform("iResolution", 1f, 1f);
+        shader.setFloatUniform("uAnimationProgress", 0f);
+        shader.setFloatUniform("uRandomOffset", .19f);
+        RenderEffect.createRuntimeShaderEffect(shader, "composable");
         return shader;
     }
 
+    /** Uses outgoing zoom when still drawing the outgoing bitmap before incoming art binds. */
+    static boolean shouldUseOutgoingZoom(
+            boolean hasValidOld, boolean currentEqualsOld, float currentProgress) {
+        return hasValidOld && currentEqualsOld && currentProgress < 1f;
+    }
+
+    /** Guards against a duplicate 0% progress callback clobbering the captured outgoing bitmap. */
+    static boolean shouldPreserveOutgoingOnBegin(
+            boolean hasValidOld,
+            boolean oldEqualsAfter,
+            float currentProgress,
+            boolean beforeMissingOrMatchesAfter,
+            boolean oldEqualsBefore) {
+        return hasValidOld
+                && !oldEqualsAfter
+                && currentProgress == 0f
+                && (beforeMissingOrMatchesAfter || oldEqualsBefore);
+    }
+
     void begin(Bitmap before, Bitmap after) {
-        if (before == null) {
+        if (shouldPreserveOutgoingOnBegin(
+                valid(old),
+                old == after,
+                progress,
+                !valid(before) || before == after,
+                old == before)) {
+            revision++;
+            return;
+        }
+        if (!valid(before) || before == after) {
             ImageView view = previous.get();
-            if (view != null && view.getDrawable() instanceof BitmapDrawable bd)
-                before = bd.getBitmap();
+            if (view != null && view.getDrawable() instanceof BitmapDrawable bd) {
+                Bitmap prior = bd.getBitmap();
+                if (valid(prior) && prior != after) before = prior;
+            }
         }
         old = valid(before) ? before : null;
         progress = 0;
@@ -118,6 +167,11 @@ final class NativeArtworkReveal {
         progress = clamp(value);
         if (progress >= 1) old = null;
         revision++;
+    }
+
+    void fallbackProgress(float value) {
+        zoomX = zoomY = 1f + (1f - clamp(value)) * .035f;
+        progress(value);
     }
 
     void random(float value) {
@@ -187,6 +241,14 @@ final class NativeArtworkReveal {
         }
     }
 
+    boolean isActive() {
+        return valid(old) && progress < 1f;
+    }
+
+    boolean hasActiveMask(Bitmap current) {
+        return shader != null && valid(old) && valid(current) && current != old && progress < 1;
+    }
+
     void draw(Canvas canvas, Bitmap current, RectF bounds, Paint paint) {
         boolean reveal = valid(old) && valid(current) && current != old && progress < 1;
         if (reveal) bitmap(canvas, old, bounds, oldZoomX, oldZoomY, paint, crop);
@@ -218,18 +280,37 @@ final class NativeArtworkReveal {
             canvas.drawRenderNode(node);
             canvas.restoreToCount(save);
         } else {
-            int alpha = paint.getAlpha();
-            if (reveal) paint.setAlpha(Math.round(alpha * progress));
-            try {
-                bitmap(canvas, current, bounds, zoomX, zoomY, paint, crop);
-            } finally {
-                paint.setAlpha(alpha);
-            }
+            drawFade(canvas, current, bounds, paint, reveal);
         }
         drawLighting(canvas, bounds);
     }
 
-    private void drawLighting(Canvas canvas, RectF bounds) {
+    /** Draws a reveal transition directly onto {@code canvas} without mutating the shared {@code RenderNode}. */
+    void drawSimple(Canvas canvas, Bitmap current, RectF bounds, Paint paint) {
+        boolean reveal = valid(old) && valid(current) && current != old && progress < 1;
+        if (reveal) bitmap(canvas, old, bounds, oldZoomX, oldZoomY, paint, crop);
+        drawFade(canvas, current, bounds, paint, reveal);
+    }
+
+    private void drawFade(Canvas canvas, Bitmap current, RectF bounds, Paint paint, boolean reveal) {
+        int alpha = paint.getAlpha();
+        if (reveal) paint.setAlpha(Math.round(alpha * progress));
+        boolean useOldZoom = !reveal && shouldUseOutgoingZoom(valid(old), current == old, progress);
+        try {
+            bitmap(
+                    canvas,
+                    current,
+                    bounds,
+                    useOldZoom ? oldZoomX : zoomX,
+                    useOldZoom ? oldZoomY : zoomY,
+                    paint,
+                    crop);
+        } finally {
+            paint.setAlpha(alpha);
+        }
+    }
+
+    void drawLighting(Canvas canvas, RectF bounds) {
         View view = light.get();
         if (view == null
                 || !canvas.isHardwareAccelerated()

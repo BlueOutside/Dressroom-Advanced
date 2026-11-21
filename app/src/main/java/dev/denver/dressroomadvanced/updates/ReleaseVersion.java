@@ -28,6 +28,10 @@ final class ReleaseVersion implements Comparable<ReleaseVersion> {
                 match.group(4));
     }
 
+    boolean isPrerelease() {
+        return suffix != null;
+    }
+
     @Override
     public int compareTo(ReleaseVersion other) {
         for (int i = 0; i < numbers.length; i++) {

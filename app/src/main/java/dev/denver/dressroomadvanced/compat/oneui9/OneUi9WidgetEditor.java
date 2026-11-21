@@ -30,15 +30,25 @@ final class OneUi9WidgetEditor {
 
     private OneUi9WidgetEditor() {}
 
+    private static final ClassValue<java.util.Optional<OneUi95Widgets.Toolbar>> betaToolbars =
+            new ClassValue<>() {
+                @Override
+                protected java.util.Optional<OneUi95Widgets.Toolbar> computeValue(Class<?> owner) {
+                    try {
+                        return java.util.Optional.ofNullable(OneUi95Widgets.toolbar(owner));
+                    } catch (ReflectiveOperationException error) {
+                        throw new IllegalStateException("Beta toolbar ABI unavailable", error);
+                    }
+                }
+            };
+
     private record Preview(java.lang.reflect.Field root, java.lang.reflect.Field inner,
             java.lang.reflect.Field data) {}
     private static final ClassValue<Preview> previews = new ClassValue<>() {
         @Override protected Preview computeValue(Class<?> owner) {
             try {
                 Class<?> data = entity(owner.getClassLoader(), "item.widget.WidgetData");
-                java.lang.reflect.Field root;
-                try { root = NativeContract.assignableField(owner, "L", View.class); }
-                catch (NoSuchFieldException changed) { root = NativeContract.findField(owner, "K", View.class); }
+                java.lang.reflect.Field root = resolvePreviewRoot(owner);
                 java.lang.reflect.Field inner;
                 try { inner = NativeContract.assignableField(owner, "H", android.widget.FrameLayout.class); }
                 catch (NoSuchFieldException changed) { inner = NativeContract.findField(owner, "G", android.widget.FrameLayout.class); }
@@ -48,6 +58,28 @@ final class OneUi9WidgetEditor {
             }
         }
     };
+
+    static java.lang.reflect.Field resolvePreviewRoot(Class<?> owner)
+            throws ReflectiveOperationException {
+        try {
+            Method create = NativeContract.findMethod(owner, PREVIEW_METHOD, View.class);
+            DexSignatures.Body body = DexSignatures.body(create);
+            String ownerDesc = DexSignatures.descriptor(owner);
+            try {
+                return body.uniqueWrite(ownerDesc, "Landroid/view/View;", null)
+                        .field(owner.getClassLoader());
+            } catch (NoSuchFieldException multipleWrites) {
+                return body.uniqueRead(ownerDesc, "Landroid/view/View;", null)
+                        .field(owner.getClassLoader());
+            }
+        } catch (ReflectiveOperationException | java.io.IOException | LinkageError noDex) {
+        }
+        try { return NativeContract.assignableField(owner, "L", View.class); }
+        catch (NoSuchFieldException ignored) {}
+        try { return NativeContract.assignableField(owner, "N", View.class); }
+        catch (NoSuchFieldException ignored) {}
+        return NativeContract.findField(owner, "K", View.class);
+    }
     static View root(Object owner) throws IllegalAccessException { return (View) previews.get(owner.getClass()).root.get(owner); }
     static View inner(Object owner) throws IllegalAccessException { return (View) previews.get(owner.getClass()).inner.get(owner); }
     static Object data(Object owner) throws IllegalAccessException { return previews.get(owner.getClass()).data.get(owner); }
@@ -72,7 +104,9 @@ final class OneUi9WidgetEditor {
                         loader,
                         cls -> NativeContract.hasConstructor(cls, baseActivity, View.class),
                         TOOLBAR);
-        return NativeContract.findMethod(owner, TOOLBAR_METHOD, void.class);
+        var beta = betaToolbars.get(owner);
+        return beta.isPresent() ? beta.get().render()
+                : NativeContract.findMethod(owner, TOOLBAR_METHOD, void.class);
     }
 
     static Class<?> gridWrapper(ClassLoader loader) throws ClassNotFoundException {
@@ -150,6 +184,14 @@ final class OneUi9WidgetEditor {
     }
 
     static Method lifecycle(ClassLoader loader) throws ReflectiveOperationException {
+        try {
+            return referenceLifecycle(loader);
+        } catch (ClassNotFoundException | NoSuchMethodException changed) {
+            return OneUi95Widgets.lifecycle(loader);
+        }
+    }
+
+    private static Method referenceLifecycle(ClassLoader loader) throws ReflectiveOperationException {
         Class<?> argType =
                 NativeContract.findClass(loader, Class::isEnum, LIFECYCLE_ARG);
         Class<?> owner =
@@ -177,11 +219,20 @@ final class OneUi9WidgetEditor {
         Class<?> owner = NativeContract.knownClass(loader,
                 cls -> dataBinding.isAssignableFrom(cls)
                         && NativeContract.hasMethod(cls, void.class), GUIDE);
-        if (owner == null) throw new ClassNotFoundException("Optional widget rotation guide");
+        if (owner == null) return OneUi95Widgets.rotationGuide(loader);
         return NativeContract.findMethod(owner, "executeBindings", void.class);
     }
 
     static Method gridMetrics(ClassLoader loader, Class<?> gridType, Class<?> alignType)
+            throws ReflectiveOperationException {
+        try {
+            return referenceGridMetrics(loader, gridType, alignType);
+        } catch (ClassNotFoundException | NoSuchMethodException changed) {
+            return OneUi95Widgets.gridMetrics(loader, gridType, alignType);
+        }
+    }
+
+    private static Method referenceGridMetrics(ClassLoader loader, Class<?> gridType, Class<?> alignType)
             throws ReflectiveOperationException {
         Class<?> owner =
                 NativeContract.findClass(
@@ -195,6 +246,15 @@ final class OneUi9WidgetEditor {
     }
 
     static Method cellMetrics(ClassLoader loader, Class<?> gridType, Class<?> sizeType)
+            throws ReflectiveOperationException {
+        try {
+            return referenceCellMetrics(loader, gridType, sizeType);
+        } catch (ClassNotFoundException | NoSuchMethodException changed) {
+            return OneUi95Widgets.cellMetrics(loader, gridType, sizeType);
+        }
+    }
+
+    private static Method referenceCellMetrics(ClassLoader loader, Class<?> gridType, Class<?> sizeType)
             throws ReflectiveOperationException {
         Class<?> owner =
                 NativeContract.findClass(
@@ -228,6 +288,22 @@ final class OneUi9WidgetEditor {
 
     static Method alignFeedback(ClassLoader loader, Class<?> widgetDataType)
             throws ReflectiveOperationException {
+        Class<?> known =
+                NativeContract.knownClass(
+                        loader,
+                        cls ->
+                                !cls.isInterface()
+                                        && NativeContract.hasField(cls, boolean.class)
+                                        && NativeContract.hasMethod(
+                                                cls, void.class, widgetDataType),
+                        ALIGN_FEEDBACK);
+        if (known != null) {
+            return NativeContract.findMethod(known, "c", void.class, widgetDataType);
+        }
+        try {
+            return WidgetEditorBinding.clockFeedback(loader, widgetDataType);
+        } catch (ReflectiveOperationException fallback) {
+        }
         Class<?> owner =
                 NativeContract.findClass(
                         loader,
@@ -242,7 +318,21 @@ final class OneUi9WidgetEditor {
         return NativeContract.findMethod(owner, "c", void.class, widgetDataType);
     }
 
-    static Class<?> adapter(ClassLoader loader) throws ClassNotFoundException {
+    static Class<?> adapter(ClassLoader loader) throws ReflectiveOperationException {
+        return resizeAnimation(loader).getDeclaringClass();
+    }
+
+    static Method resizeAnimation(ClassLoader loader) throws ReflectiveOperationException {
+        try {
+            return NativeContract.findStaticMethod(referenceAdapter(loader), ADAPTER_METHOD,
+                    void.class, View.class, int.class, int.class, float.class,
+                    int.class, int.class, boolean.class);
+        } catch (ClassNotFoundException | NoSuchMethodException changed) {
+            return OneUi95Widgets.resizeAnimation(loader);
+        }
+    }
+
+    private static Class<?> referenceAdapter(ClassLoader loader) throws ClassNotFoundException {
         return NativeContract.findClass(
                 loader,
                 cls ->
@@ -285,11 +375,10 @@ final class OneUi9WidgetEditor {
 
     static Object grid(Object preview) throws ReflectiveOperationException {
         ClassLoader loader = preview.getClass().getClassLoader();
-        Object lazy =
-                NativeContract.findField(
-                                preview.getClass(), "a", Class.forName("dagger.Lazy", false, loader))
-                        .get(preview);
-        return getGrid(loader).invoke(Reflect.call(lazy, "get"));
+        Method getter = getGrid(loader);
+        Object wrapper =
+                WidgetEditorBinding.unwrapSupplier(preview, "a", getter.getDeclaringClass());
+        return getter.invoke(wrapper);
     }
 
     static Object repoData(Object preview) throws ReflectiveOperationException {
@@ -424,28 +513,90 @@ final class OneUi9WidgetEditor {
     static float previewScale(Object preview) throws ReflectiveOperationException {
         ClassLoader loader = preview.getClass().getClassLoader();
         Class<?> contextClass = android.content.Context.class;
-        java.lang.reflect.Field vmField =
+        try {
+            java.lang.reflect.Field vmField =
+                    WidgetEditorBinding.findFieldMatching(
+                            preview.getClass(),
+                            "g",
+                            f -> {
+                                Class<?> t = f.getType();
+                                if (!NativeContract.hasField(t, float.class)) return false;
+                                for (java.lang.reflect.Constructor<?> c :
+                                        t.getDeclaredConstructors()) {
+                                    if (c.getParameterCount() == 7
+                                            && c.getParameterTypes()[0] == contextClass)
+                                        return true;
+                                }
+                                return false;
+                            });
+            Object vm = vmField.get(preview);
+            return NativeContract.findField(vm.getClass(), "r", float.class).getFloat(vm);
+        } catch (NoSuchFieldException migrated) {
+        }
+        java.lang.reflect.Field refreshPos =
                 WidgetEditorBinding.findFieldMatching(
                         preview.getClass(),
-                        "g",
+                        "B",
                         f -> {
-                            Class<?> t = f.getType();
-                            if (!NativeContract.hasField(t, float.class)) return false;
-                            for (java.lang.reflect.Constructor<?> c : t.getDeclaredConstructors()) {
-                                if (c.getParameterCount() == 7
-                                        && c.getParameterTypes()[0] == contextClass) return true;
+                            for (java.lang.reflect.Constructor<?> c :
+                                    f.getType().getDeclaredConstructors()) {
+                                if (c.getParameterCount() == 14) return true;
                             }
                             return false;
                         });
-        Object vm = vmField.get(preview);
-        return NativeContract.findField(vm.getClass(), "r", float.class).getFloat(vm);
+        Object target = refreshPos.get(preview);
+        Class<?> previewScaleType = entity(loader, "system.PreviewScale");
+        Object scaleValue = findDirectData(target, "i", previewScaleType);
+        if (scaleValue == null) {
+            Object repo = WidgetEditorBinding.findObservableData(target, "i", previewScaleType);
+            scaleValue = Reflect.call(repo, "getData");
+        }
+        return ((Number) Reflect.call(scaleValue, "getScale")).floatValue();
+    }
+
+    private static Object findDirectData(
+            Object owner, String preferredField, Class<?> expectedType) {
+        if (owner == null) return null;
+        if (preferredField != null) {
+            try {
+                java.lang.reflect.Field f = owner.getClass().getDeclaredField(preferredField);
+                if (!java.lang.reflect.Modifier.isStatic(f.getModifiers())) {
+                    f.setAccessible(true);
+                    Object repo = f.get(owner);
+                    if (repo != null) {
+                        Object value = Reflect.call(repo, "getData");
+                        if (expectedType.isInstance(value)) return value;
+                    }
+                }
+            } catch (ReflectiveOperationException ignored) {
+            }
+        }
+        for (java.lang.reflect.Field f : owner.getClass().getDeclaredFields()) {
+            if (java.lang.reflect.Modifier.isStatic(f.getModifiers()) || f.getType().isPrimitive())
+                continue;
+            try {
+                f.setAccessible(true);
+                Object repo = f.get(owner);
+                if (repo == null) continue;
+                Object value = Reflect.call(repo, "getData");
+                if (expectedType.isInstance(value)) return value;
+            } catch (ReflectiveOperationException ignored) {
+            }
+        }
+        return null;
     }
 
     static void addMenu(
             Object toolbarOwner,
+            Class<?> rendererOwner,
             java.util.function.Function<android.content.Context, Runnable> openFactory,
             String tag)
             throws ReflectiveOperationException {
+        var beta = betaToolbars.get(rendererOwner);
+        if (beta.isPresent()) {
+            beta.get().add(toolbarOwner, openFactory, tag);
+            return;
+        }
         ClassLoader loader = toolbarOwner.getClass().getClassLoader();
         Class<?> menuItemClass =
                 NativeContract.findClass(

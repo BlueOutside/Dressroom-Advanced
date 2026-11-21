@@ -5,11 +5,12 @@ were read through JADX MCP. The control-flow checks use MCP smali because
 JADX flattens two of the important branches in Java. SystemUI's plugin
 callback and layout were checked from the local APK.
 
-The follow-up patch records the source and destination during the native
-handoff. It rejects outgoing blur submissions and artwork-mask paths.
-An outgoing clear can still reach the host until the destination submits
-blur. The fix uses the One UI 9 transition hook. Device verification is
-pending.
+The handoff records both views during native attach on One UI 8.5 and 9.0
+AOD. The shared host changes owners on the destination's first blur
+submission. Until then, the outgoing clock can still update or clear it.
+The 9.0 seconds return can pick up a target assigned after configuration.
+It keeps rebuilding the live matte through the return and lets Samsung's
+dedicated seconds fade drive glyph alpha for the duration of that move.
 
 ## Inventory
 

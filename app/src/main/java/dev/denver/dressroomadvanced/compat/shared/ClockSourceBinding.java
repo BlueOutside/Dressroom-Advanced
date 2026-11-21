@@ -28,9 +28,14 @@ final class ClockSourceBinding {
         NativeContract.method(provider, "getConsideredThemeClockType", int.class);
         data = NativeContract.method(provider, "getClockFontData", font);
         heights = NativeContract.method(provider, "getClockFontHeights", List.class);
-        wallpaper =
-                NativeContract.method(
-                        provider, "updateWallpaperColorsItem", void.class, Object.class);
+        Method wallpaperUpdate;
+        try {
+            wallpaperUpdate = NativeContract.method(
+                    provider, "updateWallpaperColorsItem", void.class, Object.class);
+        } catch (NoSuchMethodException removed) {
+            wallpaperUpdate = null;
+        }
+        wallpaper = wallpaperUpdate;
         Method stretch = NativeContract.method(provider, "hasStretchFontHeights", boolean.class);
         var methods = new java.util.ArrayList<Method>();
         methods.add(stretch);
@@ -60,8 +65,8 @@ final class ClockSourceBinding {
         // getters and measure native heights while the view uses ours.
         try {
             String owner = DexSignatures.descriptor(provider);
-            addProviderCallers(methods, provider, owner, loader, data);
-            addProviderCallers(methods, provider, owner, loader, heights);
+            addProviderCallers(methods, owner, loader, data, wallpaper == null);
+            addProviderCallers(methods, owner, loader, heights, wallpaper == null);
         } catch (java.io.IOException | ReflectiveOperationException | RuntimeException error) {
             android.util.Log.w(
                     DressroomModule.TAG, "Provider measurement callers unavailable", error);
@@ -71,18 +76,24 @@ final class ClockSourceBinding {
 
     private static void addProviderCallers(
             List<Method> methods,
-            Class<?> provider,
             String owner,
             ClassLoader loader,
-            Method target)
+            Method target,
+            boolean changedMeasurement)
             throws java.io.IOException, ReflectiveOperationException {
         for (DexSignatures.Body caller : DexSignatures.callers(target)) {
-            if (!caller.owner().equals(owner)) continue;
+            if (!caller.owner().equals(owner) && !(changedMeasurement
+                    && (caller.owner().startsWith("Lcom/samsung/android/app/facewidget/")
+                            || caller.calls().stream().anyMatch(call ->
+                                    call.name().equals("setFontType")
+                                            && call.parameters().equals(List.of(
+                                                    "Lcom/samsung/android/clockpack/plugins/clock/ClockFontData;"))))))
+                continue;
+            if (caller.name().equals("<init>") || caller.name().equals("<clinit>")) continue;
             Method method = caller.method(loader);
-            if (method.getDeclaringClass() == provider
-                    && !Modifier.isAbstract(method.getModifiers())
+            if (!Modifier.isAbstract(method.getModifiers())
                     && !method.isBridge()
-                    && !method.isSynthetic()
+                    && (changedMeasurement || !method.isSynthetic())
                     && !methods.contains(method)) {
                 methods.add(method);
             }
@@ -97,19 +108,29 @@ final class ClockSourceBinding {
         Method setter = NativeContract.method(base, "setFontType", void.class, font);
         String fontDesc = DexSignatures.descriptor(font);
         List<String> modernArgs = List.of("I", fontDesc, "Ljava/util/List;");
+        List<String> contrastArgs = List.of("I", fontDesc, "Ljava/util/List;", "Ljava/lang/Float;");
         List<String> legacyArgs = List.of("Ljava/util/List;");
         Set<Method> candidates = new LinkedHashSet<>();
         try {
-            for (DexSignatures.Call call : DexSignatures.body(setter).calls()) {
+            List<DexSignatures.Call> calls = DexSignatures.body(setter).calls();
+            List<DexSignatures.Call> heightCalls = new java.util.ArrayList<>(calls);
+            for (DexSignatures.Call call : calls) {
+                if (!call.isStatic()
+                        && call.owner().equals(DexSignatures.descriptor(base))
+                        && call.name().equals("setFontTypeInternal")
+                        && call.parameters().equals(List.of(fontDesc))
+                        && call.result().equals("V")) {
+                    heightCalls.addAll(DexSignatures.body(call.method(loader)).calls());
+                }
+            }
+            for (DexSignatures.Call call : heightCalls) {
                 if (!call.isStatic() || !call.result().equals("Ljava/util/List;")) continue;
                 List<String> args = call.parameters();
-                if (!args.equals(modernArgs) && !args.equals(legacyArgs)) continue;
+                if (!args.equals(modernArgs) && !args.equals(contrastArgs)
+                        && !args.equals(legacyArgs)) continue;
                 Method candidate = call.method(loader);
                 if (DexSignatures.body(candidate, Set.of(NORMALIZER_ANCHOR))
-                        .anchors()
-                        .containsKey(NORMALIZER_ANCHOR)) {
-                    candidates.add(candidate);
-                }
+                        .anchors().containsKey(NORMALIZER_ANCHOR)) candidates.add(candidate);
             }
         } catch (java.io.IOException invalidDex) {
             throw (NoSuchMethodException)

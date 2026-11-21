@@ -74,6 +74,10 @@ final class WidgetHostSizing {
 
     static void validate(ClassLoader loader) throws ReflectiveOperationException {
         creation(loader);
+        validateResize(loader);
+    }
+
+    static void validateResize(ClassLoader loader) throws ReflectiveOperationException {
         Class<?> manager = Class.forName(WidgetEngine.SIZE, false, loader);
         Class<?> spec =
                 Class.forName(
@@ -135,6 +139,12 @@ final class WidgetHostSizing {
             float zoom,
             boolean force)
             throws ReflectiveOperationException {
+        refresh(host, columns, rows, manager, zoom, force, false);
+    }
+
+    static void refresh(
+            AppWidgetHostView host, int columns, int rows, Object manager, float zoom,
+            boolean force, boolean early) throws ReflectiveOperationException {
         // A saved custom grid can arrive after 8.5 created the host with stock metrics.
         // Its viewport must be refreshed even when the user's zoom is exactly 100%.
         if (!force && zoom == 1 && !appliedZoom.containsKey(host)) return;
@@ -142,7 +152,9 @@ final class WidgetHostSizing {
         Object spec;
         try {
             Reflect.set(manager, "_scaleFactor", scaled / zoom);
-            try {
+            if (early) {
+                spec = earlyViewport(host, manager, columns, rows);
+            } else try {
                 spec = Reflect.call(manager, "calculateWidgetSizeSpec", columns, rows);
             } catch (NoSuchMethodException reference) {
                 try {
@@ -220,6 +232,18 @@ final class WidgetHostSizing {
         }
     }
 
+    private static Object earlyViewport(AppWidgetHostView host, Object manager, int columns, int rows)
+            throws ReflectiveOperationException {
+        Object viewport = Reflect.call(manager, "getWidgetSizeSpec", columns, rows);
+        if (Boolean.TRUE.equals(Reflect.call(manager, "needScale"))) return viewport;
+        boolean wrapped = host.getParent() instanceof View parent
+                && parent.getClass().getName().equals(CONTAINER);
+        float inset = wrapped ? number(manager, "getPadding") * 2f : 0f;
+        return Reflect.call(viewport, "copy",
+                Math.max(1f, number(manager, "widgetWidth", columns) - inset),
+                Math.max(1f, number(manager, "widgetHeight", rows) - inset), 1f, 1f);
+    }
+
     private static boolean legacyProvider(ClassLoader loader) throws ClassNotFoundException {
         return ClockBinding.of(
                         Class.forName(
@@ -238,7 +262,8 @@ final class WidgetHostSizing {
         }
     }
 
-    private static float number(Object owner, String method) throws ReflectiveOperationException {
-        return ((Number) Reflect.call(owner, method)).floatValue();
+    private static float number(Object owner, String method, Object... arguments)
+            throws ReflectiveOperationException {
+        return ((Number) Reflect.call(owner, method, arguments)).floatValue();
     }
 }

@@ -16,6 +16,7 @@ import java.util.WeakHashMap;
 
 final class NowBarGlass {
     static final String KEY = "nowBarGlass";
+    private static final int UNKNOWN_BRIGHTNESS = -1;
     private static final String PRESENTATION = "com.samsung.android.app.facewidget.presentation.";
     private static final String MEDIA = PRESENTATION + "NowBarMediaCardView";
     private static final String BRIEF = PRESENTATION + "NowBarBriefCardView";
@@ -27,8 +28,16 @@ final class NowBarGlass {
     private static final ThreadLocal<View> building = new ThreadLocal<>();
     private static volatile Binding activeBinding;
     private static volatile float lastBriefDark;
+    private static final View.OnLayoutChangeListener layout = (view, left, top, right, bottom,
+            oldLeft, oldTop, oldRight, oldBottom) -> {
+        if (right - left == oldRight - oldLeft && bottom - top == oldBottom - oldTop) return;
+        Surface state = surfaces.get(view);
+        if (state != null && view.isAttachedToWindow()) update(view, state);
+    };
     private static final View.OnAttachStateChangeListener attach = new View.OnAttachStateChangeListener() {
         @Override public void onViewAttachedToWindow(View view) {
+            Surface immediate = surfaces.get(view);
+            if (immediate != null) update(view, immediate);
             view.postOnAnimation(() -> {
                 Surface state = surfaces.get(view);
                 if (state != null) update(view, state);
@@ -36,36 +45,79 @@ final class NowBarGlass {
         }
 
         @Override public void onViewDetachedFromWindow(View view) {
-            Surface state = surfaces.remove(view);
-            view.removeOnAttachStateChangeListener(this);
-            if (state != null) restore(view, state);
+            Surface state = surfaces.get(view);
+            if (state == null) return;
+            restore(view, state);
+            if (state.binding.beta) {
+                state.glassEnabled = false;
+                state.lastNativeRequest = null;
+            } else {
+                surfaces.remove(view);
+                view.removeOnAttachStateChangeListener(this);
+            }
         }
     };
     private static boolean observing;
 
     private record Binding(Method dark, Method getBlur, Method selectPreset, Constructor<?> builder,
-            Method preset, Method corners, Method color, Method build, Method submit) {}
+            Method preset, Method corners, Method color, Method build, Method submit, boolean beta,
+            CardBrightness brightness) {}
+
+    private record CardBrightness(Method model, Method value) {
+        static CardBrightness resolve(Class<?> card) {
+            try {
+                Method model = card.getMethod("getNowbarColorModel");
+                return new CardBrightness(model, NativeContract.method(
+                        model.getReturnType(), "getWallpaperBrightness", int.class));
+            } catch (NoSuchMethodException | RuntimeException unavailable) {
+                return null;
+            }
+        }
+
+        int read(View card) {
+            if (card == null) return UNKNOWN_BRIGHTNESS;
+            try {
+                Object colorModel = model.invoke(card);
+                if (colorModel == null) return UNKNOWN_BRIGHTNESS;
+                int brightness = (Integer) value.invoke(colorModel);
+                return brightness >= 0 && brightness <= 100 ? brightness : UNKNOWN_BRIGHTNESS;
+            } catch (ReflectiveOperationException | RuntimeException unavailable) {
+                return UNKNOWN_BRIGHTNESS;
+            }
+        }
+    }
 
     private static final class PresetCache {
         int cachedPreset;
         int selectedPreset;
+        int sampledBrightness = Integer.MIN_VALUE;
         long sampleUntil;
         Object presetInfo;
 
-        int sample(Binding binding, android.content.Context context)
+        int sample(Binding binding, android.content.Context context, View card)
                 throws ReflectiveOperationException {
+            if (binding.beta) {
+                // The model already tracks the local wallpaper luminance and its global fallback.
+                int brightness = binding.brightness == null
+                        ? UNKNOWN_BRIGHTNESS : binding.brightness.read(card);
+                if (sampledBrightness != brightness) {
+                    selectedPreset = invokePresetSelector(binding.selectPreset, context, brightness);
+                    sampledBrightness = brightness;
+                }
+                return selectedPreset;
+            }
             // Same default branch as Samsung's ordinary pill, with lockscreen wallpaper sampling.
             long now = android.os.SystemClock.uptimeMillis();
             if (now >= sampleUntil) {
-                selectedPreset = invokePresetSelector(binding.selectPreset, context);
+                selectedPreset = invokePresetSelector(binding.selectPreset, context, UNKNOWN_BRIGHTNESS);
                 sampleUntil = now + 100;
             }
             return selectedPreset;
         }
 
-        Object requestInfo(Binding binding, android.content.Context context)
+        Object requestInfo(Binding binding, android.content.Context context, View card)
                 throws ReflectiveOperationException {
-            int preset = sample(binding, context);
+            int preset = sample(binding, context, card);
             if (preset <= 0) return null;
             if (presetInfo == null || cachedPreset != preset) {
                 presetInfo = request(binding, preset, 0f);
@@ -95,7 +147,7 @@ final class NowBarGlass {
         final PresetCache cache = new PresetCache();
         float radius;
         Drawable background, foreground, addedBlur;
-        Object generatedRequest;
+        Object generatedRequest, lastNativeRequest;
         float submittedRadius;
         int submittedPreset;
         boolean glassEnabled;
@@ -135,21 +187,29 @@ final class NowBarGlass {
             Class<?> builder = Class.forName("android.view.SemBlurInfo$Builder");
             Method background = bindBackground(card, item);
             Method selectPreset = bindPreset(background, loader);
+            boolean beta = List.of(selectPreset.getParameterTypes()).equals(List.of(
+                    android.content.Context.class, boolean.class, boolean.class, Integer.class,
+                    int.class));
             Binding binding = new Binding(NativeContract.method(card, "getDarkAmount", float.class),
                     card.getMethod("getBlurContainer"), selectPreset, builder.getConstructor(int.class),
                     builder.getMethod("setColorCurvePreset", int.class),
                     builder.getMethod("setBackgroundCornerRadius", float.class),
                     builder.getMethod("setBackgroundColor", int.class), builder.getMethod("build"),
-                    View.class.getMethod("semSetBlurInfo", info));
+                    View.class.getMethod("semSetBlurInfo", info), beta,
+                    beta ? CardBrightness.resolve(card) : null);
             Method gradient = bindMediaGradient(media);
             hooks.add(module.hook(background).setId("dressroom-advanced.now-bar-glass-background")
                     .intercept(chain -> {
                         View owner = (View) chain.getThisObject();
                         View surface = (View) chain.getArg(1);
-                        Object result = chain.proceed();
-                        if (surface != null && !media.isInstance(owner)
+                        boolean eligible = surface != null && !media.isInstance(owner)
                                 && !owner.getClass().getName().equals(BRIEF)
-                                && isPill(surface, "nowbar_cardview_background")) {
+                                && isPill(surface, "nowbar_cardview_background");
+                        if (eligible) {
+                            track(owner, surface, binding, (Float) chain.getArg(2), false);
+                        }
+                        Object result = chain.proceed();
+                        if (eligible) {
                             remember(owner, surface, binding, (Float) chain.getArg(2), false);
                         }
                         return result;
@@ -254,7 +314,7 @@ final class NowBarGlass {
                         } catch (RuntimeException unavailable) {
                             state.untinted = false;
                         }
-                        if (state.untinted && state.outline == null)
+                        if (state.untinted && !binding.beta && state.outline == null)
                             state.outline =
                                     new NowBriefOutline(
                                             owner, surface, cardState, corner, binding.dark, border);
@@ -263,7 +323,9 @@ final class NowBarGlass {
                             state.outline = null;
                         }
                         // GenUI treats null as "keep the previous color". Zero explicitly clears it.
-                        return state.untinted ? 0 : chain.proceed();
+                        // Beta GenUI can skip blur for this card. Keep its fallback tint in
+                        // the model and restyle the actual window request when it is submitted.
+                        return state.untinted && !binding.beta ? 0 : chain.proceed();
                     })::unhook);
             module.deoptimize(tint);
             for (var caller : DexSignatures.callers(tint))
@@ -279,9 +341,16 @@ final class NowBarGlass {
         Method method = NativeContract.findMethod(card, null, void.class, item, View.class,
                 float.class, int.class);
         var body = DexSignatures.body(method, Set.of("NowbarBlurUtils"));
+        boolean cardDrawable = body.calls().stream().anyMatch(call -> call.owner().equals(CARD_VIEW)
+                && call.name().equals("setCardBackgroundColor"));
+        boolean viewBlur = body.calls().stream().anyMatch(call -> call.owner().equals("Landroid/view/View;")
+                && call.name().equals("semSetBlurInfo")
+                && call.parameters().equals(List.of("Landroid/view/SemBlurInfo;")))
+                && body.calls().stream().anyMatch(call -> call.owner().equals("Landroid/view/View;")
+                        && call.name().equals("setBackground")
+                        && call.parameters().equals(List.of("Landroid/graphics/drawable/Drawable;")));
         if (!body.anchors().containsKey("NowbarBlurUtils")
-                || body.calls().stream().noneMatch(call -> call.owner().equals(CARD_VIEW)
-                        && call.name().equals("setCardBackgroundColor")))
+                || !(cardDrawable || viewBlur))
             throw new NoSuchMethodException("Now Bar pill background signature");
         return method;
     }
@@ -310,6 +379,8 @@ final class NowBarGlass {
             List.of("I", "Landroid/content/Context;", "Z", "Z", "Z");
     private static final List<String> PRESET_SELECTOR_4 =
             List.of("Landroid/content/Context;", "Z", "Z", "I");
+    private static final List<String> PRESET_SELECTOR_LOCAL_COLOR =
+            List.of("Landroid/content/Context;", "Z", "Z", "Ljava/lang/Integer;", "I");
 
     record BriefBlur(Method refresh, Method tint) {}
 
@@ -326,7 +397,9 @@ final class NowBarGlass {
                     || candidate.getParameterCount() != 1
                     || candidate.getParameterTypes()[0] != float.class) continue;
             var body = DexSignatures.body(candidate);
-            if (!isBriefRefreshBody(body, style)) continue;
+            if (!isBriefRefreshBody(body, style)
+                    && !(buildsBriefBlurStyle(body, style)
+                            && OneUi95Aod.updatesBriefBlur(body, style, type))) continue;
             Set<Method> tints = new java.util.LinkedHashSet<>();
             for (var call : briefTintCalls(body, typeDesc)) tints.add(call.method(loader));
             if (tints.size() != 1) continue;
@@ -342,19 +415,17 @@ final class NowBarGlass {
     }
 
     static boolean isBriefRefreshBody(DexSignatures.Body body, String styleDesc) {
-        boolean buildsBlurStyle =
-                body.calls().stream()
-                        .anyMatch(
-                                call ->
-                                        call.owner().equals(styleDesc)
-                                                && call.name().equals("<init>"));
-        boolean updatesGenUi =
-                body.calls().stream()
+        return buildsBriefBlurStyle(body, styleDesc)
+                && body.calls().stream()
                         .anyMatch(
                                 call ->
                                         call.name().equals("updateBlurStyle")
                                                 && call.parameters().equals(List.of(styleDesc)));
-        return buildsBlurStyle && updatesGenUi;
+    }
+
+    private static boolean buildsBriefBlurStyle(DexSignatures.Body body, String style) {
+        return body.calls().stream().anyMatch(
+                call -> call.owner().equals(style) && call.name().equals("<init>"));
     }
 
     static List<DexSignatures.Call> briefTintCalls(
@@ -381,7 +452,28 @@ final class NowBarGlass {
 
     private static Method bindPreset(Method background, ClassLoader loader)
             throws ReflectiveOperationException, java.io.IOException {
-        return selectPresetMethod(DexSignatures.body(background).calls(), loader);
+        var calls = DexSignatures.body(background).calls();
+        try {
+            return selectPresetMethod(calls, loader);
+        } catch (NoSuchMethodException changed) {
+            Set<Method> selectors = new java.util.LinkedHashSet<>();
+            String anchor = "getNowBarBlurPreset wallpaperBrightnessNav:";
+            for (var call : calls) {
+                if (!call.isStatic() || !call.result().equals("I")
+                        || !call.parameters().equals(PRESET_SELECTOR_LOCAL_COLOR)) continue;
+                Method method = call.method(loader);
+                if (DexSignatures.body(method, Set.of(anchor)).anchors().containsKey(anchor))
+                    selectors.add(method);
+            }
+            return OneUi95Editor.unique(List.copyOf(selectors), "Now Bar local color preset");
+        }
+    }
+
+    static void validatePillBackground(Class<?> media, Class<?> item)
+            throws ReflectiveOperationException, java.io.IOException {
+        ClassLoader loader = media.getClassLoader();
+        bindPreset(bindBackground(media.getSuperclass(), item), loader);
+        bindMediaGradient(media);
     }
 
     static Method selectPresetMethod(
@@ -402,7 +494,7 @@ final class NowBarGlass {
                         || call.parameters().equals(PRESET_SELECTOR_4));
     }
 
-    static int invokePresetSelector(Method selectPreset, android.content.Context context)
+    static int invokePresetSelector(Method selectPreset, android.content.Context context, int brightness)
             throws ReflectiveOperationException {
         Class<?>[] types = selectPreset.getParameterTypes();
         if (types.length == 5
@@ -420,6 +512,13 @@ final class NowBarGlass {
                 && types[3] == int.class) {
             return (Integer) selectPreset.invoke(null, context, false, false, 62);
         }
+        if (types.length == 5
+                && types[0] == android.content.Context.class
+                && types[1] == boolean.class && types[2] == boolean.class
+                && types[3] == Integer.class && types[4] == int.class) {
+            // Null sends the 9.5 selector through semGetWallpaperColors on the UI thread.
+            return (Integer) selectPreset.invoke(null, context, false, false, brightness, 62);
+        }
         throw new NoSuchMethodException(
                 "Unsupported Now Bar wallpaper preset selector: " + selectPreset);
     }
@@ -434,31 +533,45 @@ final class NowBarGlass {
     }
 
     private static void remember(View card, View view, Binding binding, float radius, boolean media) {
+        update(view, track(card, view, binding, radius, media));
+    }
+
+    private static Surface track(View card, View view, Binding binding, float radius, boolean media) {
         Surface state = surfaces.get(view);
         if (state == null) {
             state = new Surface(card, binding, media);
             surfaces.put(view, state);
             view.addOnAttachStateChangeListener(attach);
+            if (binding.beta) view.addOnLayoutChangeListener(layout);
         }
         state.radius = radius;
-        update(view, state);
+        return state;
     }
 
-    static Object glassPreset(View view) throws ReflectiveOperationException {
+    static Object glassPreset(View view, Object request) throws ReflectiveOperationException {
         Surface state = surfaces.get(view);
         if (state != null) {
-            if (!enabled(view, state)) return null;
-            return state.cache.requestInfo(state.binding, view.getContext());
+            View card = state.card.get();
+            if (card == null || (state.binding.beta && !ready(view))) return null;
+            try {
+                if (!glassAllowed(view, (Float) state.binding.dark.invoke(card))) return null;
+            } catch (ReflectiveOperationException | RuntimeException unavailable) {
+                return null;
+            }
+            if (state.binding.beta && !BlurAppearance.visibleWindowRequest(request)) return null;
+            return state.cache.requestInfo(state.binding, view.getContext(), card);
         }
-        return briefGlassPreset(view);
+        return briefGlassPreset(view, request);
     }
 
     /** Resolves the wallpaper-sampled glass preset for a Now Brief GenUI blur FrameLayout. */
-    private static Object briefGlassPreset(View view) throws ReflectiveOperationException {
+    private static Object briefGlassPreset(View view, Object request)
+            throws ReflectiveOperationException {
         if (view == null) return null;
         View card = BlurAppearance.nowBarCardOwner(view);
         Brief owner = card == null ? null : briefs.get(card);
         if (owner != null) {
+            if (owner.binding.beta && !NowBriefFill.isBriefBlurView(view)) return null;
             if (!view.isAttachedToWindow() && !NowBriefFill.isBriefBlurView(view)) return null;
             float dark;
             try {
@@ -467,7 +580,8 @@ final class NowBarGlass {
                 return null;
             }
             if (!glassAllowed(view, dark)) return null;
-            return owner.cache.requestInfo(owner.binding, view.getContext());
+            if (owner.binding.beta && !BlurAppearance.visibleWindowRequest(request)) return null;
+            return owner.cache.requestInfo(owner.binding, view.getContext(), card);
         }
         if (!NowBriefFill.isBriefBlurView(view)) return null;
         if (view.isAttachedToWindow() && card == null) return null;
@@ -475,8 +589,9 @@ final class NowBarGlass {
         if (binding == null) return null;
         float dark = card != null ? cardDarkAmount(card) : lastBriefDark;
         if (!glassAllowed(view, dark)) return null;
+        if (binding.beta && !BlurAppearance.visibleWindowRequest(request)) return null;
         synchronized (unattachedBriefCache) {
-            return unattachedBriefCache.requestInfo(binding, view.getContext());
+            return unattachedBriefCache.requestInfo(binding, view.getContext(), card);
         }
     }
 
@@ -523,13 +638,56 @@ final class NowBarGlass {
     static void nativeRequest(View view, Object request) {
         if (surfaces.isEmpty() || building.get() == view) return;
         Surface state = surfaces.get(view);
-        if (state != null && (request == null || request != state.generatedRequest)) {
-            state.generatedRequest = null;
-            state.addedBlur = null;
-            if (request == null) {
-                if (state.foreground != null && view.getForeground() == null)
-                    view.setForeground(state.foreground);
-                state.foreground = null;
+        if (state != null) {
+            if (request != null && request != state.generatedRequest)
+                state.lastNativeRequest = request;
+            if (request == null || request != state.generatedRequest) {
+                state.generatedRequest = null;
+                state.addedBlur = null;
+                if (request == null) {
+                    if (state.foreground != null && view.getForeground() == null)
+                        view.setForeground(state.foreground);
+                    state.foreground = null;
+                }
+            }
+        }
+    }
+
+    static boolean replacing(View view) {
+        return building.get() == view;
+    }
+
+    static boolean ownsRequest(View view, Object request) {
+        Surface state = surfaces.get(view);
+        return request != null && state != null && request == state.generatedRequest;
+    }
+
+    private static boolean ready(View view) {
+        return view.isAttachedToWindow() && view.isShown() && view.isHardwareAccelerated()
+                && view.getWidth() > 0 && view.getHeight() > 0;
+    }
+
+    static void ensurePillBlur(View card, View view) {
+        if (card == null || view == null) return;
+        Binding binding = activeBinding;
+        if (binding == null) return;
+        Surface state = surfaces.get(view);
+        float radius = state != null ? state.radius : 0f;
+        try {
+            if (Reflect.call(card, "getNormalCardRadius") instanceof Number normal)
+                radius = normal.floatValue();
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+        }
+        remember(card, view, binding, radius, true);
+        state = surfaces.get(view);
+        if (state != null
+                && (!binding.beta || ready(view))
+                && !BlurAppearance.hasWindowDrawable(view)
+                && state.lastNativeRequest != null
+                && BlurAppearance.liveWindowBlurAllowed(view.getContext())) {
+            try {
+                state.binding.submit.invoke(view, state.lastNativeRequest);
+            } catch (ReflectiveOperationException | RuntimeException ignored) {
             }
         }
     }
@@ -545,26 +703,36 @@ final class NowBarGlass {
         try {
             boolean enabled = enabled(view, state);
             boolean changedMode = state.glassEnabled != enabled;
-            state.glassEnabled = enabled;
             if (!enabled) {
+                state.glassEnabled = false;
                 boolean added = state.addedBlur != null;
                 restore(view, state);
                 if (changedMode && !added) BlurAppearance.refreshNativeNowBar(view);
                 return;
             }
+            if (state.binding.beta && !ready(view)) return;
             Drawable previous = view.getBackground();
-            int preset = state.cache.sample(state.binding, view.getContext());
+            int preset = state.cache.sample(state.binding, view.getContext(), state.card.get());
+            if (preset <= 0) return;
             boolean changed = state.radius != state.submittedRadius || preset != state.submittedPreset;
             if (!BlurAppearance.hasWindowDrawable(view) || (previous == state.addedBlur && changed)) {
+                Object request = request(state.binding, preset, state.radius);
+                if (state.binding.beta && !BlurAppearance.visibleWindowRequest(request)) return;
                 if (state.addedBlur == null || previous != state.addedBlur)
                     state.background = previous;
+                boolean previousBlur = BlurAppearance.hasWindowDrawable(view);
                 View previousOwner = building.get();
                 building.set(view);
                 try {
-                    Object request = request(state.binding, preset, state.radius);
-                    state.binding.submit.invoke(view, request);
                     state.generatedRequest = request;
+                    state.binding.submit.invoke(view, request);
                 } finally {
+                    if (state.binding.beta && !BlurAppearance.hasWindowDrawable(view)) {
+                        state.generatedRequest = null;
+                        BlurAppearance.forgetNowBarRequest(view);
+                        if (view.getBackground() == null && previous != null)
+                            view.setBackground(previous);
+                    }
                     if (previousOwner == null) building.remove();
                     else building.set(previousOwner);
                 }
@@ -572,8 +740,14 @@ final class NowBarGlass {
                 state.addedBlur = view.getBackground();
                 state.submittedRadius = state.radius;
                 state.submittedPreset = preset;
-                if (previous != null) state.addedBlur.setAlpha(previous.getAlpha());
+                // A colored fill's alpha is tint, while blur alpha controls the entire region.
+                if (previous != null && (!state.binding.beta || previousBlur))
+                    state.addedBlur.setAlpha(previous.getAlpha());
             } else if (changedMode) BlurAppearance.refreshNativeNowBar(view);
+            if (state.binding.beta && (!BlurAppearance.hasWindowDrawable(view)
+                    || !view.getBackground().isVisible() || view.getBackground().getAlpha() == 0))
+                return;
+            state.glassEnabled = true;
             if (state.media && view.getForeground() instanceof GradientDrawable gradient) {
                 state.foreground = gradient;
                 view.setForeground(null);
@@ -585,10 +759,19 @@ final class NowBarGlass {
 
     private static void restore(View view, Surface state) {
         if (state.addedBlur != null && view.getBackground() == state.addedBlur) {
-            state.addedBlur = null;
-            BlurAppearance.clearWindowSurface(view);
-            if (view.getBackground() == null && state.background != null)
-                view.setBackground(state.background);
+            Drawable added = state.addedBlur;
+            View previousOwner = building.get();
+            if (state.binding.beta) building.set(view);
+            try {
+                BlurAppearance.clearWindowSurface(view);
+                if (view.getBackground() == null || (state.binding.beta && view.getBackground() == added))
+                    view.setBackground(state.background);
+            } finally {
+                if (state.binding.beta) {
+                    if (previousOwner == null) building.remove();
+                    else building.set(previousOwner);
+                }
+            }
         }
         if (state.foreground != null && view.getForeground() == null)
             view.setForeground(state.foreground);

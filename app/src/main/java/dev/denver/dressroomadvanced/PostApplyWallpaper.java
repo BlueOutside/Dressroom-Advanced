@@ -25,8 +25,7 @@ final class PostApplyWallpaper {
     }
 
     synchronized void follow(String method, Bundle committed) {
-        if (!(method.equals("commit") || method.equals("commitWidgets"))
-                || ScreenIdentity.value(committed) == 0) return;
+        if (!(method.equals("commit") || method.equals("commitWidgets"))) return;
         Bundle frozen = new Bundle(committed);
         String key = method + ":" + ScreenIdentity.draft(frozen) + ":"
                 + frozen.getInt("type", -1) + ":" + frozen.getInt("font", -1);

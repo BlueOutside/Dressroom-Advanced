@@ -1,10 +1,41 @@
 package dev.denver.dressroomadvanced;
 
+import android.graphics.Rect;
+
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
 
 final class SavedStretch {
+    private record Rectangles(Method getter, Method setter) {}
+    private static final ClassValue<Rectangles> rectangles = new ClassValue<>() {
+        @Override protected Rectangles computeValue(Class<?> type) {
+            try {
+                return new Rectangles(
+                        NativeContract.method(type, "getFontHeightRects", List.class),
+                        NativeContract.method(type, "setFontHeightRects", void.class, List.class));
+            } catch (NoSuchMethodException early) {
+                return new Rectangles(null, null);
+            }
+        }
+    };
+
     private SavedStretch() {}
+
+    @SuppressWarnings("unchecked")
+    static List<Rect> editorRects(Object data) throws ReflectiveOperationException {
+        Method getter = rectangles.get(data.getClass()).getter();
+        return getter == null ? null : (List<Rect>) getter.invoke(data);
+    }
+
+    static Method editorRectSetter(Class<?> type) {
+        return rectangles.get(type).setter();
+    }
+
+    static void editorRects(Object data, List<Rect> values) throws ReflectiveOperationException {
+        Method setter = editorRectSetter(data.getClass());
+        if (setter != null) setter.invoke(data, values);
+    }
 
     static List<Float> heights(float[] values) {
         if (values == null || values.length == 0) return null;

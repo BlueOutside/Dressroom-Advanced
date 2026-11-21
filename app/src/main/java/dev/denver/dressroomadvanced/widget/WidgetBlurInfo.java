@@ -31,12 +31,22 @@ final class WidgetBlurInfo {
                 field.setAccessible(true);
                 fields.add(field);
             }
-        clip = type.getDeclaredField("mClipPath");
-        clip.setAccessible(true);
+        Field path;
+        try {
+            path = type.getDeclaredField("mClipPath");
+            path.setAccessible(true);
+        } catch (NoSuchFieldException legacy) {
+            path = null;
+        }
+        clip = path;
+    }
+
+    boolean supportsPathClip() {
+        return clip != null;
     }
 
     Path path(Object info) throws ReflectiveOperationException {
-        return (Path) clip.get(info);
+        return clip == null ? null : (Path) clip.get(info);
     }
 
     Path visible(Object info, float width, float height, Path subject)

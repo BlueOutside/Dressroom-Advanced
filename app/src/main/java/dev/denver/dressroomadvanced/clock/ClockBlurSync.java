@@ -39,7 +39,7 @@ final class ClockBlurSync {
     }
 
     static boolean defer(View clock, Consumer<View> work) {
-        if (!clock.isAttachedToWindow()) {
+        if (!installed || !clock.isAttachedToWindow()) {
             cancel(clock);
             return false;
         }

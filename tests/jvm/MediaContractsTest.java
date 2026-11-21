@@ -896,52 +896,297 @@ public final class MediaContractsTest {
         throw new IllegalStateException("Unreachable");
     }
 
-    private static void verifyClockAuraContrastPolicy() {
-        MediaClockContrast.AuraSpec pitchBlack =
-                MediaClockContrast.computeAura(new ArtworkSamples.Stats(0d, 0d, 0d));
-        check(pitchBlack.textColor() == 0xfffff9f2, "Pitch-black cover must use light text");
-        check(
-                pitchBlack.blurAlpha() == 0f
-                        && pitchBlack.scrimAlpha() == 0f
-                        && pitchBlack.conflict() == 0f,
-                "Pitch-black cover must keep zero aura/scrim haze: " + pitchBlack);
+    private static void verifyClockGlassContrastPolicy() {
+        var black = MediaClockContrast.computePalette(new ArtworkSamples.Stats(0d, 0d, 0d));
+        var white = MediaClockContrast.computePalette(new ArtworkSamples.Stats(1d, 1d, 1d));
+        var mixed = MediaClockContrast.computePalette(new ArtworkSamples.Stats(.50d, 0d, 1d));
+        check(black.textColor() == 0xfffff9f2, "Black cover should use light glass");
+        check(white.textColor() == 0xff17191c, "White cover should use dark glass");
+        check(mixed.textColor() == white.textColor() && mixed.conflict() > white.conflict(),
+                "Mixed cover should strengthen the tint");
+        check(MediaClockContrast.videoInk(.19, black.textColor()) == black.textColor()
+                        && MediaClockContrast.videoInk(.21, white.textColor()) == white.textColor(),
+                "Small video exposure changes should keep the current tint");
+        check(MediaClockContrast.videoInk(.4, black.textColor()) == white.textColor()
+                        && MediaClockContrast.videoInk(.06, white.textColor()) == black.textColor(),
+                "Strong exposure changes should swap video tint");
+    }
 
-        MediaClockContrast.AuraSpec brightWhite =
-                MediaClockContrast.computeAura(new ArtworkSamples.Stats(1d, 1d, 1d));
-        check(brightWhite.textColor() == 0xff17191c, "Bright-white cover must use dark text");
+    private static void verifyArtworkUrlUpgrades() {
+        String apple512 =
+                "https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/c5/df/dd/"
+                        + "c5dfdd9c-24f2-de01-246c-fcc5e028f705/12UMGIM53864.rgb.jpg/512x512bb.jpg";
         check(
-                brightWhite.blurAlpha() == 0f
-                        && brightWhite.scrimAlpha() == 0f
-                        && brightWhite.conflict() == 0f,
-                "Bright-white cover must keep zero aura/scrim haze: " + brightWhite);
+                MediaArtworkUncap.upgradeArtworkUrl(apple512, 2048)
+                        .endsWith("/12UMGIM53864.rgb.jpg/2000x2000bb.jpg"),
+                "Apple Music mzstatic URL should upgrade 512x512bb.jpg to 2000x2000bb.jpg");
+        String yt544 = "https://lh3.googleusercontent.com/abc123=w544-h544-l90-rj";
+        check(
+                MediaArtworkUncap.upgradeArtworkUrl(yt544, 2048)
+                        .equals("https://lh3.googleusercontent.com/abc123=w1600-h1600-l90-rj"),
+                "YouTube Music googleusercontent URL should upgrade w544-h544 to w1600-h1600");
+        String spotify300 = "https://i.scdn.co/image/ab67616d00001e02deadbeef";
+        check(
+                MediaArtworkUncap.upgradeArtworkUrl(spotify300, 2048)
+                        .equals("https://i.scdn.co/image/ab67616d0000b273deadbeef"),
+                "Spotify scdn URL should upgrade 300px variant to 640px variant");
+        String deezer1000 =
+                "https://cdn-images.dzcdn.net/images/cover/638b000cf958d58d4a36969380f14437/1000x1000-000000-80-0-0.jpg";
+        check(
+                MediaArtworkUncap.upgradeArtworkUrl(deezer1000, 2048)
+                        .endsWith("/1400x1400-000000-80-0-0.jpg"),
+                "Deezer dzcdn URL should upgrade 1000x1000 to 1400x1400");
+        check(
+                MediaArtworkUncap.cleanSearchQuery(
+                                "ZZT, Tiga & Zombie Nation", "Rock the Peace (Bonus)")
+                        .equals("ZZT Rock the Peace"),
+                "cleanSearchQuery should isolate primary artist and strip parentheticals");
+        check(
+                MediaArtworkUncap.matchesTrack(
+                        "ZZT, Tiga & Zombie Nation",
+                        "Rock the Peace",
+                        "Partys Over Earth (Bonus Tracks)",
+                        "ZZT",
+                        "Rock the Peace",
+                        "Partys Over Earth"),
+                "matchesTrack should match multi-artist credit against primary artist");
+        check(
+                MediaArtworkUncap.matchesTrack(
+                        "Angèle, Caroline Polachek & SebastiAn",
+                        "Love Triangle",
+                        "Instinct",
+                        "Angèle",
+                        "Love Triangle",
+                        "Instinct - Single"),
+                "matchesTrack should normalize accents and match primary artist");
+        check(
+                !MediaArtworkUncap.matchesTrack(
+                        "SebastiAn",
+                        "Kindercut",
+                        "Total",
+                        "Plácido Domingo",
+                        "Total",
+                        "The Best of Plácido Domingo"),
+                "matchesTrack must reject unrelated artist even when album word overlaps");
+    }
 
-        MediaClockContrast.AuraSpec darkHotspot =
-                MediaClockContrast.computeAura(new ArtworkSamples.Stats(.10d, 0d, 1d));
-        check(darkHotspot.textColor() == 0xfffff9f2, "Dark cover with hotspot must use light text");
-        check(darkHotspot.scrimColor() == 0xff000000, "Light text cushion must darken scrim");
+    private static void verifyBlurCacheSizingAndAmbientClosePolicy() {
+        int[] portrait = ArtworkBlurFilter.cacheSize(1440, 3120);
         check(
-                darkHotspot.conflict() > .95f
-                        && darkHotspot.scrimAlpha() > .35f
-                        && darkHotspot.blurAlpha() > .80f,
-                "Dark cover with white hotspot must enable blurred aura and dark scrim: "
-                        + darkHotspot);
+                portrait[0] == 118 && portrait[1] == 256,
+                "Expected 1440x3120 blur cache 118x256, got " + portrait[0] + "x" + portrait[1]);
+        float scale = ArtworkBlurFilter.cacheScale(1440, 3120, portrait[0], portrait[1]);
+        check(
+                scale > 0.08f && scale < 0.09f,
+                "Expected proportional blur cache scale near 256/3120, got " + scale);
 
-        MediaClockContrast.AuraSpec split =
-                MediaClockContrast.computeAura(new ArtworkSamples.Stats(.50d, 0d, 1d));
-        check(split.textColor() == 0xff17191c, "50/50 split cover must use dark text");
-        check(split.scrimColor() == 0xfffff9f2, "Dark text cushion must lighten scrim");
+        int[] square = ArtworkBlurFilter.cacheSize(1080, 1080);
         check(
-                split.conflict() == 1f && split.scrimAlpha() > .40f && split.blurAlpha() == 1f,
-                "50/50 black-and-white split cover must maximize blur aura and scrim: " + split);
+                square[0] == 256 && square[1] == 256,
+                "Expected square blur cache 256x256, got " + square[0] + "x" + square[1]);
 
-        MediaClockContrast.AuraSpec subtleDark =
-                MediaClockContrast.computeAura(new ArtworkSamples.Stats(.015d, .005d, .08d));
-        check(subtleDark.textColor() == 0xfffff9f2, "Subtle dark cover must use light text");
+        int[] small = ArtworkBlurFilter.cacheSize(200, 100);
         check(
-                subtleDark.blurAlpha() > .20f
-                        && subtleDark.scrimAlpha() < .06f
-                        && subtleDark.scrimAlpha() < darkHotspot.scrimAlpha(),
-                "Subtle dark texture should prefer blurred aura over heavy scrim: " + subtleDark);
+                small[0] == 200 && small[1] == 100,
+                "Small viewport below 256px should keep exact dimensions");
+
+        int[] empty = ArtworkBlurFilter.cacheSize(0, 100);
+        check(empty[0] == 0 && empty[1] == 0, "Zero-sized viewport must yield 0x0 blur cache");
+
+        check(
+                MediaFullscreenExtras.shouldCloseAmbient(false, true, false, false, false),
+                "Transition from expanded to collapsed must trigger ambient close");
+        check(
+                MediaFullscreenExtras.shouldCloseAmbient(false, false, true, false, false),
+                "Collapsed update while ambient cover is visible must close ambient cover");
+        check(
+                MediaFullscreenExtras.shouldCloseAmbient(false, false, false, true, true),
+                "Collapsed update while backdrop is showing in ambient handoff must close");
+        check(
+                !MediaFullscreenExtras.shouldCloseAmbient(true, true, true, true, true),
+                "Expanded state must never close ambient cover");
+        check(
+                !MediaFullscreenExtras.shouldCloseAmbient(false, false, false, false, false),
+                "Idle collapsed state without visible ambient cover should be a no-op");
+
+        float[] inactive = ArtworkBlurFilter.topBandRange(100f, 100f, 3f, 2000f);
+        check(
+                inactive[0] == 100f && inactive[1] == 100f,
+                "Top blur band must be inactive when clock does not overlap cover");
+        float[] emptyMax = ArtworkBlurFilter.topBandRange(0f, 500f, 3f, 0f);
+        check(
+                emptyMax[0] == 0f && emptyMax[1] == 0f,
+                "Top blur band must be inactive for empty cover height");
+        float[] badDensity = ArtworkBlurFilter.topBandRange(0f, 500f, 0f, 2000f);
+        check(
+                badDensity[0] == 0f && badDensity[1] == 0f,
+                "Top blur band must be inactive for non-positive density");
+
+        float[] realistic = ArtworkBlurFilter.topBandRange(0f, 850f, 3f, 3120f);
+        check(
+                Math.abs(realistic[0] - 742f) < 0.01f && Math.abs(realistic[1] - 1030f) < 0.01f,
+                "Expected realistic top blur band [742, 1030], got ["
+                        + realistic[0]
+                        + ", "
+                        + realistic[1]
+                        + "]");
+
+        float[] clamped = ArtworkBlurFilter.topBandRange(0f, 1000f, 3f, 1020f);
+        check(
+                clamped[0] < clamped[1] && clamped[1] == 1020f,
+                "Expected clamped top blur band to stay inside maxBottom");
+
+        check(
+                MediaFullscreenExtras.shouldStartSongCrossfade(
+                        true, true, false, false, 1f, false, false),
+                "Settled awake song change should crossfade");
+        check(
+                !MediaFullscreenExtras.shouldStartSongCrossfade(
+                        true, true, false, false, 1f, false, true),
+                "Active native reveal must suppress fallback song crossfade");
+        check(
+                !MediaFullscreenExtras.shouldStartSongCrossfade(
+                        true, true, false, false, 1f, true, false),
+                "First awake frame exiting ambient mode must not crossfade from pre-doze art");
+        check(
+                !MediaFullscreenExtras.shouldStartSongCrossfade(
+                        false, true, false, false, 1f, false, false),
+                "Hidden backdrop must not crossfade");
+        check(
+                !MediaFullscreenExtras.shouldStartSongCrossfade(
+                        true, false, false, false, 1f, false, false),
+                "Switched holder must not crossfade from previous holder");
+        check(
+                !MediaFullscreenExtras.shouldStartSongCrossfade(
+                        true, true, true, false, 1f, false, false),
+                "Closing player must not start a song crossfade");
+        check(
+                !MediaFullscreenExtras.shouldStartSongCrossfade(
+                        true, true, false, true, 1f, false, false),
+                "Compact return must not start a song crossfade");
+        check(
+                !MediaFullscreenExtras.shouldStartSongCrossfade(
+                        true, true, false, false, 0.90f, false, false),
+                "Opening player below settled threshold must not start a song crossfade");
+
+        check(
+                MediaFullscreenExtras.shouldDeferToRunningCrossfade(true, true, 0.10f),
+                "Native reveal must defer once fallback crossfade has visibly progressed");
+        check(
+                !MediaFullscreenExtras.shouldDeferToRunningCrossfade(true, true, 0.0f),
+                "At 0% fallback crossfade can still hand off to native reveal");
+        check(
+                !MediaFullscreenExtras.shouldDeferToRunningCrossfade(true, true, 0.02f),
+                "Boundary 0.02f must still allow native reveal handoff");
+        check(
+                !MediaFullscreenExtras.shouldDeferToRunningCrossfade(true, false, 0.50f),
+                "Crossfade targeting an older song must not defer a newer song reveal");
+        check(
+                !MediaFullscreenExtras.shouldDeferToRunningCrossfade(false, true, 0.50f),
+                "Inactive crossfade must not defer native reveal");
+
+        check(
+                NativeArtworkReveal.shouldPreserveOutgoingOnBegin(true, false, 0f, true, false),
+                "Duplicate 0% begin with missing/matching before must keep outgoing art");
+        check(
+                NativeArtworkReveal.shouldPreserveOutgoingOnBegin(true, false, 0f, false, true),
+                "Repeated 0% begin for same outgoing bitmap must preserve outgoing art");
+        check(
+                !NativeArtworkReveal.shouldPreserveOutgoingOnBegin(true, false, 0.25f, true, false),
+                "Progressed reveal must accept new begin");
+        check(
+                !NativeArtworkReveal.shouldPreserveOutgoingOnBegin(true, true, 0f, true, false),
+                "When old equals incoming artwork, begin must refresh outgoing art");
+        check(
+                !NativeArtworkReveal.shouldPreserveOutgoingOnBegin(true, false, 0f, false, false),
+                "Distinct new outgoing bitmap at 0% must replace old artwork");
+        check(
+                NativeArtworkReveal.shouldUseOutgoingZoom(true, true, 0f),
+                "At 0% with outgoing art still bound, drawFade must keep outgoing zoom");
+        check(
+                NativeArtworkReveal.shouldUseOutgoingZoom(true, true, 0.25f),
+                "While current still matches old mid-reveal, drawFade must keep outgoing zoom");
+        check(
+                !NativeArtworkReveal.shouldUseOutgoingZoom(true, true, 1f),
+                "Completed reveal must not use outgoing zoom");
+        check(
+                !NativeArtworkReveal.shouldUseOutgoingZoom(true, false, 0.25f),
+                "Once incoming art differs from old, drawFade may use incoming zoom");
+        check(
+                !NativeArtworkReveal.shouldUseOutgoingZoom(false, true, 0f),
+                "Without valid outgoing art, drawFade must not override zoom");
+
+        check(
+                MediaFullscreenExtras.shouldHoldWakeArtwork(true, true, 1000L, 2500L),
+                "Should hold wake cover while native artwork still references pre-doze bitmap");
+        check(
+                !MediaFullscreenExtras.shouldHoldWakeArtwork(false, true, 1000L, 2500L),
+                "Without wake cover bitmap there is nothing to hold");
+        check(
+                !MediaFullscreenExtras.shouldHoldWakeArtwork(true, false, 1000L, 2500L),
+                "Must release wake hold as soon as native artwork advances past pre-doze bitmap");
+        check(
+                !MediaFullscreenExtras.shouldHoldWakeArtwork(true, true, 2500L, 2500L),
+                "Must release wake hold once timeout expires");
+
+        check(
+                MediaClockContrast.glassBlendAlpha(0f, 1f) == 0,
+                "Zero mix should produce zero glass artwork alpha");
+        check(
+                MediaClockContrast.glassBlendAlpha(1f, 0f) == 0,
+                "Zero artwork opacity should produce zero glass artwork alpha");
+        check(
+                MediaClockContrast.glassBlendAlpha(1f, 1f) == 199,
+                "Full glass blend should retain contrast ink under 78% artwork, got "
+                        + MediaClockContrast.glassBlendAlpha(1f, 1f));
+        check(
+                MediaClockContrast.glassBlendAlpha(2f, 2f) == 199,
+                "Glass blend alpha must clamp mix and opacity above 1");
+        check(
+                MediaClockContrast.glassBlendAlpha(-0.5f, 1f) == 0,
+                "Glass blend alpha must clamp negative inputs to 0");
+
+        check(
+                MediaFullscreenExtras.isTopBlurDisabled(true, false),
+                "Top clock blur must disable when hide-clock preference is enabled");
+        check(
+                MediaFullscreenExtras.isTopBlurDisabled(false, true),
+                "Top clock blur must disable when clock is hidden in window");
+        check(
+                !MediaFullscreenExtras.isTopBlurDisabled(false, false),
+                "Top clock blur must remain active when clock is visible on player");
+
+        check(
+                Math.abs(MediaFullscreenExtras.controlsBandOpacity(0f, 0.45f, true, false) - 0.45f)
+                        < 0.001f,
+                "Controls blur must stay live with progress while closing even when controls fade out");
+        check(
+                Math.abs(MediaFullscreenExtras.controlsBandOpacity(0f, 0.35f, false, true) - 0.35f)
+                        < 0.001f,
+                "Controls blur must stay live with progress during compact return");
+        check(
+                Math.abs(MediaFullscreenExtras.controlsBandOpacity(0.15f, 0.6f, false, false) - 0.6f)
+                        < 0.001f,
+                "Controls blur must stay live at max(live, progress) while opening");
+        check(
+                Math.abs(MediaFullscreenExtras.controlsBandOpacity(0.4f, 1f, false, false) - 0.4f)
+                        < 0.001f,
+                "Settled controls blur must respect live controls alpha");
+
+        check(
+                MediaFullscreenExtras.topBandOpacity(0.8f, false, false, true) == 0f,
+                "Top blur opacity must be 0 when clock is disabled on fullscreen player");
+        check(
+                Math.abs(MediaFullscreenExtras.topBandOpacity(0.55f, true, false, false) - 0.55f)
+                        < 0.001f,
+                "Top blur must track cover progress while closing");
+        check(
+                Math.abs(MediaFullscreenExtras.topBandOpacity(0.4f, false, false, false) - 0.4f)
+                        < 0.001f,
+                "Top blur must track cover progress while opening");
+        check(
+                MediaFullscreenExtras.topBandOpacity(1f, false, false, false) == 1f,
+                "Settled top blur must be full opacity when clock is enabled");
     }
 
     public static void main(String[] args) throws Exception {
@@ -949,7 +1194,9 @@ public final class MediaContractsTest {
         verifyOutlineMemberResolution();
         verifyResolveMaskingResource();
         verifyDexStaticReadWritesAndConstructorIntArg();
-        verifyClockAuraContrastPolicy();
+        verifyClockGlassContrastPolicy();
+        verifyArtworkUrlUpgrades();
+        verifyBlurCacheSizingAndAmbientClosePolicy();
         System.out.println("Media contracts: " + checks + " checks passed");
     }
 }

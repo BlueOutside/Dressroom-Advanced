@@ -83,6 +83,11 @@ final class NativeClockPanel {
     private float blurVisibility = -1f;
     private float initialBlurVisibility = -1f;
     private boolean depthEnabled, initialDepthEnabled;
+    private CompoundButton depthControl, depthAodControl;
+    private TextView depthDetectControl, depthAvailability;
+    private boolean updatingDepthAvailability;
+    private int depthSourceRetries;
+    private final Runnable checkDepthSource = this::checkDepthSource;
     private boolean depthOffAod, initialDepthOffAod;
     private boolean depthOwnsManual, initialDepthOwnsManual;
     private byte[] depthMask, initialDepthMask;
@@ -186,6 +191,7 @@ final class NativeClockPanel {
                     @Override
                     public void onViewDetachedFromWindow(View v) {
                         handler.removeCallbacks(applyPending);
+                        handler.removeCallbacks(checkDepthSource);
                         flush();
                     }
                 });
@@ -198,6 +204,10 @@ final class NativeClockPanel {
 
     private void refresh() {
         ready = false;
+        handler.removeCallbacks(checkDepthSource);
+        depthControl = depthAodControl = null;
+        depthDetectControl = depthAvailability = null;
+        depthSourceRetries = 0;
         content.removeAllViews();
         status = null;
         pages.clear();
@@ -251,7 +261,8 @@ final class NativeClockPanel {
                                 ? saved.getBoolean("fontNativeStretch")
                                 : bool(font, "isStretchableFont");
                 if (saved != null) {
-                    forceBlur = saved.getBoolean("forceBlur") && bool(data, "getBlurEnabled");
+                    forceBlur = binding.early == null && saved.getBoolean("forceBlur")
+                            && bool(data, "getBlurEnabled");
                     if (forceBlur) module.forceBlurTypes.add(newType);
                     else module.forceBlurTypes.remove(newType);
                     customShadow = saved.getBoolean("enabled");
@@ -351,15 +362,15 @@ final class NativeClockPanel {
             updateDepthPreview(data);
             Object color = Reflect.call(data, "getClockColorData");
             Object shadow = Reflect.call(color, "getClockShadowStyle");
-            section("Size & position");
-            boolean editable = bool(data, "isEditableScale");
-            float min = number(data, "getMinScale").floatValue();
-            float max = number(data, "getMaxScale").floatValue();
-            float scale = number(data, "getScale").floatValue();
-            if (editable && Float.isFinite(min) && Float.isFinite(max) && max > min) {
-                slider("Clock size", min, max, scale, true, v -> edit("scale", d -> resize(d, v)));
+            if (binding.supportsPosition()) section("Size & position");
+            if (binding.supportsPosition() && bool(data, "isEditableScale")) {
+                float min = binding.minimumScale(data);
+                float max = number(data, "getMaxScale").floatValue();
+                float scale = number(data, "getScale").floatValue();
+                if (Float.isFinite(min) && Float.isFinite(max) && max > min)
+                    slider("Clock size", min, max, scale, true, v -> edit("scale", d -> resize(d, v)));
             }
-            if (bool(data, "isEditablePosition")) {
+            if (binding.supportsPosition() && bool(data, "isEditablePosition")) {
                 int width = context.getResources().getDisplayMetrics().widthPixels;
                 int height = context.getResources().getDisplayMetrics().heightPixels;
                 slider(
@@ -376,6 +387,12 @@ final class NativeClockPanel {
                         0,
                         false,
                         v -> edit("y", d -> move(d, movedX, Math.round(v))));
+            }
+            EditorWidgets widgetPanel = module.earlyWidgetPanel();
+            if (widgetPanel != null) {
+                TextView editorExtras = action(
+                        widgetPanel.previewAvailable() ? "Widgets and Extras" : "Extras", "");
+                editorExtras.setOnClickListener(v -> widgetPanel.openFromClock(context));
             }
             section("Appearance");
             toggle(
@@ -452,7 +469,7 @@ final class NativeClockPanel {
                 label(ObjectCaptureBackend.unavailableReason(), 12, false);
             } else {
                 boolean imageAvailable = module.depthImageAvailable();
-                toggle(
+                depthControl = toggle(
                         "Clock behind subject",
                         depthEnabled && imageAvailable,
                         imageAvailable,
@@ -465,7 +482,7 @@ final class NativeClockPanel {
                             stage(data());
                             refresh();
                         });
-                toggle(
+                depthAodControl = toggle(
                         "Disable depth on AOD",
                         depthOffAod,
                         depthEnabled && imageAvailable,
@@ -474,13 +491,12 @@ final class NativeClockPanel {
                             stage(data());
                         });
                 TextView detectSubject = action("Detect wallpaper subject again", "");
+                depthDetectControl = detectSubject;
                 detectSubject.setEnabled(imageAvailable);
-                if (!imageAvailable)
-                    label(
-                            "Depth requires a still-image wallpaper. Gyro, video and live"
-                                    + " wallpapers are not supported.",
-                            12,
-                            false);
+                depthAvailability = label(depthSourceExplanation(), 12, false);
+                depthAvailability.setVisibility(imageAvailable ? View.GONE : View.VISIBLE);
+                if (!imageAvailable && !module.depthSourceKnown())
+                    handler.postDelayed(checkDepthSource, 250);
                 detectSubject.setOnClickListener(
                         v -> {
                             if (!(renderer instanceof View)) return;
@@ -608,7 +624,14 @@ final class NativeClockPanel {
                             "Date above the time",
                             bool(data, "getShowDateInfoFirst"),
                             true,
-                            v -> NativeEdits.toggle(controller, v, false));
+                            v -> {
+                                if (binding.beta != null) {
+                                    edit("dateOrder", draft ->
+                                            Reflect.call(draft, "setShowDataInfoFirst", draft, v, true));
+                                } else {
+                                    NativeEdits.toggle(controller, v, false);
+                                }
+                            });
             dateOrderControl.setVisibility(hideDate ? View.GONE : View.VISIBLE);
             boolean weatherSupported = false;
             try {
@@ -824,7 +847,7 @@ final class NativeClockPanel {
             return;
         }
         Object stretch = Reflect.call(font, "getClockStretchData");
-        List<Rect> current = (List<Rect>) Reflect.call(stretch, "getFontHeightRects");
+        List<Rect> current = SavedStretch.editorRects(stretch);
         int[] progress = new int[mins.size()];
         for (int i = 0; i < progress.length; i++) {
             int h =
@@ -847,33 +870,10 @@ final class NativeClockPanel {
             List<Float> savedHeights = module.stretchLocks.get(stretch);
             if (savedHeights != null && savedHeights.size() == progress.length) {
                 try {
-                    Object manager =
-                            Reflect.call(
-                                    Reflect.field(controller, binding.legacy ? "j" : "g"),
-                                    binding.legacy ? "i" : "d");
-                    Object calculator = Reflect.call(manager, "getClockPositionCalculator");
                     int padding = number(stretch, "getInnerBottomPadding").intValue();
                     float scale = number(data, "getScale").floatValue();
-                    @SuppressWarnings("unchecked")
-                    List<Float> low =
-                            (List<Float>)
-                                    Reflect.call(
-                                            calculator,
-                                            "calculateStretchHeightList",
-                                            mins,
-                                            mins,
-                                            padding,
-                                            scale);
-                    @SuppressWarnings("unchecked")
-                    List<Float> high =
-                            (List<Float>)
-                                    Reflect.call(
-                                            calculator,
-                                            "calculateStretchHeightList",
-                                            mins,
-                                            maxs,
-                                            padding,
-                                            scale);
+                    List<Float> low = binding.stretchHeights(controller, mins, mins, padding, scale);
+                    List<Float> high = binding.stretchHeights(controller, mins, maxs, padding, scale);
                     if (low != null
                             && high != null
                             && low.size() == progress.length
@@ -917,7 +917,7 @@ final class NativeClockPanel {
                                                     Reflect.call(d, "getClockFontData"),
                                                     "getClockStretchData");
                                     Reflect.call(item, "setFontHeight", (Object) null);
-                                    Reflect.call(item, "setFontHeightRects", (Object) null);
+                                    SavedStretch.editorRects(item, null);
                                 });
                     } else applyStretch(mins, maxs, progress);
                     for (View control : controls) control.setEnabled(enabled);
@@ -968,7 +968,7 @@ final class NativeClockPanel {
                     "Wait for the clock to finish measuring before enabling depth.");
         List<Rect> mins = (List<Rect>) Reflect.call(measured, "getMinRects");
         List<Rect> maxs = (List<Rect>) Reflect.call(measured, "getMaxRects");
-        List<Rect> current = (List<Rect>) Reflect.call(stretch, "getFontHeightRects");
+        List<Rect> current = SavedStretch.editorRects(stretch);
         List<Rect> defaults = (List<Rect>) Reflect.call(measured, "getDefaultRects");
         if (mins == null || maxs == null || mins.isEmpty() || mins.size() != maxs.size())
             throw new IllegalStateException("Clock stretch measurements are not ready.");
@@ -991,16 +991,9 @@ final class NativeClockPanel {
         List<Rect> targets = current != null && current.size() == mins.size() ? current : defaults;
         if (targets == null || targets.size() != mins.size())
             throw new IllegalStateException("No current stretch measurements available.");
-        Object calculator = binding.calculator(controller);
-        heights =
-                (List<Float>)
-                        Reflect.call(
-                                calculator,
-                                "calculateStretchHeightList",
-                                mins,
-                                targets,
-                                number(stretch, "getInnerBottomPadding").intValue(),
-                                number(draft, "getScale").floatValue());
+        heights = binding.stretchHeights(controller, mins, targets,
+                number(stretch, "getInnerBottomPadding").intValue(),
+                number(draft, "getScale").floatValue());
         if (heights == null
                 || heights.isEmpty()
                 || heights.stream().anyMatch(h -> h == null || !Float.isFinite(h) || h <= 0))
@@ -1009,7 +1002,7 @@ final class NativeClockPanel {
         manualProgress = progress;
         module.setManualRenderer(renderer, true);
         Reflect.call(stretch, "setFontHeight", new ArrayList<>(heights));
-        Reflect.call(stretch, "setFontHeightRects", targets);
+        SavedStretch.editorRects(stretch, targets);
         module.stretchLocks.put(stretch, heights);
         stage(draft);
     }
@@ -1025,7 +1018,7 @@ final class NativeClockPanel {
                     Reflect.call(Reflect.call(current, "getClockFontData"), "getClockStretchData");
             module.stretchLocks.remove(stretch);
             Reflect.call(stretch, "setFontHeight", (Object) null);
-            Reflect.call(stretch, "setFontHeightRects", (Object) null);
+            SavedStretch.editorRects(stretch, null);
             stage(current);
         } catch (Exception e) {
             error(e);
@@ -1038,7 +1031,7 @@ final class NativeClockPanel {
                                     Reflect.call(draft, "getClockFontData"), "getClockStretchData");
                     module.stretchLocks.remove(stretch);
                     Reflect.call(stretch, "setFontHeight", (Object) null);
-                    Reflect.call(stretch, "setFontHeightRects", (Object) null);
+                    SavedStretch.editorRects(stretch, null);
                 });
         flush();
     }
@@ -1064,23 +1057,9 @@ final class NativeClockPanel {
                     Object item =
                             Reflect.call(
                                     Reflect.call(draft, "getClockFontData"), "getClockStretchData");
-                    Object manager =
-                            Reflect.call(
-                                    Reflect.field(controller, binding.legacy ? "j" : "g"),
-                                    binding.legacy ? "i" : "d");
-                    Object calculator = Reflect.call(manager, "getClockPositionCalculator");
-                    if (calculator == null)
-                        throw new IllegalStateException(
-                                "No stretch calculator is available for this clock.");
-                    List<Float> heights =
-                            (List<Float>)
-                                    Reflect.call(
-                                            calculator,
-                                            "calculateStretchHeightList",
-                                            mins,
-                                            targets,
-                                            number(item, "getInnerBottomPadding").intValue(),
-                                            number(draft, "getScale").floatValue());
+                    List<Float> heights = binding.stretchHeights(controller, mins, targets,
+                            number(item, "getInnerBottomPadding").intValue(),
+                            number(draft, "getScale").floatValue());
                     if (heights == null
                             || heights.isEmpty()
                             || heights.stream()
@@ -1091,8 +1070,8 @@ final class NativeClockPanel {
                     module.setManualRenderer(renderer, true);
                     module.stretchLocks.remove(item);
                     Reflect.call(item, "setFontHeight", new ArrayList<>(heights));
-                    Reflect.call(item, "setFontHeightRects", targets);
-                    Reflect.call(draft, "setSupportStretch", true);
+                    SavedStretch.editorRects(item, targets);
+                    Reflect.call(draft, binding.early == null ? "setSupportStretch" : "setStretchEnabled", true);
                     module.stretchLocks.put(item, heights);
                 });
     }
@@ -1452,12 +1431,15 @@ final class NativeClockPanel {
     }
 
     private Object copy(Object data) throws Exception {
-        Class<?> helper =
-                Class.forName(
-                        "com.samsung.android.lockscreen.editor.item.domain.entity.item.clock.ClockDataKt",
-                        false,
-                        loader);
-        Object copy = helper.getDeclaredMethod("deepCopy", data.getClass()).invoke(null, data);
+        Object copy;
+        if (binding.early != null) {
+            copy = OneUi80ClockDraft.copy(data);
+        } else {
+            Class<?> helper = Class.forName(
+                    "com.samsung.android.lockscreen.editor.item.domain.entity.item.clock.ClockDataKt",
+                    false, loader);
+            copy = helper.getDeclaredMethod("deepCopy", data.getClass()).invoke(null, data);
+        }
         Object colors = Reflect.call(copy, "getClockColorData");
         Object shadow = Reflect.call(colors, "getClockShadowStyle");
         Object isolated =
@@ -1550,6 +1532,30 @@ final class NativeClockPanel {
         return view;
     }
 
+    private String depthSourceExplanation() {
+        return module.depthSourceKnown()
+                ? "Depth requires a still-image wallpaper. Gyro, video and live wallpapers are not supported."
+                : "The wallpaper source has not loaded. Reopen the clock panel once the wallpaper preview is visible.";
+    }
+
+    private void checkDepthSource() {
+        if (!root.isAttachedToWindow() || depthControl == null) return;
+        boolean available = module.depthImageAvailable();
+        updatingDepthAvailability = true;
+        try {
+            depthControl.setEnabled(available);
+            depthControl.setChecked(depthEnabled && available);
+            depthAodControl.setEnabled(depthEnabled && available);
+            depthDetectControl.setEnabled(available);
+            depthAvailability.setText(depthSourceExplanation());
+            depthAvailability.setVisibility(available ? View.GONE : View.VISIBLE);
+        } finally {
+            updatingDepthAvailability = false;
+        }
+        if (!available && !module.depthSourceKnown() && ++depthSourceRetries < 24)
+            handler.postDelayed(checkDepthSource, 250);
+    }
+
     private CompoundButton toggle(String name, boolean value, boolean enabled, ToggleEdit edit)
             throws Exception {
         CompoundButton control = (CompoundButton) nativeView(EditorBinding.Row.TOGGLE);
@@ -1559,7 +1565,7 @@ final class NativeClockPanel {
         control.setEnabled(enabled);
         control.setOnCheckedChangeListener(
                 (button, selected) -> {
-                    if (!ready) return;
+                    if (!ready || updatingDepthAvailability) return;
                     try {
                         edit.apply(selected);
                         flush();
@@ -1653,7 +1659,7 @@ final class NativeClockPanel {
         Object stretch = Reflect.call(font, "getClockStretchData");
         module.stretchLocks.remove(stretch);
         Reflect.call(stretch, "setFontHeight", (Object) null);
-        Reflect.call(stretch, "setFontHeightRects", (Object) null);
+        SavedStretch.editorRects(stretch, null);
         manualProgress = null;
         depthOwnsManual = false;
         if (renderer != null) module.setManualRenderer(renderer, false);

@@ -67,11 +67,22 @@ public final class SettingsProvider extends ContentProvider {
     public Bundle call(String method, String argument, Bundle extras) {
         if ("checkUpdate".equals(method)) {
             checkCaller(true);
-            try { return UpdateRepository.check(getContext()); }
-            catch (Exception error) {
+            try {
+                boolean force = extras != null && extras.getBoolean("force");
+                return UpdateRepository.check(getContext(), force);
+            } catch (Exception error) {
                 android.util.Log.i(DressroomModule.TAG, "Release check unavailable: " + error.getClass().getSimpleName());
                 return Bundle.EMPTY;
             }
+        }
+        if ("getUpdatePreferences".equals(method)) {
+            checkCaller(true);
+            return UpdateRepository.preferences(getContext());
+        }
+        if ("setPrereleaseUpdates".equals(method)) {
+            checkCaller(true);
+            return UpdateRepository.setPrereleaseEnabled(
+                    getContext(), extras != null && extras.getBoolean("prerelease"));
         }
         if ("readFoldProfile".equals(method) || "markFoldProfile".equals(method)) {
             checkCaller(false);

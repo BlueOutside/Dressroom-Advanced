@@ -23,12 +23,13 @@ final class OneUi85MediaHooks {
                                     .setId("dressroom-advanced.85-media-depth")
                                     .intercept(
                                             chain -> {
+                                                View clock = (View) chain.getThisObject();
+                                                LockscreenFrameBoost.pulse(clock, 700L);
                                                 Object result = chain.proceed();
-                                                OneUi85FullscreenArt.attach(
-                                                        (View) chain.getThisObject());
-                                                MediaDepthTransition.update(
-                                                        (View) chain.getThisObject(),
-                                                        Boolean.TRUE.equals(chain.getArg(0)));
+                                                OneUi85FullscreenArt.attach(clock);
+                                                boolean opening = Boolean.TRUE.equals(chain.getArg(0));
+                                                MediaClockVisibility.update(clock, opening);
+                                                MediaDepthTransition.update(clock, opening);
                                                 return result;
                                             })
                             ::unhook);

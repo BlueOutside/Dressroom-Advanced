@@ -80,13 +80,17 @@ final class ClockTransitionBinding {
                     DexSignatures.body(
                             NativeContract.method(base, "setDozing", void.class, boolean.class));
             dozing = findDozingField(baseDesc, ctrlDesc, loader, setDozingBody);
+            animation = transition.getParameterCount() == 3
+                    ? DexSignatures.body(transition)
+                            .uniqueRead(ctrlDesc, "Landroid/animation/AnimatorSet;", null)
+                            .field(loader)
+                    : NativeContract.findField(owner, null, Animator.class);
         } catch (IOException error) {
             throw (NoSuchFieldException)
                     new NoSuchFieldException("Clock transition DEX inspection failed")
                             .initCause(error);
         }
 
-        animation = NativeContract.findField(owner, null, Animator.class);
         axes = NativeContract.findField(owner, null, List.class);
     }
 
@@ -113,8 +117,7 @@ final class ClockTransitionBinding {
                 throw new NoSuchMethodException("Ambiguous clock transition methods");
             found = candidate;
         }
-        if (found == null)
-            throw new NoSuchMethodException("Missing clock transition method on " + base.getName());
+        if (found == null) return OneUi95Aod.clockTransition(base, SPRING_ANCHOR);
         found.setAccessible(true);
         return found;
     }

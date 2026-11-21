@@ -977,7 +977,7 @@ final class WidgetWiper {
     }
 
     private static boolean isLazyField(Class<?> type) {
-        return "dagger.Lazy".equals(type.getName());
+        return "dagger.Lazy".equals(type.getName()) || WidgetEditorBinding.isZeroArgSupplier(type);
     }
 
     private static Method findZeroArgVoidMethod(Class<?> type) {

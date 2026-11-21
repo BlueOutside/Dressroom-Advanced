@@ -22,8 +22,11 @@ final class BlurAppearance {
     }
 
     record ShadeSurface(java.lang.ref.WeakReference<View> view, Submission submission, int alpha) {}
+    private record AwakePill(java.lang.ref.WeakReference<Object> item, Submission submission,
+            int alpha) {}
 
     private static final Map<View, Submission> submissions = new WeakHashMap<>();
+    private static final Map<View, AwakePill> awakePills = new WeakHashMap<>();
     private static final Map<Integer, Bundle> previews = new java.util.HashMap<>();
     private static final Map<Integer, Bundle> committed = new java.util.HashMap<>();
     private static final java.util.Set<String> changedSurfaces = new java.util.HashSet<>();
@@ -73,6 +76,7 @@ final class BlurAppearance {
             curveFields = fields;
             curveSaturation = saturation;
             setter = submit;
+            BlurTintFade.install();
             RuntimeExtras.listen(BlurAppearance::committedChanged);
         } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
             setter = null;
@@ -127,6 +131,13 @@ final class BlurAppearance {
         var background = view.getBackground();
         return background != null && background.getClass().getName().equals(
                 "com.android.internal.graphics.drawable.BackgroundBlurDrawable");
+    }
+
+    static boolean visibleWindowRequest(Object request) throws ReflectiveOperationException {
+        if (request == null || mode == null || mode.getInt(request) != 0
+                || radius.getInt(request) <= 0) return false;
+        var path = copies.path(request);
+        return path == null || !path.isEmpty();
     }
 
     static boolean permitsWindowBlur(boolean androidBlur, boolean samsungBlur, boolean disabled) {
@@ -211,8 +222,8 @@ final class BlurAppearance {
             boolean custom = b.getBoolean(profile + "Custom");
             Object input = submitted;
             if (backend == 0 && surface.equals("nowBarBlur")) {
-                Object preset = NowBarGlass.glassPreset(view);
-                if (preset != null) {
+                Object preset = NowBarGlass.glassPreset(view, submitted);
+                if (preset != null && radius.getInt(preset) > 0) {
                     input = copies.copy(input);
                     color.setInt(input, 0);
                     radius.setInt(input, radius.getInt(preset));
@@ -236,6 +247,19 @@ final class BlurAppearance {
                 android.util.Log.w(DressroomModule.TAG, "Keeping native blur appearance", error);
             }
             return submitted;
+        }
+    }
+
+    static void tintSubmitted(View view, Object request, String surface) {
+        if (setter == null || android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) return;
+        try {
+            if (("widgetBlur".equals(surface) || "nowBarBlur".equals(surface))
+                    && request != null && mode.getInt(request) == 0)
+                BlurTintFade.submitted(view, color.getInt(request));
+            else BlurTintFade.clear(view);
+        } catch (IllegalAccessException | RuntimeException error) {
+            BlurTintFade.clear(view);
+            DressroomModule.note("Window blur tint submission", error);
         }
     }
 
@@ -269,9 +293,9 @@ final class BlurAppearance {
     }
 
     static Object editorCanvas(View view, Object info, boolean clock) throws ReflectiveOperationException {
-        if (mode.getInt(info) != 0) return info;
+        if (!copies.supportsPathClip() || mode.getInt(info) != 0) return info;
         var clip = clock ? copies.path(info) : copies.visible(info, view.getWidth(), view.getHeight(), null);
-        if (clip == null || clip.isEmpty() || !EditorBlurCapture.prepare(view)) return info;
+        if (clip == null || clip.isEmpty() || !EditorBlurCapture.prepare(view, clock)) return info;
         Object canvas = copies.clipped(info, clip);
         mode.setInt(canvas, 2);
         EditorWidgetBlur.canvasRequest(canvas);
@@ -404,7 +428,8 @@ final class BlurAppearance {
         try {
             setter.invoke(view, current.nativeInfo);
             var replacement = view.getBackground();
-            if (replacement != null) replacement.setAlpha(alpha);
+            if (replacement == null) view.setBackground(background);
+            else replacement.setAlpha(alpha);
         } catch (ReflectiveOperationException | RuntimeException error) {
             if (view.getBackground() == null) view.setBackground(background);
             throw error;
@@ -427,6 +452,91 @@ final class BlurAppearance {
         Submission current = submissions.get(view);
         if (current != null && current.surface.equals("nowBarBlur") && hasLiveWindowRequest(view))
             setter.invoke(view, current.nativeInfo);
+    }
+
+    static void forgetNowBarRequest(View view) {
+        Submission current = submissions.get(view);
+        if (current != null && current.surface.equals("nowBarBlur")) submissions.remove(view);
+    }
+
+    static void captureAwakePills() {
+        awakePills.clear();
+        for (var entry : submissions.entrySet()) {
+            View view = entry.getKey();
+            Submission saved = entry.getValue();
+            if (view == null || !view.isShown() || !saved.surface.equals("nowBarBlur")
+                    || !hasWindowDrawable(view) || NowBarGlass.ownsRequest(view, saved.nativeInfo))
+                continue;
+            try {
+                View card = nowBarCardOwner(view);
+                Object item = card == null ? null : Reflect.call(card, "getItem");
+                int alpha = view.getBackground().getAlpha();
+                if (item != null && alpha > 0 && visibleWindowRequest(saved.nativeInfo))
+                    awakePills.put(view, new AwakePill(new java.lang.ref.WeakReference<>(item),
+                            saved, alpha));
+            } catch (ReflectiveOperationException | RuntimeException ignored) {
+                // Cards without stable item identity can still replay their current request.
+            }
+        }
+    }
+
+    static void rebindAwakePills() {
+        var candidates = new java.util.LinkedHashSet<>(submissions.keySet());
+        candidates.addAll(awakePills.keySet());
+        try {
+            for (View view : candidates) rebindAwakePill(view);
+        } finally {
+            awakePills.clear();
+        }
+    }
+
+    private static void rebindAwakePill(View view) {
+        if (setter == null || view == null || !view.isAttachedToWindow() || !view.isShown()
+                || !view.isHardwareAccelerated() || view.getWidth() <= 0 || view.getHeight() <= 0)
+            return;
+        var display = view.getDisplay();
+        if (display == null || display.getState() != android.view.Display.STATE_ON) return;
+        Submission current = submissions.get(view);
+        if (current != null && !current.surface.equals("nowBarBlur")) return;
+        View card = nowBarCardOwner(view);
+        if (card == null || !liveWindowBlurAllowed(view.getContext())) return;
+        try {
+            AwakePill awake = awakePills.get(view);
+            Object request = current == null ? null : current.nativeInfo;
+            var previous = view.getBackground();
+            int opacity = hasWindowDrawable(view) && previous.getAlpha() > 0 ? previous.getAlpha() : 255;
+            boolean restoredAwake = false;
+            if (awake != null && awake.submission.fits(view) && awake.item.get() != null
+                    && awake.item.get() == Reflect.call(card, "getItem")
+                    && (request == null || staleDozeTint(
+                            color.getInt(request), color.getInt(awake.submission.nativeInfo)))) {
+                request = awake.submission.nativeInfo;
+                opacity = awake.alpha;
+                restoredAwake = true;
+            }
+            if (!restoredAwake && (!(Reflect.call(card, "getDarkAmount") instanceof Number dark)
+                    || dark.floatValue() > .01f)) return;
+            if (!visibleWindowRequest(request)) return;
+            BlurTintFade.clear(view);
+            // Reuse the native request but allocate a fresh blur region after LTPO resumes.
+            if (hasWindowDrawable(view)) view.setBackground(null);
+            try {
+                setter.invoke(view, request);
+                if (hasWindowDrawable(view)) {
+                    view.getBackground().setAlpha(opacity);
+                    view.invalidate();
+                }
+            } finally {
+                if (view.getBackground() == null && previous != null) view.setBackground(previous);
+            }
+        } catch (ReflectiveOperationException | RuntimeException unavailable) {
+            DressroomModule.note("Now Bar blur wake handoff", unavailable);
+        }
+    }
+
+    static boolean staleDozeTint(int current, int awake) {
+        return (current & 0x00ffffff) == 0 && (current >>> 24) >= 0xa0
+                && (current >>> 24) > (awake >>> 24);
     }
 
     /** Re-submits an earlier GenUI blur request once the view attaches to its window tree. */

@@ -9,13 +9,15 @@ import java.io.OutputStream;
 
 final class DepthStorage {
     private static final int MAX_BYTES = 16 * 1024 * 1024;
-    private static final android.util.LruCache<String, byte[]> cache =
-            new android.util.LruCache<>(8 * 1024 * 1024) {
-                @Override
-                protected int sizeOf(String key, byte[] bytes) {
-                    return bytes.length;
-                }
-            };
+    private static final class Masks {
+        static final android.util.LruCache<String, byte[]> CACHE =
+                new android.util.LruCache<>(8 * 1024 * 1024) {
+                    @Override
+                    protected int sizeOf(String key, byte[] bytes) {
+                        return bytes.length;
+                    }
+                };
+    }
 
     static String hash(byte[] bytes) {
         try {
@@ -54,7 +56,7 @@ final class DepthStorage {
             } catch (java.io.IOException error) {
                 throw new IllegalStateException("Could not save subject mask", error);
             }
-            cache.put(key, bytes);
+            Masks.CACHE.put(key, bytes);
             packed.remove(field);
             packed.putString(field + "Ref", key);
         }
@@ -72,7 +74,7 @@ final class DepthStorage {
                     && (caller.equals("com.android.systemui")
                             || caller.equals("com.samsung.android.app.aodservice")
                             || caller.equals("com.samsung.android.app.clockpack"))) continue;
-            byte[] bytes = cache.get(key);
+            byte[] bytes = Masks.CACHE.get(key);
             if (bytes == null)
                 try (InputStream input = context.getContentResolver().openInputStream(uri(key))) {
                     if (input == null) throw new java.io.IOException("Mask file unavailable");
@@ -87,7 +89,7 @@ final class DepthStorage {
                     bytes = output.toByteArray();
                     if (!hash(bytes).equals(key))
                         throw new java.io.IOException("Incomplete subject mask");
-                    cache.put(key, bytes);
+                    Masks.CACHE.put(key, bytes);
                 } catch (java.io.IOException error) {
                     throw new IllegalStateException("Could not load subject mask", error);
                 }

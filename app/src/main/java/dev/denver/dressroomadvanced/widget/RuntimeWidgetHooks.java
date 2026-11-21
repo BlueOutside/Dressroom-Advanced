@@ -31,6 +31,8 @@ final class RuntimeWidgetHooks {
             new DeferredRefresh<>(task -> main.post(task), this::refresh);
     private final Set<Class<?>> legacyControllers =
             Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
+    private final Set<Class<?>> earlyControllers =
+            Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
     private static final Map<Class<?>, Field> alignFields =
             Collections.synchronizedMap(new WeakHashMap<>());
 
@@ -43,6 +45,7 @@ final class RuntimeWidgetHooks {
         Bundle depthProfile;
         Boolean depthEnabled, maskReady;
         String layout = "";
+        float scale = 1f;
     }
 
     RuntimeWidgetHooks(DressroomModule module) {
@@ -50,7 +53,7 @@ final class RuntimeWidgetHooks {
         ScreenIdentity.observe(() -> main.post(() -> refreshAll(true)));
     }
 
-    synchronized void installLegacy(ClassLoader loader) throws ReflectiveOperationException {
+    synchronized void installLegacy(ClassLoader loader, boolean early) throws ReflectiveOperationException {
         if (installed.contains(loader)) return;
         Class<?> type =
                 Class.forName(
@@ -62,7 +65,7 @@ final class RuntimeWidgetHooks {
                 type,
                 "complicationGridUIController",
                 Class.forName(WidgetEngine.GRID, false, loader));
-        java.util.List<Method> updates = legacyUpdates(type);
+        java.util.List<Method> updates = early ? OneUi80WidgetRuntime.updates(type) : legacyUpdates(type);
         Method release = NativeContract.method(type, "release", void.class);
         try (HookTransaction hooks = new HookTransaction()) {
             for (Method method : updates) {
@@ -120,7 +123,9 @@ final class RuntimeWidgetHooks {
             }
             hooks.commit();
             legacyControllers.add(type);
+            if (early) earlyControllers.add(type);
             installed.add(loader);
+            WidgetClickBlock.install(module, loader);
         }
     }
 
@@ -166,9 +171,13 @@ final class RuntimeWidgetHooks {
                             "com.samsung.android.app.facewidget.complication.ComplicationWidgetPluginController",
                             false,
                             loader);
+            boolean tracksCompletion = PlatformGate.oneUiVersion() >= 90500
+                    && installLayoutCompletion(controller, hooks);
             for (Method method : controller.getDeclaredMethods()) {
                 if (method.isBridge()) continue;
                 String name = method.getName();
+                if (tracksCompletion && (name.equals("refreshComplicationGridAndWidgets")
+                        || name.equals("updateWidgetLayout"))) continue;
                 if (name.equals("updateClockGravity")) {
                     hooks.add(
                             module.hook(method)
@@ -235,7 +244,11 @@ final class RuntimeWidgetHooks {
                             "com.samsung.android.app.facewidget.utils.KeyguardClockProvider",
                             false,
                             loader);
-            hooks.add(watchWallpaper(provider)::unhook);
+            try {
+                hooks.add(watchWallpaper(provider)::unhook);
+            } catch (Exception | LinkageError unavailable) {
+                module.report("Widget wallpaper identity watch unavailable", unavailable);
+            }
             for (Method method : provider.getDeclaredMethods()) {
                 if (!method.getName().equals("onClockTypeChanged")
                         && !method.getName().equals("refreshClockFontDataInternal")) continue;
@@ -324,11 +337,40 @@ final class RuntimeWidgetHooks {
             }
             hooks.commit();
             installed.add(loader);
+            WidgetClickBlock.install(module, loader);
             android.util.Log.i(
                     DressroomModule.TAG, "Native complication controller owns runtime widgets");
         } catch (Exception | LinkageError error) {
             module.report("Native complication ownership hooks unavailable", error);
         }
+    }
+
+    private boolean installLayoutCompletion(Class<?> controller, HookTransaction hooks) {
+        try (HookTransaction optional = new HookTransaction()) {
+            var layout = OneUi95WidgetRuntime.layout(controller);
+            for (Method method : List.of(layout.applyLayout(), layout.refresh())) {
+                optional.add(module.hook(method)
+                        .setId("dressroom-advanced.widget-layout-completed-" + method.getName())
+                        .intercept(chain -> {
+                            Object result = chain.proceed();
+                            // The coroutine is called again when layout resumes. Only Unit
+                            // signals that the replacement widget tree is ready.
+                            if (layout.unit().isInstance(result)) schedule(chain.getThisObject(), true);
+                            return result;
+                        })::unhook);
+                module.deoptimize(method);
+            }
+            for (Method caller : layout.callers()) module.deoptimize(caller);
+            optional.commitTo(hooks);
+            return true;
+        } catch (ReflectiveOperationException | java.io.IOException | RuntimeException | LinkageError error) {
+            module.report("Optional widget layout completion unavailable", error);
+            return false;
+        }
+    }
+
+    void wallpaperReplaced() {
+        refreshAll(true);
     }
 
     private void refreshAll(boolean force) {
@@ -348,16 +390,32 @@ final class RuntimeWidgetHooks {
             throws ReflectiveOperationException {
         java.lang.reflect.Field context =
                 NativeContract.field(provider, "context", android.content.Context.class);
-        Method changed =
-                NativeContract.method(
-                        provider, "updateWallpaperColorsItem", void.class, Object.class);
+        Method changed;
+        int argIndex;
+        try {
+            changed =
+                    NativeContract.method(
+                            provider, "updateWallpaperColorsItem", void.class, Object.class);
+            argIndex = 0;
+        } catch (NoSuchMethodException removedInBeta) {
+            Class<?> localColor =
+                    Class.forName(
+                            "com.samsung.android.clockpack.plugins.clock.WallpaperLocalColor",
+                            false,
+                            provider.getClassLoader());
+            changed =
+                    NativeContract.method(
+                            provider, "updateClockColorData", void.class, int.class, localColor);
+            argIndex = 1;
+        }
+        final int valueArg = argIndex;
         var hook =
                 module.hook(changed)
                         .setId("dressroom-advanced.widget-wallpaper-identity")
                         .intercept(
                                 chain -> {
                                     Object result = chain.proceed();
-                                    if (chain.getArg(0) != null) {
+                                    if (chain.getArg(valueArg) != null) {
                                         Object owner = chain.getThisObject();
                                         main.post(
                                                 () -> {
@@ -383,6 +441,36 @@ final class RuntimeWidgetHooks {
             hook.unhook();
             throw error;
         }
+    }
+
+    static Object resolveControllerMember(
+            Object controller, String directName, String providerName)
+            throws ReflectiveOperationException {
+        try {
+            return widgetMember(controller, directName);
+        } catch (NoSuchFieldException migrated) {
+            Object provider = Reflect.field(controller, providerName);
+            return provider == null ? null : Reflect.call(provider, "get");
+        }
+    }
+
+    static Object widgetMember(Object owner, String name) throws ReflectiveOperationException {
+        var field = Reflect.findField(owner.getClass(), name);
+        Object value = field.get(owner);
+        return value != null && field.getType().getName().equals("javax.inject.Provider")
+                ? field.getType().getMethod("get").invoke(value) : value;
+    }
+
+    static Object resolveControllerProvider(
+            Object controller, String directName, String providerName)
+            throws ReflectiveOperationException {
+        Object provider;
+        try {
+            provider = Reflect.field(controller, directName);
+        } catch (NoSuchFieldException migrated) {
+            provider = Reflect.field(controller, providerName);
+        }
+        return provider == null ? null : Reflect.call(provider, "get");
     }
 
     private void trackAodState(Object controller, String method, Object arg) {
@@ -451,11 +539,17 @@ final class RuntimeWidgetHooks {
             }
             Object container = Reflect.field(controller, "container");
             if (!(container instanceof ViewGroup root)) return;
-            Object nativeGrid = Reflect.field(controller, "complicationGridUIController");
+            Object nativeGrid =
+                    resolveControllerMember(
+                            controller,
+                            "complicationGridUIController",
+                            "complicationGridUIControllerProvider");
+            if (nativeGrid == null) return;
             if (!module.widgetEngine.main(Reflect.call(nativeGrid, "getWidgetSizeManager"))) {
                 clear(controller);
                 return;
             }
+            WidgetClickBlock.observeRoot(module, root);
             State state = controllers.computeIfAbsent(controller, ignored -> new State());
             int orientation = LayoutOrientation.current(root.getContext());
             int screen = ScreenIdentity.current();
@@ -479,19 +573,27 @@ final class RuntimeWidgetHooks {
             }
             WidgetMediaOcclusion.register(root);
             if (observing.compareAndSet(false, true)) {
-                root.getContext()
-                        .getContentResolver()
-                        .registerContentObserver(
-                                SettingsProvider.URI,
-                                false,
-                                new ContentObserver(main) {
-                                    @Override
-                                    public void onChange(boolean selfChange) {
-                                        refreshAll(true);
-                                    }
-                                });
+                try {
+                    root.getContext()
+                            .getContentResolver()
+                            .registerContentObserver(
+                                    SettingsProvider.URI,
+                                    false,
+                                    new ContentObserver(main) {
+                                        @Override
+                                        public void onChange(boolean selfChange) {
+                                            refreshAll(true);
+                                        }
+                                    });
+                } catch (RuntimeException error) {
+                    observing.set(false);
+                    throw error;
+                }
             }
-            Object provider = Reflect.field(controller, "keyguardClockProvider");
+            Object provider =
+                    resolveControllerMember(
+                            controller, "keyguardClockProvider", "keyguardClockProviderProvider");
+            if (provider == null) return;
             Object item = Reflect.field(provider, "clockItem");
             if (item == null) return;
             int type = ((Number) Reflect.call(item, "getClockType")).intValue();
@@ -506,17 +608,21 @@ final class RuntimeWidgetHooks {
             Bundle widgets = module.widgetEngine.settings(root.getContext());
             if (widgets.getBoolean("layout") || state.layout.startsWith("true:")) {
                 Object nativeData =
-                        Reflect.call(Reflect.field(controller, "aodDataManager"), "get");
-                Object align = nativeAlignment(nativeData, nativeData.getClass().getClassLoader());
-                Object grid = Reflect.field(controller, "complicationGridUIController");
-                if (!widgets.getBoolean("layout"))
-                    align = WidgetEngine.enumValue(align.getClass(), "Default");
-                if (align != Reflect.field(grid, "widgetAlignType")) {
-                    Reflect.call(grid, "changeAlignType", align);
-                    try {
-                        module.widgetEngine.reflow(grid);
-                    } catch (Exception e) {
-                        module.report("Widget reflow skipped", e);
+                        resolveControllerProvider(
+                                controller, "aodDataManager", "aodDataManagerProvider");
+                if (nativeData != null) {
+                    Object align =
+                            nativeAlignment(nativeData, nativeData.getClass().getClassLoader());
+                    Object grid = nativeGrid;
+                    if (!widgets.getBoolean("layout"))
+                        align = WidgetEngine.enumValue(align.getClass(), "Default");
+                    if (align != Reflect.field(grid, "widgetAlignType")) {
+                        Reflect.call(grid, "changeAlignType", align);
+                        try {
+                            module.widgetEngine.reflow(grid);
+                        } catch (Exception e) {
+                            module.report("Widget reflow skipped", e);
+                        }
                     }
                 }
             }
@@ -558,6 +664,7 @@ final class RuntimeWidgetHooks {
             clear(controller);
             return;
         }
+        WidgetClickBlock.observeRoot(module, root);
         State state = controllers.computeIfAbsent(controller, ignored -> new State());
         int orientation = LayoutOrientation.current(root.getContext());
         int screen = ScreenIdentity.current();
@@ -578,40 +685,59 @@ final class RuntimeWidgetHooks {
             state.type = state.font = -1;
             state.depthProfile = null;
             state.depthEnabled = state.maskReady = null;
+            state.scale = 1f;
             watchLayout(controller, root);
         }
         if (observing.compareAndSet(false, true)) {
-            root.getContext()
-                    .getContentResolver()
-                    .registerContentObserver(
-                            SettingsProvider.URI,
-                            false,
-                            new ContentObserver(main) {
-                                @Override
-                                public void onChange(boolean selfChange) {
-                                    refreshAll(true);
-                                }
-                            });
+            try {
+                root.getContext()
+                        .getContentResolver()
+                        .registerContentObserver(
+                                SettingsProvider.URI,
+                                false,
+                                new ContentObserver(main) {
+                                    @Override
+                                    public void onChange(boolean selfChange) {
+                                        refreshAll(true);
+                                    }
+                                });
+            } catch (RuntimeException error) {
+                observing.set(false);
+                throw error;
+            }
         }
         if (force) module.widgetEngine.invalidate();
         Bundle settings = module.widgetEngine.settings(root.getContext());
-        boolean alignChanged = false;
-        if (settings.getBoolean("layout")) {
-            Object align = Reflect.field(grid, "widgetAlignType");
-            // On 8.5 phones Samsung leaves the grid alignment unset until it receives
-            // an explicit layout. Resolve the enum from its declaration, not that value.
-            Object target = WidgetEngine.savedAlignment(grid, settings.getBoolean("vertical"));
-            if (align != target) {
-                Reflect.call(grid, "changeAlignType", target);
-                alignChanged = true;
+        if (earlyControllers.contains(controller.getClass()) && !module.widgetEngine.earlyCapacity(grid)) {
+            float scale = settings.getFloat("scale", 1f);
+            if (state.scale != scale && module.widgetEngine.earlyScaling(grid)) {
+                float previousScale = state.scale;
+                state.scale = scale;
+                try {
+                    module.widgetEngine.refreshChecked(grid);
+                } catch (ReflectiveOperationException | RuntimeException error) {
+                    state.scale = previousScale;
+                    module.report("8.0 saved widget scale unavailable", error);
+                }
             }
-        }
-        String layout = WidgetPreferences.layoutKey(settings);
-        if (!state.loaded || alignChanged || !layout.equals(state.layout)) {
-            module.widgetEngine.refreshChecked(grid);
-            module.widgetEngine.repairPositions(grid);
-            state.layout = layout;
-            state.loaded = true;
+        } else {
+            boolean alignChanged = false;
+            if (settings.getBoolean("layout")) {
+                Object align = Reflect.field(grid, "widgetAlignType");
+                // The grid alignment can be null until Samsung receives an explicit layout.
+                Object target = WidgetEngine.savedAlignment(grid, settings.getBoolean("vertical"));
+                if (align != target) {
+                    Reflect.call(grid, "changeAlignType", target);
+                    alignChanged = true;
+                }
+            }
+            String layout = WidgetPreferences.layoutKey(settings);
+            if (!state.loaded || alignChanged || !layout.equals(state.layout)) {
+                module.widgetEngine.refreshChecked(grid);
+                module.widgetEngine.repairPositions(grid);
+                state.layout = layout;
+                state.loaded = true;
+            }
         }
         Object provider = Reflect.field(controller, "keyguardClockProvider");
         Class<?> base =
@@ -648,7 +774,7 @@ final class RuntimeWidgetHooks {
                     state.maskReady = ready;
                     android.util.Log.i(
                             DressroomModule.TAG,
-                            "8.5 widget depth: enabled="
+                            "Legacy widget depth: enabled="
                                     + enabled
                                     + " mask="
                                     + ready

@@ -37,11 +37,18 @@ final class NowBriefFill {
 
     static void install(DressroomModule module, ClassLoader loader)
             throws ReflectiveOperationException {
-        Class<?> kit = Class.forName(GENUI + "kit.style.GenUIStyleKit", false, loader);
+        Class<?> style = Class.forName(GENUI + "model.style.BaseStyle", false, loader);
+        installStyleBox(module, loader, style);
         Class<?> node = Class.forName(GENUI + "model.GenUINode", false, loader);
+        Class<?> kit;
+        try {
+            kit = Class.forName(GENUI + "kit.style.GenUIStyleKit", false, loader);
+        } catch (ClassNotFoundException replaced) {
+            installBetaFill(module, new OneUi95BriefFill(loader, node, style));
+            return;
+        }
         Class<?> linear = Class.forName(GENUI + "model.GenUINode$Linear", false, loader);
         Class<?> modifier = Class.forName(GENUI + "model.GenUIModifier", false, loader);
-        Class<?> style = Class.forName(GENUI + "model.style.BaseStyle", false, loader);
         Class<?> blur = Class.forName(GENUI + "model.style.BlurStyle", false, loader);
         Method update = NativeContract.method(kit, "updateNodeStyle", node, node, modifier, Boolean.class);
         Method copyStyle = copyDefault(style, 32);
@@ -81,13 +88,33 @@ final class NowBriefFill {
                     }
                 });
         module.deoptimize(update);
-        installStyleBox(module, loader, style);
+    }
+
+    private static void installBetaFill(DressroomModule module, OneUi95BriefFill binding)
+            throws ReflectiveOperationException {
+        Method current = Class.forName("android.app.ActivityThread").getMethod("currentApplication");
+        module.hook(binding.update).setId("dressroom-advanced.now-brief-clear-pill-fill")
+                .intercept(chain -> {
+                    Object result = chain.proceed();
+                    try {
+                        Object modifier = chain.getArg(1);
+                        if (!binding.isPill(result, modifier)) return result;
+                        Context context = (Context) current.invoke(null);
+                        if (context != null && NowBarGlass.glassAllowed(context, binding.darkAmount(modifier)))
+                            return binding.clear(result);
+                    } catch (ReflectiveOperationException | RuntimeException unavailable) {
+                        DressroomModule.note("Now Brief beta pill fill unavailable", unavailable);
+                    }
+                    return result;
+                });
+        module.deoptimize(binding.update);
     }
 
     static Method resolveStyleBoxUpdateBlur(ClassLoader loader, Class<?> style)
             throws ReflectiveOperationException {
-        Class<?> styleBox = Class.forName(GENUI + "kit.nodes.StyleBox", false, loader);
-        return NativeContract.method(
+        try {
+            Class<?> styleBox = Class.forName(GENUI + "kit.nodes.StyleBox", false, loader);
+            return NativeContract.method(
                 styleBox,
                 "updateBlur",
                 void.class,
@@ -95,7 +122,15 @@ final class NowBriefFill {
                 Context.class,
                 style,
                 boolean.class,
-                Float.class);
+                    Float.class);
+        } catch (ClassNotFoundException | NoSuchMethodException changed) {
+            try {
+                return OneUi95Aod.briefBlurSubmission(loader, style);
+            } catch (ReflectiveOperationException unavailable) {
+                changed.addSuppressed(unavailable);
+                throw changed;
+            }
+        }
     }
 
     private static void installStyleBox(DressroomModule module, ClassLoader loader, Class<?> style) {
@@ -104,7 +139,14 @@ final class NowBriefFill {
             hooks.add(
                     module.hook(updateBlur)
                             .setId("dressroom-advanced.now-brief-track-stylebox-blur")
-                            .intercept(chain -> withUpdateBlur((View) chain.getArg(0), chain::proceed))
+                            .intercept(chain -> {
+                                View view = (View) chain.getArg(0);
+                                if (!Boolean.TRUE.equals(chain.getArg(3))) {
+                                    forgetBlurView(view);
+                                    return chain.proceed();
+                                }
+                                return withUpdateBlur(view, chain::proceed);
+                            })
                             ::unhook);
             module.deoptimize(updateBlur);
             for (var caller : DexSignatures.callers(updateBlur)) {
@@ -127,6 +169,17 @@ final class NowBriefFill {
             added = blurViews.add(view);
         }
         if (added) view.addOnAttachStateChangeListener(ATTACH_REPLAY);
+    }
+
+    private static void forgetBlurView(View view) {
+        if (view == null) return;
+        boolean removed;
+        synchronized (blurViews) {
+            removed = blurViews.remove(view);
+        }
+        if (!removed) return;
+        view.removeOnAttachStateChangeListener(ATTACH_REPLAY);
+        BlurAppearance.forgetNowBarRequest(view);
     }
 
     /** Marks the calling thread as executing StyleBox.updateBlur around {@code action}. */

@@ -15,6 +15,7 @@ final class DepthAuto {
             image = new WeakReference<>(null);
     private Bundle profile;
     private Object stamp, resolved;
+    private String sourceKey = "";
     private boolean enabled;
     private long revision;
     private int settlingRetries, detectionRetries;
@@ -37,6 +38,7 @@ final class DepthAuto {
         settlingRetries = 0;
         detectionRetries = 0;
         stamp = resolved = null;
+        sourceKey = "";
         profile = null;
         clock.clear();
         image.clear();
@@ -122,23 +124,55 @@ final class DepthAuto {
         }
         try {
             Object current = LiveSubject.stamp(view);
+            String currentKey = DepthEffects.currentSourceKey();
             if (image.get() != view || !Objects.equals(stamp, current)) {
+                boolean sameGeometryEffect =
+                        image.get() == view
+                                && !sourceKey.isEmpty()
+                                && sourceKey.equals(currentKey)
+                                && LiveSubject.samePhotoGeometry(stamp, current)
+                                && (DepthEffects.hasSubjectFor(view)
+                                        || (profile != null
+                                                && DepthEffects.effectApplied()
+                                                && sourceKey.equals(
+                                                        profile.getString("depthImageKey", ""))
+                                                && profile.getByteArray(DepthMetadata.SOURCE)
+                                                        != null));
                 boolean sameWallpaper =
-                        image.get() == view && LiveSubject.isSameWallpaper(stamp, current);
+                        image.get() == view
+                                && (LiveSubject.isSameWallpaper(stamp, current)
+                                        || sameGeometryEffect);
+                if (sameWallpaper
+                        && resolved != null
+                        && DepthEffects.liveMask(view) != null) {
+                    image = new WeakReference<>(view);
+                    stamp = current;
+                    resolved = current;
+                    sourceKey = currentKey;
+                    DepthEffects.pendingSource(false);
+                    return;
+                }
                 cancelDeadline();
                 image = new WeakReference<>(view);
                 stamp = current;
+                sourceKey = currentKey;
                 detectionRetries = 0;
                 settlingRetries = 0;
-                resolved = null;
-                revision++;
-                jobs.clear();
-                DepthEffects.cancelScan();
+                if (!sameWallpaper || DepthEffects.liveMask(view) == null) {
+                    resolved = null;
+                    revision++;
+                    jobs.clear();
+                    DepthEffects.cancelScan();
+                } else {
+                    resolved = current;
+                }
                 if (!sameWallpaper) {
                     DepthEffects.pendingSource(true);
                 }
-                schedule(350, false);
+                schedule(sameWallpaper ? 50 : 350, false);
             } else if (resolved == null && check == null) schedule(350, false);
+            else if (resolved != null && DepthEffects.liveMask(view) != null
+                    && module.depthImageAvailable()) DepthEffects.pendingSource(false);
         } catch (Exception ignored) {
         }
     }
@@ -155,16 +189,17 @@ final class DepthAuto {
                     if (renderer == null) return;
                     if (!renderer.isAttachedToWindow()
                             || !EditorWallpaperSource.available(wallpaper)
-                            || wallpaper.getWidth() <= 0
-                            || wallpaper.getHeight() <= 0) {
+                            || (wallpaper.getWidth() <= 0 || wallpaper.getHeight() <= 0)) {
                         if (settlingRetries < 5) {
                             settlingRetries++;
                             schedule(250, force);
+                        } else {
+                            module.depthStatus("Wallpaper preview is unavailable. Tap Detect wallpaper subject when it is visible.");
                         }
                         return;
                     }
                     try {
-                        String fingerprint = LiveSubject.fingerprint(wallpaper);
+                        if (sourceKey.isEmpty()) sourceKey = DepthEffects.currentSourceKey();
                         byte[] live = force ? null : DepthEffects.liveMask(wallpaper);
                         if (live != null) {
                             resolved = stamp;
@@ -176,16 +211,26 @@ final class DepthAuto {
                                         "Clock preview was not ready to receive the subject");
                             return;
                         }
-                        if (!force
-                                && fingerprint.equals(profile.getString(DepthMetadata.FINGERPRINT))
-                                && profile.getByteArray(DepthMetadata.SOURCE) != null) {
-                            DepthEffects.restoreSource(wallpaper, profile, fingerprint);
+                        String fingerprint = LiveSubject.fingerprint(wallpaper);
+                        String savedFp = profile.getString(DepthMetadata.FINGERPRINT);
+                        byte[] savedSource = profile.getByteArray(DepthMetadata.SOURCE);
+                        boolean exactMatch = fingerprint.equals(savedFp);
+                        String activeKey = DepthEffects.currentSourceKey();
+                        boolean effectKeyMatch =
+                                DepthEffects.effectApplied()
+                                        && !activeKey.isEmpty()
+                                        && activeKey.equals(profile.getString("depthImageKey", ""))
+                                        && savedFp != null
+                                        && !savedFp.isEmpty();
+                        if (!force && savedSource != null && (exactMatch || effectKeyMatch)) {
+                            String restoreFp = exactMatch ? fingerprint : savedFp;
+                            DepthEffects.restoreSource(wallpaper, profile, restoreFp);
                             resolved = stamp;
                             settlingRetries = 0;
                             DepthEffects.pendingSource(false);
                             if (!module.depthDetected(
                                     renderer,
-                                    profile.getByteArray(DepthMetadata.SOURCE),
+                                    savedSource,
                                     "Subject restored · follows wallpaper movement"))
                                 retryDetection(
                                         "Clock preview was not ready to receive the subject");

@@ -68,7 +68,8 @@ final class OneUi9AodBlur {
             throws ReflectiveOperationException {
         List<DexSignatures.Body> matches;
         try {
-            matches = DexSignatures.find(loader, Set.of("getSizeSpec"));
+            matches = DexSignatures.find(
+                    loader, Set.of("getSizeSpec", OneUi95Aod.WIDGET_RESIZE_ANCHOR));
         } catch (IOException invalidDex) {
             throw new ReflectiveOperationException("Could not scan widget size helper", invalidDex);
         }

@@ -104,6 +104,31 @@ final class GlyphFontCache {
                 fix, update, fontType, fixed, variation, applyFont, applyTypeface, configChanged);
     }
 
+    private static Field tryResolveBaseTypeface(Class<?> glyph) {
+        Class<?> superClass = glyph.getSuperclass();
+        if (superClass == null || superClass == TextView.class) return null;
+        Field match = null;
+        for (Field field : superClass.getDeclaredFields()) {
+            if (Modifier.isStatic(field.getModifiers()) || field.getType() != Typeface.class)
+                continue;
+            if (match != null) return null;
+            field.setAccessible(true);
+            match = field;
+        }
+        return match;
+    }
+
+    private static Object effectiveTypeface(TextView view, Field baseTypeface) {
+        if (baseTypeface != null) {
+            try {
+                Object base = baseTypeface.get(view);
+                if (base != null) return base;
+            } catch (IllegalAccessException ignored) {
+            }
+        }
+        return view.getTypeface();
+    }
+
     private static DexSignatures.Body uniqueMethod(
             List<DexSignatures.Body> bodies,
             String owner,
@@ -131,6 +156,8 @@ final class GlyphFontCache {
         if (installed.contains(loader)) return;
         try (HookTransaction hooks = new HookTransaction()) {
             Resolved resolved = resolve(base);
+            Class<?> glyph = Class.forName(GLYPH_TEXT_VIEW, false, loader);
+            Field baseTypeface = tryResolveBaseTypeface(glyph);
             var invalidate =
                     module.hook(resolved.update())
                             .setId("dressroom-advanced.font-cache-invalidate")
@@ -147,11 +174,13 @@ final class GlyphFontCache {
                             .intercept(
                                     chain -> {
                                         TextView view = (TextView) chain.getThisObject();
+                                        LockscreenFrameBoost.pulse(view);
                                         int font = ((Number) chain.getArg(0)).intValue();
                                         String axes = (String) chain.getArg(1);
+                                        Object currentTf = effectiveTypeface(view, baseTypeface);
                                         Applied old = applied.get(view);
                                         if (old != null
-                                                && old.matches(font, axes, view.getTypeface())
+                                                && old.matches(font, axes, currentTf)
                                                 && resolved.fixed().get(view) == null
                                                 && resolved.fontType().getInt(view) == font
                                                 && Objects.equals(
@@ -161,10 +190,11 @@ final class GlyphFontCache {
                                         applying.set(view);
                                         try {
                                             Object result = chain.proceed();
-                                            Typeface typeface = view.getTypeface();
-                                            if (typeface != null)
+                                            Object updatedTf =
+                                                    effectiveTypeface(view, baseTypeface);
+                                            if (updatedTf != null)
                                                 applied.put(
-                                                        view, new Applied(font, axes, typeface));
+                                                        view, new Applied(font, axes, updatedTf));
                                             else applied.remove(view);
                                             return result;
                                         } finally {

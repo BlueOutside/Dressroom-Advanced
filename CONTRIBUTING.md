@@ -34,7 +34,14 @@ These are development credentials, not a release-key policy. Your key cannot upd
 - Explain unusual native ownership or timing in a short comment. A comment should say why the code exists, not narrate each assignment.
 - Include the affected One UI/app versions and what you actually checked in a pull request. JVM tests alone cannot verify a Samsung animation.
 
-The [Build workflow](.github/workflows/check.yml) checks repository contents and the reflection inventory, builds an unsigned APK and runs JVM checks. APKs and check results are available as workflow artifacts for seven days. They are unsigned and cannot update an official installation without the same signing key. Native-device checks remain local.
+The [Build workflow](.github/workflows/check.yml) checks repository contents and the reflection inventory, builds an unsigned APK and runs JVM checks on pushes to `main` and `dev` and on pull requests. APKs and check results are available as workflow artifacts for seven days. They are unsigned and cannot update an official installation without the same signing key. Native-device checks remain local.
+
+## Branches and pre-releases
+
+- Target the `dev` branch for pull requests. `main` holds stable releases.
+- Versioning uses `MAJOR * 10_000_000 + MINOR * 100_000 + PATCH * 1_000 + BUILD`, where `BUILD` is `1..998` for `X.Y.Z-dev.<N>` pre-releases and `999` for stable `X.Y.Z` builds (`20000999` for `2.0.0`). This ensures a `dev` build always upgrades cleanly to its matching stable release.
+- Pushes to `dev` run [Dev Pre-release](.github/workflows/dev-prerelease.yml), which validates the repository, computes the next `vX.Y.Z-dev.<N>` tag and commit changelog, builds a signed APK, runs JVM checks, publishes a GitHub pre-release, and keeps the latest 10 `dev` pre-releases.
+- Signed pre-releases in CI require four repository secrets: `SIGNING_KEYSTORE_BASE64`, `SIGNING_KEY_ALIAS`, `SIGNING_STORE_PASSWORD`, and `SIGNING_KEY_PASSWORD`.
 
 Workflow actions are pinned by commit. Dependabot proposes monthly updates; they are not merged automatically.
 

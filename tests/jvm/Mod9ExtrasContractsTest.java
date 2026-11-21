@@ -8,6 +8,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -505,7 +506,136 @@ public final class Mod9ExtrasContractsTest {
         }
         check(threw, "Exception from updateBlur body must propagate");
         check(!NowBriefFill.isBriefBlurView(null), "Thread flag must clear on exception");
-        check(NowBarGlass.glassPreset(null) == null, "Null View glassPreset must return null");
+        check(NowBarGlass.glassPreset(null, null) == null, "Null View glassPreset must return null");
+    }
+
+    private static Map<String, String> widgetClickBlockSources(boolean includeGridDispatch) {
+        Map<String, String> src = new LinkedHashMap<>();
+        src.put(
+                "com/samsung/android/app/facewidget/complication/KeyguardComplicationWidgetContainer.java",
+                "package com.samsung.android.app.facewidget.complication;\n"
+                        + "import android.view.MotionEvent;\n"
+                        + "import android.view.View;\n"
+                        + "public final class KeyguardComplicationWidgetContainer {\n"
+                        + "    public boolean dispatchTouchEvent(MotionEvent ev) { return false; }\n"
+                        + "    public boolean containsTouchableRect(int x, int y) { return false; }\n"
+                        + "    public boolean onTspEvent(View view, Object tsp) { return false; }\n"
+                        + "}\n");
+        src.put(
+                "com/samsung/android/app/facewidget/complication/ComplicationContainer.java",
+                "package com.samsung.android.app.facewidget.complication;\n"
+                        + "import android.view.View;\n"
+                        + "public final class ComplicationContainer {\n"
+                        + "    public boolean containsTouchableRect(int x, int y) { return false; }\n"
+                        + "    public boolean onTspEvent(View view, Object tsp) { return false; }\n"
+                        + "}\n");
+        src.put(
+                "com/samsung/android/app/facewidget/complication/ComplicationWidgetPluginController.java",
+                "package com.samsung.android.app.facewidget.complication;\n"
+                        + "import android.view.View;\n"
+                        + "public final class ComplicationWidgetPluginController {\n"
+                        + "    public void dispatchTspEventToWidget(View view, int x, int y) {}\n"
+                        + "}\n");
+        src.put(
+                "com/samsung/android/app/facewidget/complication/ComplicationManager.java",
+                "package com.samsung.android.app.facewidget.complication;\n"
+                        + "import android.view.ViewGroup;\n"
+                        + "public final class ComplicationManager {\n"
+                        + "    private ViewGroup container;\n"
+                        + "    public boolean isInContentBounds(float x, float y) { return false; }\n"
+                        + "}\n");
+        src.put(
+                "com/samsung/android/app/aodservice/common/grid/view/GridItemView.java",
+                "package com.samsung.android.app.aodservice.common.grid.view;\n"
+                        + "import android.view.MotionEvent;\n"
+                        + "public final class GridItemView {\n"
+                        + (includeGridDispatch
+                                ? "    public boolean dispatchTouchEvent(MotionEvent ev) { return false; }\n"
+                                : "")
+                        + "}\n");
+        return src;
+    }
+
+    private static void verifyWidgetClickBlockContracts(Path tempRoot) throws Exception {
+        check(
+                Arrays.asList(ExtrasPreferences.FLAGS).contains(WidgetClickBlock.KEY),
+                "ExtrasPreferences.FLAGS missing WidgetClickBlock.KEY");
+        for (int action : new int[] {0, 1, 2, 3, 211}) {
+            check(
+                    !WidgetClickBlock.shouldSuppressTouch(false, action),
+                    "Widget clicks enabled must allow action " + action);
+        }
+        for (int action : new int[] {0, 1, 2, 211}) {
+            check(
+                    WidgetClickBlock.shouldSuppressTouch(true, action),
+                    "Widget clicks disabled must suppress action " + action);
+        }
+        check(
+                !WidgetClickBlock.shouldSuppressTouch(true, 3),
+                "ACTION_CANCEL must still clean up gesture state");
+
+        check(
+                WidgetClickBlock.isLockscreenContainerName(WidgetClickBlock.KEYGUARD_CONTAINER),
+                "KeyguardComplicationWidgetContainer must match lockscreen container check");
+        check(
+                WidgetClickBlock.isLockscreenContainerName(WidgetClickBlock.COMPLICATION_CONTAINER),
+                "ComplicationContainer must match lockscreen container check");
+        check(
+                !WidgetClickBlock.isLockscreenContainerName(null)
+                        && !WidgetClickBlock.isLockscreenContainerName("")
+                        && !WidgetClickBlock.isLockscreenContainerName(
+                                "com.samsung.android.app.facewidget.complication.ComplicationWidgetHostViewContainer")
+                        && !WidgetClickBlock.isLockscreenContainerName(
+                                "com.samsung.android.app.sublauncher.presentation.view.nowbar.SubLauncherNowBarRootview"),
+                "Non-lockscreen complication classes must not match");
+
+        try (URLClassLoader loader9 =
+                compileFixture(tempRoot.resolve("wcb_9x"), widgetClickBlockSources(true))) {
+            WidgetClickBlock.Targets targets9 = WidgetClickBlock.resolveTargets(loader9);
+            check(
+                    targets9.keyguardDispatchTouch() != null
+                            && targets9.keyguardContainsTouchable() != null
+                            && targets9.keyguardOnTsp().size() == 1,
+                    "9.x KeyguardComplicationWidgetContainer targets must resolve");
+            check(
+                    targets9.complicationContainsTouchable() != null
+                            && targets9.complicationOnTsp().size() == 1,
+                    "9.x ComplicationContainer targets must resolve");
+            check(
+                    targets9.controllerDispatchTsp() != null,
+                    "9.x dispatchTspEventToWidget must resolve");
+            check(
+                    targets9.managerInContentBounds() != null
+                            && targets9.managerContainer() != null,
+                    "9.x ComplicationManager bounds target must resolve");
+            check(
+                    targets9.gridItemDispatchTouch() != null,
+                    "9.x GridItemView.dispatchTouchEvent must resolve");
+        }
+
+        try (URLClassLoader loader8 =
+                compileFixture(tempRoot.resolve("wcb_80"), widgetClickBlockSources(false))) {
+            WidgetClickBlock.Targets targets8 = WidgetClickBlock.resolveTargets(loader8);
+            check(
+                    targets8.keyguardDispatchTouch() != null
+                            && targets8.keyguardContainsTouchable() != null
+                            && targets8.keyguardOnTsp().size() == 1,
+                    "8.0 KeyguardComplicationWidgetContainer targets must resolve");
+            check(
+                    targets8.complicationContainsTouchable() != null
+                            && targets8.complicationOnTsp().size() == 1,
+                    "8.0 ComplicationContainer targets must resolve");
+            check(
+                    targets8.controllerDispatchTsp() != null,
+                    "8.0 dispatchTspEventToWidget must resolve");
+            check(
+                    targets8.managerInContentBounds() != null
+                            && targets8.managerContainer() != null,
+                    "8.0 ComplicationManager bounds target must resolve");
+            check(
+                    targets8.gridItemDispatchTouch() == null,
+                    "8.0 fixture without GridItemView.dispatchTouchEvent must leave gridItemDispatchTouch null");
+        }
     }
 
     public static void main(String[] args) throws Exception {
@@ -516,6 +646,7 @@ public final class Mod9ExtrasContractsTest {
             verifyUnlockBlurBoundaries();
             verifyNotificationBlurPolicyResolver(tempRoot);
             verifyNowBriefStyleBoxBlurContract(tempRoot);
+            verifyWidgetClickBlockContracts(tempRoot);
             System.out.println("Mod9 extras contracts: " + checks + " checks passed");
         } finally {
             deleteTree(tempRoot);

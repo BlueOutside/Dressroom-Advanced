@@ -6,6 +6,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
 
@@ -21,7 +22,7 @@ final class AodWidgetAppearance {
     private record Binding(Field wallpaper, Field reduceTransparency, Field darkAmount,
             Field surface, Field expanded, Method refresh) {}
 
-    private record Frame(View owner, float darkAmount) {}
+    private record Frame(View owner, float darkAmount, boolean keepLockscreenPreset) {}
 
     private AodWidgetAppearance() {}
 
@@ -32,8 +33,6 @@ final class AodWidgetAppearance {
             if (installed.containsKey(owner) || !View.class.isAssignableFrom(owner)) return;
             Class<?> preset = Class.forName(WIDGETS + "WidgetBlurType", false, loader);
             Class<?> curves = Class.forName(WIDGETS + "WidgetBlurTypeKt", false, loader);
-            if (!NativeContract.hasStaticMethod(curves, float[].class, preset, float.class)
-                    || !NativeContract.hasStaticMethod(curves, Integer.class, preset, float.class)) return;
             Field wallpaper = NativeContract.field(owner, "showWallpaperOnAOD", boolean.class);
             Field reduceTransparency;
             try {
@@ -45,6 +44,16 @@ final class AodWidgetAppearance {
             Method darkAmount = NativeContract.method(owner, "setDarkAmount", void.class, float.class);
             Method update = NativeContract.method(owner, "changeBlurBgByDarkAmount", void.class, float.class);
             if (!Modifier.isFinal(refresh.getModifiers())) return;
+            List<Method> directional = directionalCurves(refresh, curves, preset);
+            for (Method method : directional) {
+                hooks.add(module.hook(method).setId("dressroom-advanced.aod-widget-appearance-" + method.getName())
+                        .intercept(chain -> {
+                            Frame frame = submitting.get();
+                            if (frame == null || !frame.keepLockscreenPreset()) return chain.proceed();
+                            return chain.proceed(new Object[] {chain.getArg(0), 0f, chain.getArg(2)});
+                        })::unhook);
+                module.deoptimize(method);
+            }
             Binding binding = new Binding(wallpaper, reduceTransparency,
                     NativeContract.field(owner, "darkAmount", float.class),
                     NativeContract.field(owner, "blurView", View.class),
@@ -53,10 +62,12 @@ final class AodWidgetAppearance {
                     .intercept(chain -> {
                         View view = (View) chain.getThisObject();
                         float amount = (Float) chain.getArg(0);
+                        boolean keep = useLockscreenPreset(view, amount, binding);
                         Frame previous = submitting.get();
-                        submitting.set(new Frame(view, amount));
+                        submitting.set(new Frame(view, amount, keep));
                         try {
-                            if (useLockscreenPreset(view, amount, binding))
+                            // Directional builds track the actual dark amount to steer their blend.
+                            if (keep && directional.isEmpty())
                                 return chain.proceed(new Object[] {0f});
                             return chain.proceed();
                         } finally {
@@ -69,9 +80,17 @@ final class AodWidgetAppearance {
             module.deoptimize(darkAmount);
             hooks.commit();
             installed.put(owner, binding);
-        } catch (ReflectiveOperationException | RuntimeException | LinkageError unavailable) {
+        } catch (ReflectiveOperationException | java.io.IOException | RuntimeException | LinkageError unavailable) {
             module.report("Optional wallpaper AOD widget blur unavailable", unavailable);
         }
+    }
+
+    static List<Method> directionalCurves(Method refresh, Class<?> curves, Class<?> preset)
+            throws ReflectiveOperationException, java.io.IOException {
+        if (NativeContract.hasStaticMethod(curves, float[].class, preset, float.class)
+                && NativeContract.hasStaticMethod(curves, Integer.class, preset, float.class))
+            return List.of();
+        return OneUi95Aod.directionalWidgetBlur(refresh, curves, preset);
     }
 
     private static boolean useLockscreenPreset(View view, float darkAmount, Binding binding) {
