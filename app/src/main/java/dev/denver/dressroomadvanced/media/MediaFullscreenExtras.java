@@ -1549,15 +1549,22 @@ final class MediaFullscreenExtras {
                                         try {
                                             View controlHost = (View) OneUi9MediaBinding.read(contract.controlHost(), object);
                                             View titleArtist = (View) OneUi9MediaBinding.read(contract.titleArtist(), object);
+                                            Object arg1 = chain.getArg(1);
+                                            Object arg2 = chain.getArg(2);
+                                            android.util.Log.i("DressroomLyrics", "Holder ctor: controlHost=" + controlHost
+                                                    + ", titleArtist=" + titleArtist
+                                                    + ", arg1=" + (arg1 != null ? arg1.getClass().getName() : "null")
+                                                    + ", arg2=" + (arg2 != null ? arg2.getClass().getName() : "null"));
+
                                             ViewGroup pageContainer = null;
-                                            if (controlHost != null && controlHost.getParent() instanceof ViewGroup parentGroup) {
+                                            if (arg2 instanceof ViewGroup pageGroup) {
+                                                pageContainer = pageGroup;
+                                            } else if (arg1 instanceof ViewGroup itemGroup) {
+                                                pageContainer = itemGroup;
+                                            } else if (controlHost != null && controlHost.getParent() instanceof ViewGroup parentGroup) {
                                                 pageContainer = parentGroup;
                                             } else if (view != null && view.getParent() instanceof ViewGroup parentGroup) {
                                                 pageContainer = parentGroup;
-                                            } else if (chain.getArg(1) instanceof ViewGroup itemGroup) {
-                                                pageContainer = itemGroup;
-                                            } else if (chain.getArg(2) instanceof ViewGroup pageGroup) {
-                                                pageContainer = pageGroup;
                                             }
                                             if (controlHost instanceof ViewGroup hostGroup) {
                                                 var lyricsCtrl = dev.denver.dressroomadvanced.lyrics.LyricsController.bind(
@@ -1570,6 +1577,7 @@ final class MediaFullscreenExtras {
                                                 }
                                             }
                                         } catch (Exception err) {
+                                            android.util.Log.e("DressroomLyrics", "Lyrics binding failed in Holder ctor", err);
                                             owner.report("Lyrics binding skipped", err);
                                         }
                                         view.addOnLayoutChangeListener(

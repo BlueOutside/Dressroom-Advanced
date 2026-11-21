@@ -102,6 +102,7 @@ public final class LyricsView extends FrameLayout {
         plainLyricsView = new TextView(context);
         plainLyricsView.setTextColor(Color.WHITE);
         plainLyricsView.setTextSize(TypedValue.COMPLEX_UNIT_SP, textSizeSp);
+        plainLyricsView.setShadowLayer(4f, 0f, 2f, Color.argb(180, 0, 0, 0));
         plainLyricsView.setLineSpacing(dpToPx(6), 1.0f);
         plainLyricsView.setGravity(Gravity.CENTER_HORIZONTAL);
         plainLyricsView.setPadding(dpToPx(12), dpToPx(20), dpToPx(12), dpToPx(20));
@@ -181,6 +182,7 @@ public final class LyricsView extends FrameLayout {
                 lineTv.setText(line.text());
                 lineTv.setTextSize(TypedValue.COMPLEX_UNIT_SP, textSizeSp);
                 lineTv.setTextColor(Color.WHITE);
+                lineTv.setShadowLayer(4f, 0f, 2f, Color.argb(180, 0, 0, 0));
                 lineTv.setAlpha(0.45f);
                 lineTv.setGravity(Gravity.CENTER_HORIZONTAL);
                 lineTv.setPadding(dpToPx(12), linePadding, dpToPx(12), linePadding);

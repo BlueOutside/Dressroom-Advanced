@@ -15,6 +15,7 @@ import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewParent;
 import android.widget.FrameLayout;
 import android.widget.TextView;
 
@@ -33,7 +34,7 @@ public final class LyricsController {
     }
     private static final Map<View, LyricsController> BOUND_CONTROLLERS = new WeakHashMap<>();
 
-    private final WeakReference<ViewGroup> pageContainerRef;
+    private WeakReference<ViewGroup> pageContainerRef;
     private final WeakReference<ViewGroup> controlHostRef;
     private final WeakReference<View> titleArtistRef;
     private final WeakReference<View> albumArtRef;
@@ -89,6 +90,11 @@ public final class LyricsController {
         this.albumArtRef = new WeakReference<>(albumArt);
         this.context = targetPage.getContext();
 
+        android.util.Log.i("DressroomLyrics", "LyricsController init: targetPage="
+                + targetPage.getClass().getName()
+                + ", controlHost=" + (controlHost != null ? controlHost.getClass().getName() : "null")
+                + ", titleArtist=" + (titleArtist != null ? titleArtist.getClass().getName() : "null"));
+
         this.lyricsView = new LyricsView(context);
         this.lyricsView.setVisibility(View.GONE);
         this.lyricsView.setAlpha(0f);
@@ -127,17 +133,33 @@ public final class LyricsController {
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         btnLp.gravity = Gravity.TOP | Gravity.END;
         btnLp.setMargins(0, dpToPx(10), dpToPx(16), 0);
-        controlHost.addView(toggleButton, btnLp);
+        if (toggleButton.getParent() == null) {
+            controlHost.addView(toggleButton, btnLp);
+        }
 
-        // Attach lyrics view to pageContainer (covering album art + titleArtist)
-        FrameLayout.LayoutParams lyricsLp = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
-        int margin = dpToPx(6);
-        lyricsLp.setMargins(margin, margin, margin, margin);
-        targetPage.addView(lyricsView, lyricsLp);
+        attachLyricsView(targetPage);
+
+        // Also watch for attachment to window to find real FaceWidgetMusicPage parent if needed
+        controlHost.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
+            @Override
+            public void onViewAttachedToWindow(View v) {
+                android.util.Log.i("DressroomLyrics", "controlHost onViewAttachedToWindow");
+                ViewGroup bestContainer = findBestContainer(v);
+                if (bestContainer != null && bestContainer != pageContainerRef.get()) {
+                    android.util.Log.i("DressroomLyrics", "Found better container on attach: " + bestContainer.getClass().getName());
+                    pageContainerRef.clear();
+                    pageContainerRef = new WeakReference<>(bestContainer);
+                    attachLyricsView(bestContainer);
+                }
+                updateLyricsBounds();
+            }
+
+            @Override
+            public void onViewDetachedFromWindow(View v) {}
+        });
 
         targetPage.addOnLayoutChangeListener(layoutListener);
-        if (controlHost != null && controlHost != targetPage) {
+        if (controlHost != targetPage) {
             controlHost.addOnLayoutChangeListener(layoutListener);
         }
 
@@ -154,6 +176,40 @@ public final class LyricsController {
         }
 
         onTrackChanged();
+    }
+
+    private ViewGroup findBestContainer(View child) {
+        for (ViewParent p = child.getParent(); p instanceof View pv; p = pv.getParent()) {
+            if (pv.getClass().getName().contains("FaceWidgetMusicPage") && pv instanceof ViewGroup vg) {
+                return vg;
+            }
+        }
+        for (ViewParent p = child.getParent(); p instanceof View pv; p = pv.getParent()) {
+            if (pv.getId() != View.NO_ID) {
+                try {
+                    String name = pv.getResources().getResourceEntryName(pv.getId());
+                    if ("facewidget_music_page_container".equals(name) && pv instanceof ViewGroup vg) {
+                        return vg;
+                    }
+                } catch (Exception ignored) {}
+            }
+        }
+        return null;
+    }
+
+    private void attachLyricsView(ViewGroup container) {
+        if (container == null) return;
+        if (lyricsView.getParent() == container) return;
+        if (lyricsView.getParent() instanceof ViewGroup oldParent) {
+            oldParent.removeView(lyricsView);
+        }
+        FrameLayout.LayoutParams lyricsLp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+        int margin = dpToPx(6);
+        lyricsLp.setMargins(margin, margin, margin, margin);
+        container.addView(lyricsView, lyricsLp);
+        container.addOnLayoutChangeListener(layoutListener);
+        android.util.Log.i("DressroomLyrics", "lyricsView attached to: " + container.getClass().getName());
     }
 
     public static LyricsController bind(ViewGroup container) {
@@ -175,46 +231,28 @@ public final class LyricsController {
         ViewGroup page = pageContainerRef.get();
         if (page == null) return;
         View controlHost = controlHostRef.get();
-        View albumArt = albumArtRef.get();
+        if (controlHost == null) return;
 
-        int top = 0;
-        if (albumArt != null && albumArt.getParent() == page) {
-            top = albumArt.getTop();
-        } else if (albumArt != null) {
-            int[] artLoc = new int[2];
-            int[] pageLoc = new int[2];
-            albumArt.getLocationInWindow(artLoc);
-            page.getLocationInWindow(pageLoc);
-            top = Math.max(0, artLoc[1] - pageLoc[1]);
+        int hostHeight = controlHost.getHeight();
+        if (hostHeight <= 0) {
+            controlHost.post(this::updateLyricsBounds);
+            return;
         }
 
-        int bottom = page.getHeight();
-        if (controlHost != null && controlHost.getParent() == page) {
-            bottom = controlHost.getTop();
-        } else if (controlHost != null) {
-            int[] ctrlLoc = new int[2];
-            int[] pageLoc = new int[2];
-            controlHost.getLocationInWindow(ctrlLoc);
-            page.getLocationInWindow(pageLoc);
-            int relCtrlTop = ctrlLoc[1] - pageLoc[1];
-            if (relCtrlTop > top) {
-                bottom = relCtrlTop;
-            }
-        }
-
-        int h = bottom - top;
-        if (h > dpToPx(80)) {
-            ViewGroup.LayoutParams lp = lyricsView.getLayoutParams();
-            if (lp instanceof ViewGroup.MarginLayoutParams mlp) {
-                if (mlp.height != h || mlp.topMargin != top) {
-                    mlp.width = ViewGroup.LayoutParams.MATCH_PARENT;
-                    mlp.height = h;
-                    mlp.topMargin = top;
-                    if (mlp instanceof FrameLayout.LayoutParams flp) {
-                        flp.gravity = Gravity.TOP;
-                    }
-                    lyricsView.setLayoutParams(mlp);
+        ViewGroup.LayoutParams lp = lyricsView.getLayoutParams();
+        if (lp instanceof ViewGroup.MarginLayoutParams mlp) {
+            int desiredBottomMargin = hostHeight;
+            if (mlp.bottomMargin != desiredBottomMargin || mlp.height != ViewGroup.LayoutParams.MATCH_PARENT) {
+                mlp.width = ViewGroup.LayoutParams.MATCH_PARENT;
+                mlp.height = ViewGroup.LayoutParams.MATCH_PARENT;
+                mlp.topMargin = 0;
+                mlp.bottomMargin = desiredBottomMargin;
+                if (mlp instanceof FrameLayout.LayoutParams flp) {
+                    flp.gravity = Gravity.TOP;
                 }
+                lyricsView.setLayoutParams(mlp);
+                android.util.Log.i("DressroomLyrics", "updateLyricsBounds applied: bottomMargin=" + desiredBottomMargin
+                        + " (hostHeight=" + hostHeight + ", pageHeight=" + page.getHeight() + ")");
             }
         }
     }
@@ -264,6 +302,9 @@ public final class LyricsController {
         if (isVisible) return;
         isVisible = true;
         updateLyricsBounds();
+        android.util.Log.i("DressroomLyrics", "showLyrics: lyricsView parent="
+                + (lyricsView.getParent() != null ? lyricsView.getParent().getClass().getName() : "null")
+                + " bounds=" + lyricsView.getLeft() + "," + lyricsView.getTop() + " " + lyricsView.getWidth() + "x" + lyricsView.getHeight());
         lyricsView.bringToFront();
         lyricsView.setVisibility(View.VISIBLE);
         lyricsView.animate()
@@ -348,6 +389,7 @@ public final class LyricsController {
         long durationMs = metadata.getLong(MediaMetadata.METADATA_KEY_DURATION);
 
         String trackKey = artist + "|" + title;
+        android.util.Log.i("DressroomLyrics", "onTrackChanged: trackKey=" + trackKey);
         if (trackKey.equals(currentTrackKey)) return;
         currentTrackKey = trackKey;
 
@@ -355,6 +397,7 @@ public final class LyricsController {
         lyricsView.setLyrics(null);
 
         LyricsBridge.requestLyrics(context, artist, title, album, durationMs, entry -> {
+            android.util.Log.i("DressroomLyrics", "Lyrics received: entry=" + (entry != null ? entry.source() : "null"));
             if (trackKey.equals(currentTrackKey)) {
                 lyricsView.setLyrics(entry);
                 if (isVisible) {
