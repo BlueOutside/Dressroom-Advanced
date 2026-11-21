@@ -29,9 +29,9 @@ Imported fonts use their own variable axes. Samsung's dynamic per-digit stretchi
 | 9.0, foldable | AOD + Dressroom | Experimental; tested on SM-F971B, cover and inner screens |
 | 9.0 | Clock Style + Dressroom | Supported for clock, fonts, depth, widgets and Now Bar stack (ClockPack 8.9.65.92); clock blur and foldable profiles require AOD |
 | 8.5 | Clock Style + Dressroom | Tested on SM-P613 with a custom ROM |
-| 8.5 | AOD + Dressroom | Experimental; widget issues remain on some app versions |
-| 8.0 | AOD or Clock Style + Dressroom | Experimental clock and depth port. See [tested APKs](docs/compatibility/ONE_UI_8_0.md). |
-| 7.0 | Any combination | Unsupported (Support coming after 8.0 support update) |
+| 8.5 | AOD + Dressroom | Supported |
+| 8.0 | AOD or Clock Style + Dressroom | Experimental. See [tested APKs](docs/compatibility/ONE_UI_8_0.md). |
+| 7.0 | Any combination | Unsupported (Support coming later) |
 
 Requires Android 16 or 17 and an LSPosed-compatible framework with API 102 support. Features also depend on the installed Dressroom and clock-provider versions.
 
