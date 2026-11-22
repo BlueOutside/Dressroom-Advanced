@@ -197,6 +197,11 @@ final class RuntimeClockHooks {
                     module.report("Now Bar stack controls unavailable", error);
                 }
             }
+            try {
+                DateEffects.installProviderSizing(module, base);
+            } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+                module.report("Clock sizing binding unavailable", error);
+            }
             VariableFonts.install(module, base, view -> profiles.get(view));
             Class<?> font =
                     Class.forName(
@@ -930,6 +935,7 @@ final class RuntimeClockHooks {
             }
             if (settings == null) {
                 profiles.remove(view);
+                DateEffects.bindSettings(view, null);
                 if (effects.remove(view)) ShadowEffects.apply(view, false, 0, 0, 0, 0);
                 applyDepth(view, null);
                 int attempt = settingsRetries.getOrDefault(view, 0);
@@ -946,6 +952,7 @@ final class RuntimeClockHooks {
                 return;
             }
             profiles.put(view, settings);
+            DateEffects.bindSettings(view, settings);
             if (FontAxisSettings.nativeStretch(settings)
                     && (settings.getBoolean("manual") || settings.getBoolean("depthEnabled"))
                     && settings.getFloatArray("manualHeights") != null

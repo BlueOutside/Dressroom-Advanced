@@ -113,6 +113,10 @@ final class OneUi95ClockGeometry {
         Reflect.call(repo, "setData", Reflect.call(repo, "getData"), true);
     }
 
+    Object positioner(Object controller) throws ReflectiveOperationException {
+        return position.get(useCase.get(controller));
+    }
+
     void apply(Object controller, Object draft, boolean resizing, float scale, int dx, int dy)
             throws ReflectiveOperationException {
         Object settings = useCase.get(controller);
