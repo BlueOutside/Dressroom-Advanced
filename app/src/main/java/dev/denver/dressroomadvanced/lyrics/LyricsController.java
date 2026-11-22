@@ -5,6 +5,7 @@ import android.animation.AnimatorListenerAdapter;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Color;
+import android.graphics.Typeface;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.GradientDrawable;
 import android.media.MediaMetadata;
@@ -23,6 +24,9 @@ import android.view.ViewParent;
 import android.view.animation.PathInterpolator;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.widget.RelativeLayout;
+import android.widget.TextClock;
 import android.widget.TextView;
 
 import dev.denver.dressroomadvanced.MediaClockVisibility;
@@ -473,13 +477,16 @@ public final class LyricsController {
         for (int i = 0; i < count; i++) {
             View child = root.getChildAt(i);
             if (child == null) continue;
+            if ("dressroom_lyrics_status_clock".equals(child.getTag())) {
+                continue;
+            }
             String name = "";
             if (child.getId() != View.NO_ID) {
                 try {
                     name = child.getResources().getResourceEntryName(child.getId());
                 } catch (Exception ignored) {}
             }
-            if (name.contains("blur") || name.contains("backdrop")) {
+            if (name.contains("blur") || name.contains("backdrop") || name.contains("lyrics_status_clock")) {
                 continue;
             }
             String className = child.getClass().getSimpleName();
@@ -497,6 +504,145 @@ public final class LyricsController {
                 hideMatchingViews(vg, targetAlpha);
             }
         }
+    }
+
+    private static WeakReference<TextClock> statusClockRef = new WeakReference<>(null);
+
+    private static void updateStatusBarClock(boolean show) {
+        ViewGroup shade = MediaFullscreenExtras.getNotificationShadeWindowView();
+        TextClock clock = statusClockRef.get();
+        if (clock == null || !clock.isAttachedToWindow()) {
+            clock = findViewByTagRecursively(shade, "dressroom_lyrics_status_clock");
+        }
+
+        if (clock == null && show) {
+            ViewGroup container = findStatusBarClockContainer(shade);
+            if (container != null) {
+                clock = new TextClock(container.getContext());
+                clock.setTag("dressroom_lyrics_status_clock");
+                clock.setFormat12Hour("h:mm");
+                clock.setFormat24Hour("HH:mm");
+                clock.setTextColor(0xFFFFFFFF);
+                clock.setShadowLayer(4f, 0f, 1f, 0x80000000);
+
+                TextView carrier = findCarrierTextView(container);
+                if (carrier != null) {
+                    clock.setTextSize(TypedValue.COMPLEX_UNIT_PX, carrier.getTextSize());
+                    Typeface tf = carrier.getTypeface();
+                    if (tf != null) {
+                        clock.setTypeface(tf);
+                    } else {
+                        clock.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+                    }
+                    clock.setPadding(carrier.getPaddingLeft(), carrier.getPaddingTop(), carrier.getPaddingRight(), carrier.getPaddingBottom());
+                } else {
+                    clock.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f);
+                    clock.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+                }
+
+                clock.setAlpha(0f);
+                clock.setVisibility(View.GONE);
+
+                if (container instanceof RelativeLayout) {
+                    RelativeLayout.LayoutParams lp = new RelativeLayout.LayoutParams(
+                            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                    lp.addRule(RelativeLayout.CENTER_VERTICAL);
+                    lp.addRule(RelativeLayout.ALIGN_PARENT_START);
+                    container.addView(clock, lp);
+                } else if (container instanceof LinearLayout) {
+                    LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                    lp.gravity = Gravity.CENTER_VERTICAL | Gravity.START;
+                    container.addView(clock, 0, lp);
+                } else {
+                    FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
+                            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                    lp.gravity = Gravity.CENTER_VERTICAL | Gravity.START;
+                    container.addView(clock, lp);
+                }
+                statusClockRef = new WeakReference<>(clock);
+            }
+        }
+
+        if (clock != null) {
+            clock.animate().cancel();
+            if (show) {
+                TextView carrier = findCarrierTextView((ViewGroup) clock.getParent());
+                if (carrier != null && carrier.getCurrentTextColor() != 0) {
+                    clock.setTextColor(carrier.getCurrentTextColor());
+                }
+                clock.setVisibility(View.VISIBLE);
+                clock.bringToFront();
+                clock.animate()
+                        .alpha(1f)
+                        .setDuration(220)
+                        .setInterpolator(new PathInterpolator(0.2f, 0f, 0.1f, 1f))
+                        .start();
+            } else {
+                final View c = clock;
+                clock.animate()
+                        .alpha(0f)
+                        .setDuration(220)
+                        .setInterpolator(new PathInterpolator(0.2f, 0f, 0.1f, 1f))
+                        .withEndAction(() -> c.setVisibility(View.GONE))
+                        .start();
+            }
+        }
+    }
+
+    private static ViewGroup findStatusBarClockContainer(ViewGroup root) {
+        if (root == null) return null;
+        View found = findViewByResourceEntryName(root, "keyguard_left_container");
+        if (found instanceof ViewGroup vg) return vg;
+        found = findViewByResourceEntryName(root, "keyguard_status_bar_container");
+        if (found instanceof ViewGroup vg) return vg;
+        found = findViewByResourceEntryName(root, "keyguard_header");
+        if (found instanceof ViewGroup vg) return vg;
+        return null;
+    }
+
+    private static TextView findCarrierTextView(ViewGroup root) {
+        if (root == null) return null;
+        View found = findViewByResourceEntryName(root, "keyguard_carrier_text");
+        if (found instanceof TextView tv) return tv;
+        View parent = root.getRootView();
+        if (parent instanceof ViewGroup vg && vg != root) {
+            found = findViewByResourceEntryName(vg, "keyguard_carrier_text");
+            if (found instanceof TextView tv) return tv;
+        }
+        return null;
+    }
+
+    private static View findViewByResourceEntryName(View root, String targetName) {
+        if (root == null) return null;
+        if (root.getId() != View.NO_ID) {
+            try {
+                String entry = root.getResources().getResourceEntryName(root.getId());
+                if (targetName.equals(entry)) return root;
+            } catch (Exception ignored) {}
+        }
+        if (root instanceof ViewGroup vg) {
+            int count = vg.getChildCount();
+            for (int i = 0; i < count; i++) {
+                View child = findViewByResourceEntryName(vg.getChildAt(i), targetName);
+                if (child != null) return child;
+            }
+        }
+        return null;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T extends View> T findViewByTagRecursively(View root, Object tag) {
+        if (root == null || tag == null) return null;
+        if (tag.equals(root.getTag())) return (T) root;
+        if (root instanceof ViewGroup vg) {
+            int count = vg.getChildCount();
+            for (int i = 0; i < count; i++) {
+                T found = findViewByTagRecursively(vg.getChildAt(i), tag);
+                if (found != null) return found;
+            }
+        }
+        return null;
     }
 
     public LyricsView lyricsView() {
@@ -573,6 +719,7 @@ public final class LyricsController {
         ViewGroup controlRoot = control != null && control.getRootView() instanceof ViewGroup rg ? rg : null;
         hideMatchingViews(shade, 0f);
         if (controlRoot != null && controlRoot != shade) hideMatchingViews(controlRoot, 0f);
+        updateStatusBarClock(true);
 
         View titleArtist = titleArtistRef.get();
         if (titleArtist != null) {
@@ -615,6 +762,7 @@ public final class LyricsController {
         ViewGroup controlRoot = control != null && control.getRootView() instanceof ViewGroup rg ? rg : null;
         hideMatchingViews(shade, 1f);
         if (controlRoot != null && controlRoot != shade) hideMatchingViews(controlRoot, 1f);
+        updateStatusBarClock(false);
 
         View titleArtist = titleArtistRef.get();
         if (titleArtist != null) {
@@ -681,6 +829,7 @@ public final class LyricsController {
                 ViewGroup controlRoot = control != null && control.getRootView() instanceof ViewGroup rg ? rg : null;
                 hideMatchingViews(shade, 0f);
                 if (controlRoot != null && controlRoot != shade) hideMatchingViews(controlRoot, 0f);
+                updateStatusBarClock(true);
             }
 
             if (trackKey.equals(currentTrackKey)) return;
