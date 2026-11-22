@@ -130,6 +130,33 @@ public final class LyricsView extends FrameLayout {
     private int primaryAnchorIndex = -1;
     private boolean isSynced = false;
     private boolean autoScrollEnabled = true;
+    private boolean lineByLineMode = false;
+
+    public boolean isLineByLineMode() {
+        return lineByLineMode;
+    }
+
+    public void setLineByLineMode(boolean enabled) {
+        if (this.lineByLineMode != enabled) {
+            this.lineByLineMode = enabled;
+            for (RowHolder h : rowHolders) {
+                if (h.textView != null) {
+                    h.textView.setLineByLineMode(enabled);
+                }
+                if (enabled && h.view != null) {
+                    h.view.setRenderEffect(null);
+                    h.blurBucket = 0;
+                    h.blurDp = 0f;
+                    h.liftY = 0f;
+                    h.liftVelY = 0f;
+                    h.currentCascadeY = 0f;
+                    h.scrollLagY = 0f;
+                    h.view.setTranslationY(0f);
+                }
+            }
+            invalidate();
+        }
+    }
     private int textSizeSp = 28;
     private Typeface lyricTypeface = Typeface.DEFAULT_BOLD;
     private Typeface artistTypeface = Typeface.DEFAULT;
@@ -1147,6 +1174,21 @@ public final class LyricsView extends FrameLayout {
                 }
             }
 
+            if (lineByLineMode) {
+                float a = isActive ? 1.0f : (line.isBackgroundVocal() ? ALPHA_UPCOMING_BACKING : ALPHA_UPCOMING_LEAD);
+                v.setAlpha(a);
+                v.setScaleX(isActive ? 1.04f : 1.0f);
+                v.setScaleY(isActive ? 1.04f : 1.0f);
+                v.setTranslationY(0f);
+                if (holder.blurBucket != 0) {
+                    holder.blurBucket = 0;
+                    holder.blurDp = 0f;
+                    v.setRenderEffect(null);
+                }
+                holder.textView.updateKaraoke(isActive ? 1f : 0f, isActive ? 1f : 0f, 0f, a);
+                continue;
+            }
+
             // Evaluate Apple Music alpha/focus curve (0f <-> 1f)
             if (holder.focusElapsedMs < holder.focusDelayMs + holder.focusDurationMs) {
                 holder.focusElapsedMs += dtMs;
@@ -1284,7 +1326,7 @@ public final class LyricsView extends FrameLayout {
         int targetScrollY = Math.max(0, Math.min(maxScrollY, anchorView.getTop() - anchorTopOffset));
 
         lastScrolledAnchorIndex = anchorIndex;
-        if (snapImmediate) {
+        if (snapImmediate || lineByLineMode) {
             scrollMotion.cancel();
             scrollInitialized = true;
             for (RowHolder holder : rowHolders) {
@@ -1811,11 +1853,21 @@ public final class LyricsView extends FrameLayout {
                     && layout.getParagraphDirection(0) == Layout.DIR_RIGHT_TO_LEFT;
         }
 
+        private boolean lineByLineMode = false;
+
+        public void setLineByLineMode(boolean enabled) {
+            if (this.lineByLineMode != enabled) {
+                this.lineByLineMode = enabled;
+                invalidate();
+            }
+        }
+
         @Override
         protected void onDraw(Canvas canvas) {
             // Apple's line-synced renderer highlights whole lines. A word sweep
             // is only meaningful when the source actually supplies word timestamps.
-            if (!wordTimings) {
+            // On AOD (lineByLineMode), always render whole lines without partial gradient sweep.
+            if (!wordTimings || lineByLineMode) {
                 super.onDraw(canvas);
                 return;
             }

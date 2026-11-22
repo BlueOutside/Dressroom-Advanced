@@ -20,6 +20,14 @@ public final class MediaCoverWakefulness {
     private static float lyricsBlurAmount;
     private static boolean lyricsBlurTarget;
     private static ValueAnimator lyricsBlurAnimator;
+
+    public static boolean isSleeping() {
+        return sleeping;
+    }
+
+    public static boolean isPanelDozing() {
+        return panelDozing;
+    }
     private static final class WakePills {
         static final android.os.Handler MAIN = new android.os.Handler(android.os.Looper.getMainLooper());
         static final Runnable RESTORE = () -> {
@@ -92,11 +100,11 @@ public final class MediaCoverWakefulness {
                                 boolean next = state == 0 || state == 3;
                                 if (next != sleeping) {
                                     sleeping = next;
-                                    if (next && dev.denver.dressroomadvanced.lyrics.LyricsController.isLyricsActive()) {
-                                        dev.denver.dressroomadvanced.lyrics.LyricsController.hideActiveLyrics();
-                                    }
                                     for (var cover : new ArrayList<>(covers))
                                         cover.wakefulnessChanged(next);
+                                    try {
+                                        dev.denver.dressroomadvanced.lyrics.LyricsController.onWakefulnessChanged(next);
+                                    } catch (Throwable ignored) {}
                                 }
                             } catch (ReflectiveOperationException | RuntimeException error) {
                                 DressroomModule.note("Media cover wakefulness update", error);
@@ -132,6 +140,9 @@ public final class MediaCoverWakefulness {
                                     DressroomModule.note("Media artwork panel doze", error);
                                 }
                             }
+                            try {
+                                dev.denver.dressroomadvanced.lyrics.LyricsController.onWakefulnessChanged(dozing);
+                            } catch (Throwable ignored) {}
                         }
                         Object result = chain.proceed();
                         if (wasDozing && !dozing && wakefulness == 2
