@@ -487,23 +487,12 @@ public final class LyricsController {
                     || name.contains("lock_icon") || className.contains("LockIcon")
                     || name.contains("keyguard_indication") || name.contains("carrier")) {
                 android.util.Log.i("DressroomLyrics", "hideMatchingViews: " + name + " (" + className + ") -> alpha " + targetAlpha);
+                child.animate().cancel();
                 child.animate()
                         .alpha(targetAlpha)
-                        .setDuration(260)
+                        .setDuration(220)
                         .setInterpolator(new PathInterpolator(0.2f, 0f, 0.1f, 1f))
                         .start();
-                if (targetAlpha == 0f) {
-                    child.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
-                        @Override
-                        public void onLayoutChange(View v, int l, int t, int r, int b, int ol, int ot, int or, int ob) {
-                            if (lyricsActive) {
-                                v.setAlpha(0f);
-                            } else {
-                                v.removeOnLayoutChangeListener(this);
-                            }
-                        }
-                    });
-                }
             } else if (child instanceof ViewGroup vg) {
                 hideMatchingViews(vg, targetAlpha);
             }
@@ -587,20 +576,11 @@ public final class LyricsController {
 
         View titleArtist = titleArtistRef.get();
         if (titleArtist != null) {
+            titleArtist.animate().cancel();
             titleArtist.animate()
                     .alpha(0f)
-                    .translationY(dpToPx(16))
-                    .setDuration(240)
-                    .setInterpolator(new PathInterpolator(0.2f, 0f, 0.1f, 1f))
-                    .start();
-        }
-        View albumArt = albumArtRef.get();
-        if (albumArt != null) {
-            albumArt.animate()
-                    .alpha(0f)
-                    .scaleX(0.93f)
-                    .scaleY(0.93f)
-                    .setDuration(240)
+                    .translationY(dpToPx(12))
+                    .setDuration(220)
                     .setInterpolator(new PathInterpolator(0.2f, 0f, 0.1f, 1f))
                     .start();
         }
@@ -638,20 +618,11 @@ public final class LyricsController {
 
         View titleArtist = titleArtistRef.get();
         if (titleArtist != null) {
+            titleArtist.animate().cancel();
             titleArtist.animate()
                     .alpha(1f)
                     .translationY(0f)
-                    .setDuration(260)
-                    .setInterpolator(new PathInterpolator(0.2f, 0f, 0.1f, 1f))
-                    .start();
-        }
-        View albumArt = albumArtRef.get();
-        if (albumArt != null) {
-            albumArt.animate()
-                    .alpha(1f)
-                    .scaleX(1.0f)
-                    .scaleY(1.0f)
-                    .setDuration(260)
+                    .setDuration(220)
                     .setInterpolator(new PathInterpolator(0.2f, 0f, 0.1f, 1f))
                     .start();
         }

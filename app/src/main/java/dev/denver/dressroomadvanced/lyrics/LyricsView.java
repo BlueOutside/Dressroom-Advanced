@@ -253,15 +253,18 @@ public final class LyricsView extends FrameLayout {
     }
 
     public void prepareForOpen() {
+        animate().cancel();
         setAlpha(0f);
         setVisibility(View.VISIBLE);
         if (headerLayout != null) {
+            headerLayout.animate().cancel();
             headerLayout.setAlpha(0f);
-            headerLayout.setTranslationY(-dpToPx(16));
+            headerLayout.setTranslationY(-dpToPx(14));
         }
         if (contentContainer != null) {
+            contentContainer.animate().cancel();
             contentContainer.setAlpha(0f);
-            contentContainer.setTranslationY(dpToPx(48));
+            contentContainer.setTranslationY(dpToPx(36));
         }
     }
 
@@ -271,7 +274,7 @@ public final class LyricsView extends FrameLayout {
         // 1. Root container fade in
         animate()
                 .alpha(1f)
-                .setDuration(340)
+                .setDuration(300)
                 .setInterpolator(new PathInterpolator(0.2f, 0f, 0.1f, 1f))
                 .setListener(null)
                 .start();
@@ -281,7 +284,7 @@ public final class LyricsView extends FrameLayout {
             headerLayout.animate()
                     .alpha(1f)
                     .translationY(0f)
-                    .setDuration(320)
+                    .setDuration(280)
                     .setInterpolator(new PathInterpolator(0.2f, 0f, 0.1f, 1f))
                     .start();
         }
@@ -291,16 +294,17 @@ public final class LyricsView extends FrameLayout {
             contentContainer.animate()
                     .alpha(1f)
                     .translationY(0f)
-                    .setDuration(380)
+                    .setDuration(320)
                     .setInterpolator(new PathInterpolator(0.18f, 0f, 0.08f, 1f))
                     .start();
         }
     }
 
     public void animateClose(Runnable onEnd) {
+        animate().cancel();
         animate()
                 .alpha(0f)
-                .setDuration(240)
+                .setDuration(200)
                 .setInterpolator(new AccelerateInterpolator(1.4f))
                 .setListener(new AnimatorListenerAdapter() {
                     @Override
@@ -321,18 +325,20 @@ public final class LyricsView extends FrameLayout {
                 .start();
 
         if (headerLayout != null) {
+            headerLayout.animate().cancel();
             headerLayout.animate()
                     .alpha(0f)
-                    .translationY(-dpToPx(12))
-                    .setDuration(200)
+                    .translationY(-dpToPx(10))
+                    .setDuration(180)
                     .start();
         }
 
         if (contentContainer != null) {
+            contentContainer.animate().cancel();
             contentContainer.animate()
                     .alpha(0f)
-                    .translationY(dpToPx(36))
-                    .setDuration(220)
+                    .translationY(dpToPx(24))
+                    .setDuration(190)
                     .start();
         }
     }
