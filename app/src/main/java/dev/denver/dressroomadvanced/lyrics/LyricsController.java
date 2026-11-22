@@ -54,7 +54,7 @@ public final class LyricsController {
     private WeakReference<View> albumArtRef;
 
     private final LyricsView lyricsView;
-    private final TextView toggleButton;
+    private final LyricsToggleButton toggleButton;
     private final Context context;
 
     private boolean isVisible = false;
@@ -156,25 +156,8 @@ public final class LyricsController {
             }
         });
 
-        // Toggle button: subtle pill with text "LYRICS"
-        this.toggleButton = new TextView(context);
-        this.toggleButton.setText("LYRICS");
-        this.toggleButton.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
-        this.toggleButton.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-        this.toggleButton.setTextColor(Color.WHITE);
-        this.toggleButton.setGravity(Gravity.CENTER);
-
-        int padH = dpToPx(12);
-        int padV = dpToPx(6);
-        this.toggleButton.setPadding(padH, padV, padH, padV);
-        this.toggleButton.setMinimumWidth(dpToPx(64));
-        this.toggleButton.setMinimumHeight(dpToPx(36));
-
-        GradientDrawable btnBg = new GradientDrawable();
-        btnBg.setColor(Color.argb(120, 255, 255, 255));
-        btnBg.setCornerRadius(dpToPx(14));
-        this.toggleButton.setBackground(btnBg);
-
+        // Toggle button: Apple Music quotation speech bubble icon
+        this.toggleButton = new LyricsToggleButton(context);
         this.toggleButton.setClickable(true);
         this.toggleButton.setFocusable(true);
         this.toggleButton.setElevation(100f);
@@ -228,10 +211,10 @@ public final class LyricsController {
         } catch (Exception ignored) {}
 
         // Attach toggle button to the top right of controlHost (positioned next to output switcher)
-        FrameLayout.LayoutParams btnLp = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        int btnSize = dpToPx(36);
+        FrameLayout.LayoutParams btnLp = new FrameLayout.LayoutParams(btnSize, btnSize);
         btnLp.gravity = Gravity.TOP | Gravity.END;
-        btnLp.setMargins(0, dpToPx(10), dpToPx(56), 0);
+        btnLp.setMargins(0, dpToPx(8), dpToPx(56), 0);
         if (toggleButton.getParent() == null) {
             controlHost.addView(toggleButton, btnLp);
         }
@@ -420,10 +403,10 @@ public final class LyricsController {
             setupControlHost(controlHost);
             if (toggleButton.getParent() != controlHost) {
                 if (toggleButton.getParent() instanceof ViewGroup p) p.removeView(toggleButton);
-                FrameLayout.LayoutParams btnLp = new FrameLayout.LayoutParams(
-                        ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                int btnSize = dpToPx(36);
+                FrameLayout.LayoutParams btnLp = new FrameLayout.LayoutParams(btnSize, btnSize);
                 btnLp.gravity = Gravity.TOP | Gravity.END;
-                btnLp.setMargins(0, dpToPx(10), dpToPx(56), 0);
+                btnLp.setMargins(0, dpToPx(8), dpToPx(56), 0);
                 controlHost.addView(toggleButton, btnLp);
             }
         }
@@ -504,6 +487,18 @@ public final class LyricsController {
                     || name.contains("keyguard_indication") || name.contains("carrier")) {
                 android.util.Log.i("DressroomLyrics", "hideMatchingViews: " + name + " (" + className + ") -> alpha " + targetAlpha);
                 child.animate().alpha(targetAlpha).setDuration(200).start();
+                if (targetAlpha == 0f) {
+                    child.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
+                        @Override
+                        public void onLayoutChange(View v, int l, int t, int r, int b, int ol, int ot, int or, int ob) {
+                            if (lyricsActive) {
+                                v.setAlpha(0f);
+                            } else {
+                                v.removeOnLayoutChangeListener(this);
+                            }
+                        }
+                    });
+                }
             } else if (child instanceof ViewGroup vg) {
                 hideMatchingViews(vg, targetAlpha);
             }
@@ -599,12 +594,8 @@ public final class LyricsController {
             albumArt.animate().alpha(0f).setDuration(180).start();
         }
 
-        GradientDrawable activeBg = new GradientDrawable();
-        activeBg.setColor(Color.argb(200, 255, 255, 255));
-        activeBg.setCornerRadius(dpToPx(12));
         toggleButton.bringToFront();
-        toggleButton.setBackground(activeBg);
-        toggleButton.setTextColor(Color.BLACK);
+        toggleButton.setActive(true);
 
         startTracking();
     }
@@ -652,11 +643,7 @@ public final class LyricsController {
             albumArt.animate().alpha(1f).setDuration(200).start();
         }
 
-        GradientDrawable defaultBg = new GradientDrawable();
-        defaultBg.setColor(Color.argb(120, 255, 255, 255));
-        defaultBg.setCornerRadius(dpToPx(12));
-        toggleButton.setBackground(defaultBg);
-        toggleButton.setTextColor(Color.WHITE);
+        toggleButton.setActive(false);
 
         stopTracking();
     }
@@ -699,6 +686,14 @@ public final class LyricsController {
                 cover = bd.getBitmap();
             }
             lyricsView.setTrackInfo(title, artist, cover);
+
+            if (lyricsActive) {
+                ViewGroup shade = MediaFullscreenExtras.getNotificationShadeWindowView();
+                View control = controlHostRef.get();
+                ViewGroup controlRoot = control != null && control.getRootView() instanceof ViewGroup rg ? rg : null;
+                hideMatchingViews(shade, 0f);
+                if (controlRoot != null && controlRoot != shade) hideMatchingViews(controlRoot, 0f);
+            }
 
             if (trackKey.equals(currentTrackKey)) return;
             currentTrackKey = trackKey;

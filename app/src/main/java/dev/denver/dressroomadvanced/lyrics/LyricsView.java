@@ -35,7 +35,7 @@ public final class LyricsView extends FrameLayout {
     private static final RenderEffect INACTIVE_BLUR_EFFECT;
     static {
         if (Build.VERSION.SDK_INT >= 31) {
-            INACTIVE_BLUR_EFFECT = RenderEffect.createBlurEffect(7f, 7f, Shader.TileMode.CLAMP);
+            INACTIVE_BLUR_EFFECT = RenderEffect.createBlurEffect(13f, 13f, Shader.TileMode.CLAMP);
         } else {
             INACTIVE_BLUR_EFFECT = null;
         }
@@ -212,7 +212,7 @@ public final class LyricsView extends FrameLayout {
         linesContainer = new LinearLayout(context);
         linesContainer.setOrientation(LinearLayout.VERTICAL);
         linesContainer.setGravity(Gravity.START);
-        linesContainer.setPadding(dpToPx(28), dpToPx(16), dpToPx(28), dpToPx(100));
+        linesContainer.setPadding(dpToPx(28), dpToPx(20), dpToPx(28), dpToPx(280));
 
         plainLyricsView = new TextView(context);
         plainLyricsView.setTextColor(Color.WHITE);
@@ -308,7 +308,7 @@ public final class LyricsView extends FrameLayout {
             attributionView.setText(src);
 
             Context ctx = getContext();
-            int linePadding = dpToPx(6);
+            int linePadding = dpToPx(9);
             for (int i = 0; i < lyricLines.size(); i++) {
                 LyricLine line = lyricLines.get(i);
                 TextView lineTv = new TextView(ctx);
@@ -316,12 +316,12 @@ public final class LyricsView extends FrameLayout {
                 lineTv.setTextSize(TypedValue.COMPLEX_UNIT_SP, textSizeSp);
                 lineTv.setTypeface(getLyricsTypeface(ctx));
                 lineTv.setTextColor(Color.WHITE);
-                lineTv.setLetterSpacing(-0.02f);
-                lineTv.setAlpha(0.40f);
+                lineTv.setLetterSpacing(-0.025f);
+                lineTv.setAlpha(0.38f);
                 if (INACTIVE_BLUR_EFFECT != null) {
                     lineTv.setRenderEffect(INACTIVE_BLUR_EFFECT);
                 }
-                lineTv.setLineSpacing(dpToPx(2), 1.08f);
+                lineTv.setLineSpacing(dpToPx(3), 1.14f);
                 lineTv.setGravity(Gravity.START);
                 lineTv.setPadding(dpToPx(4), linePadding, dpToPx(4), linePadding);
 
@@ -370,7 +370,7 @@ public final class LyricsView extends FrameLayout {
         // Highlight active line (unblurred, full alpha, subtle zoom) and defocus others (blurred, low alpha)
         if (oldIndex >= 0 && oldIndex < lineViews.size()) {
             TextView oldTv = lineViews.get(oldIndex);
-            oldTv.animate().alpha(0.40f).scaleX(1.0f).scaleY(1.0f).setDuration(220).start();
+            oldTv.animate().alpha(0.38f).scaleX(1.0f).scaleY(1.0f).setDuration(220).start();
             if (INACTIVE_BLUR_EFFECT != null) {
                 oldTv.setRenderEffect(INACTIVE_BLUR_EFFECT);
             }
@@ -380,7 +380,7 @@ public final class LyricsView extends FrameLayout {
             TextView newTv = lineViews.get(newIndex);
             newTv.setPivotX(0f);
             newTv.setPivotY(newTv.getHeight() / 2f);
-            newTv.animate().alpha(1.0f).scaleX(1.03f).scaleY(1.03f).setDuration(220).start();
+            newTv.animate().alpha(1.0f).scaleX(1.04f).scaleY(1.04f).setDuration(220).start();
             if (Build.VERSION.SDK_INT >= 31) {
                 newTv.setRenderEffect(null);
             }
