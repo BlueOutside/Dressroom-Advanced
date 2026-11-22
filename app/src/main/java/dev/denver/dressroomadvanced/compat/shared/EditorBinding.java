@@ -1,6 +1,7 @@
 package dev.denver.dressroomadvanced;
 
 import android.graphics.Rect;
+import android.util.Range;
 import android.view.View;
 import android.view.ViewGroup;
 
@@ -15,6 +16,8 @@ final class EditorBinding {
         TOGGLE,
         SLIDER
     }
+
+    record ClockBoxMethods(Method limit, Method scale, Method valid, Method mapPreview) {}
 
     record Names(
             boolean legacy,
@@ -475,7 +478,29 @@ final class EditorBinding {
     }
 
     Object positioner(Object owner) throws ReflectiveOperationException {
+        if (beta != null) return betaGeometry == null ? null : betaGeometry.positioner(owner);
         return Reflect.field(Reflect.field(owner, legacy ? "R" : "O"), "b");
+    }
+
+    static ClockBoxMethods clockBoxMethods(Class<?> owner, Class<?> data)
+            throws ReflectiveOperationException {
+        ClassLoader loader = owner.getClassLoader();
+        String system = "com.samsung.android.lockscreen.editor.item.domain.entity.system.";
+        Class<?> previewScale = Class.forName(system + "PreviewScale", false, loader);
+        Class<?> screenSize = Class.forName(system + "ScreenSize", false, loader);
+        return clockBoxMethods(owner, data, previewScale, screenSize);
+    }
+
+    static ClockBoxMethods clockBoxMethods(
+            Class<?> owner, Class<?> data, Class<?> previewScale, Class<?> screenSize)
+            throws NoSuchMethodException {
+        Class<?> constraints = data.getMethod("getSizeConstraints").getReturnType();
+        return new ClockBoxMethods(
+                NativeContract.findMethod(owner, null, Range.class,
+                        int.class, int.class, Rect.class, constraints),
+                NativeContract.findMethod(owner, null, void.class, data, float.class),
+                NativeContract.findMethod(owner, null, boolean.class, data, screenSize),
+                NativeContract.findMethod(owner, null, void.class, data, previewScale, screenSize));
     }
 
     void position(Object owner, Object draft, boolean resize, float scale, int dx, int dy)

@@ -3,6 +3,8 @@ package dev.denver.dressroomadvanced;
 import android.content.Context;
 import android.content.ContextWrapper;
 import android.content.res.Resources;
+import android.graphics.Rect;
+import android.os.Bundle;
 import android.os.Looper;
 import android.util.TypedValue;
 import android.view.View;
@@ -10,6 +12,8 @@ import android.view.ViewGroup;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+
+import java.util.Set;
 
 public final class ClockLabelLayoutProbe {
     private static final int DATE = 1001;
@@ -37,6 +41,7 @@ public final class ClockLabelLayoutProbe {
         return text;
     }
 
+    @SuppressWarnings("unchecked")
     public static void main(String[] args) throws Exception {
         Looper.prepareMainLooper();
         Class<?> memory = Class.forName("com.android.internal.os.ApplicationSharedMemory");
@@ -123,6 +128,27 @@ public final class ClockLabelLayoutProbe {
         sizing.restore();
         check(date.getTextSize() == 30 && degrees.getTextSize() == 30, "Scaled native text sizes restored");
         check(icon.getLayoutParams().width == 24, "Scaled native icon size restored");
+
+        clock.setOrientation(LinearLayout.VERTICAL);
+        layout(clock, 0);
+        int nativeHeight = clock.getMeasuredHeight();
+        var measured = DateEffects.class.getDeclaredField("measured");
+        measured.setAccessible(true);
+        ((Set<View>) measured.get(null)).add(clock);
+        DateEffects.editorBounds(clock, new Rect(0, 0, 700, 600), 1f, 600);
+        Bundle settings = new Bundle();
+        settings.putInt(ClockLabelScale.DATE, 200);
+        settings.putInt(ClockLabelScale.WEATHER, 150);
+        DateEffects.bindSettings(clock, settings);
+        layout(clock, 0);
+        check(!clock.isAttachedToWindow(), "Fixture is detached");
+        check(date.getTextSize() == 60 && degrees.getTextSize() == 45,
+                "Detached measurements use both custom label sizes");
+        check(clock.getMeasuredHeight() > nativeHeight, "Detached height includes larger labels");
+        DateEffects.bindSettings(clock, null);
+        layout(clock, 0);
+        check(clock.getMeasuredHeight() == nativeHeight, "Detached height restores without custom sizes");
+
         System.out.println("Clock label layout: " + checks + " checks passed");
         System.exit(0);
     }

@@ -592,19 +592,19 @@
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/DateEffects.java",
-      "line": 139,
+      "line": 138,
       "kind": "public-method",
       "target": "forceRefresh"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/DateEffects.java",
-      "line": 182,
+      "line": 181,
       "kind": "public-method",
       "target": "setClockMaxWidth"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/DateEffects.java",
-      "line": 185,
+      "line": 184,
       "kind": "public-method",
       "target": "setScale"
     },
@@ -1360,93 +1360,99 @@
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/EditorBinding.java",
-      "line": 64,
+      "line": 67,
       "kind": "class",
       "target": "com.samsung.android.clockpack.plugins.clock.ClockView"
-    },
-    {
-      "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/EditorBinding.java",
-      "line": 68,
-      "kind": "class",
-      "target": "com.samsung.android.lockscreen.editor.item.domain.entity.item.clock.ClockData"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/EditorBinding.java",
       "line": 71,
       "kind": "class",
-      "target": "com.google.android.material.tabs.TabLayout"
-    },
-    {
-      "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/EditorBinding.java",
-      "line": 107,
-      "kind": "class",
       "target": "com.samsung.android.lockscreen.editor.item.domain.entity.item.clock.ClockData"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/EditorBinding.java",
-      "line": 141,
+      "line": 74,
       "kind": "class",
       "target": "com.google.android.material.tabs.TabLayout"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/EditorBinding.java",
-      "line": 143,
+      "line": 110,
       "kind": "class",
       "target": "com.samsung.android.lockscreen.editor.item.domain.entity.item.clock.ClockData"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/EditorBinding.java",
-      "line": 148,
+      "line": 144,
+      "kind": "class",
+      "target": "com.google.android.material.tabs.TabLayout"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/EditorBinding.java",
+      "line": 146,
+      "kind": "class",
+      "target": "com.samsung.android.lockscreen.editor.item.domain.entity.item.clock.ClockData"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/EditorBinding.java",
+      "line": 151,
       "kind": "class",
       "target": "com.samsung.android.clockpack.plugins.clock.ClockView"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/EditorBinding.java",
-      "line": 183,
+      "line": 186,
       "kind": "class",
       "target": "com.samsung.android.lockscreen.editor.item.domain.entity.common.ObservableData"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/EditorBinding.java",
-      "line": 199,
+      "line": 202,
       "kind": "public-method",
       "target": "get"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/EditorBinding.java",
-      "line": 203,
+      "line": 206,
       "kind": "public-method",
       "target": "get"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/EditorBinding.java",
-      "line": 256,
+      "line": 259,
       "kind": "class",
       "target": "com.samsung.android.lockscreen.editor.item.domain.entity.item.clock.ClockTypeData"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/EditorBinding.java",
-      "line": 262,
+      "line": 265,
       "kind": "class",
       "target": "com.samsung.android.clockpack.plugins.clock.ClockManager"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/EditorBinding.java",
-      "line": 279,
+      "line": 282,
       "kind": "class",
       "target": "com.samsung.android.clockpack.plugins.Category"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/EditorBinding.java",
-      "line": 299,
+      "line": 302,
       "kind": "class",
       "target": "com.google.android.material.tabs.TabLayout"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/EditorBinding.java",
-      "line": 321,
+      "line": 324,
       "kind": "class",
       "target": "com.samsung.android.lockscreen.editor.item.domain.entity.item.clock.ClockTypeData"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/EditorBinding.java",
+      "line": 497,
+      "kind": "public-method",
+      "target": "getSizeConstraints"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/FoldProfileBinding.java",
@@ -1927,24 +1933,6 @@
       "line": 376,
       "kind": "public-method",
       "target": "getDrawableBounds"
-    },
-    {
-      "file": "app/src/main/java/dev/denver/dressroomadvanced/editor/EditorClockBox.java",
-      "line": 68,
-      "kind": "public-method",
-      "target": "getSizeConstraints"
-    },
-    {
-      "file": "app/src/main/java/dev/denver/dressroomadvanced/editor/EditorClockBox.java",
-      "line": 70,
-      "kind": "class",
-      "target": "com.samsung.android.lockscreen.editor.item.domain.entity.system.PreviewScale"
-    },
-    {
-      "file": "app/src/main/java/dev/denver/dressroomadvanced/editor/EditorClockBox.java",
-      "line": 72,
-      "kind": "class",
-      "target": "com.samsung.android.lockscreen.editor.item.domain.entity.system.ScreenSize"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/editor/EditorWidgetBlur.java",

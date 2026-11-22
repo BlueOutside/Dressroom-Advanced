@@ -131,8 +131,7 @@ final class DateEffects {
     }
 
     static synchronized void prepareMeasurement(DressroomModule module, View clock) {
-        // Clock Style's size probe is never attached to a window. Hide its date
-        // before measuring too, including when Samsung reuses and refreshes it.
+        // Clock Style measurement refresh
         measured.add(clock);
         attach(module, clock);
         try {
@@ -192,7 +191,10 @@ final class DateEffects {
                     // Stock sizes for Samsung's scale pass
                     if (layout != null) layout.restore();
                     Object result = chain.proceed();
-                    if (layout != null) deferUpdate(clock);
+                    if (layout != null) {
+                        if (measured.contains(clock) && !clock.isAttachedToWindow()) updateDate(clock);
+                        else deferUpdate(clock);
+                    }
                     return result;
                 });
         hooked.add(scale);
@@ -242,8 +244,7 @@ final class DateEffects {
     }
 
     static void deferUpdate(View clock) {
-        // Detached size probes never drain View.post's run queue. They already
-        // received the synchronous update; only attached clocks need a second pass.
+        // Attached clocks only
         if (!clock.isAttachedToWindow() || !pending.add(clock)) return;
         java.lang.ref.WeakReference<View> reference = new java.lang.ref.WeakReference<>(clock);
         try {
@@ -291,9 +292,7 @@ final class DateEffects {
         if (dateRow != null && weather != null) {
             updateText(dateRow, hide && weather.getVisibility() != View.VISIBLE);
         }
-        boolean resize = (!measured.contains(clock) || clock.isAttachedToWindow())
-                && appearance.reference() > 0f;
-        if (!resize) {
+        if (!(appearance.reference() > 0f)) {
             ClockLabelLayout previous = labelLayouts.remove(clock);
             if (previous != null) previous.restore();
             return;

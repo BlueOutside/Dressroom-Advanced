@@ -1,5 +1,8 @@
 package dev.denver.dressroomadvanced;
 
+import android.graphics.Rect;
+import android.util.Range;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -81,6 +84,34 @@ public final class AdapterContractsTest {
         private static long secondStatic(int value) {
             return value;
         }
+    }
+
+    private static final class BoxConstraints {}
+
+    private static final class PreviewScale {}
+
+    private static final class ScreenSize {}
+
+    private static final class BoxData {
+        public BoxConstraints getSizeConstraints() {
+            return null;
+        }
+    }
+
+    private static final class RenamedPositioner {
+        private Range<Float> measure(int width, int height, Rect area, BoxConstraints constraints) {
+            return null;
+        }
+
+        private void resize(BoxData data, float scale) {}
+
+        private boolean fits(BoxData data, ScreenSize screen) {
+            return false;
+        }
+
+        private void map(BoxData data, PreviewScale scale, ScreenSize screen) {}
+
+        private void wrongOrder(BoxData data, ScreenSize screen, PreviewScale scale) {}
     }
 
     private static class FailedDetector {
@@ -209,6 +240,12 @@ public final class AdapterContractsTest {
                         .getName()
                         .equals("renamedStatic"),
                 "Unique renamed static not found");
+        EditorBinding.ClockBoxMethods clockBox = EditorBinding.clockBoxMethods(
+                RenamedPositioner.class, BoxData.class, PreviewScale.class, ScreenSize.class);
+        check(clockBox.limit().getName().equals("measure"), "Renamed clock scale limit not found");
+        check(clockBox.scale().getName().equals("resize"), "Renamed clock scale setter not found");
+        check(clockBox.valid().getName().equals("fits"), "Renamed clock validation not found");
+        check(clockBox.mapPreview().getName().equals("map"), "Renamed clock positioner not found");
         missing(
                 () -> NativeContract.findField(Ambiguous.class, "old", String.class),
                 "Ambiguous field accepted");

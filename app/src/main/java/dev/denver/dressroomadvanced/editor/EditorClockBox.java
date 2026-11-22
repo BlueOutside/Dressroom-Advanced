@@ -1,7 +1,6 @@
 package dev.denver.dressroomadvanced;
 
 import android.graphics.Rect;
-import android.util.Range;
 import android.util.Size;
 import android.view.View;
 
@@ -38,7 +37,8 @@ final class EditorClockBox {
             updateBudget(clock, data);
             if (binding.legacy) return;
             Object positioner = binding.positioner(owner);
-            install(module, positioner.getClass(), data.getClass());
+            if (positioner == null) return;
+            install(module, positioner.getClass(), binding.create.getParameterTypes()[1]);
             Preview preview = previews.get(positioner);
             int type = number(data, "getClockType");
             if (preview == null || preview.type != type || preview.renderer.get() != clock) {
@@ -65,17 +65,9 @@ final class EditorClockBox {
             throws ReflectiveOperationException {
         if (installed.contains(owner) || unsupported.contains(owner)) return;
         try (HookTransaction hooks = new HookTransaction()) {
-            Class<?> areaType = data.getMethod("getSizeConstraints").getReturnType();
-            ClassLoader loader = owner.getClassLoader();
-            Class<?> previewScale = Class.forName(
-                    "com.samsung.android.lockscreen.editor.item.domain.entity.system.PreviewScale", false, loader);
-            Class<?> screenSize = Class.forName(
-                    "com.samsung.android.lockscreen.editor.item.domain.entity.system.ScreenSize", false, loader);
-            Method limit = NativeContract.method(owner, "q", Range.class,
-                    int.class, int.class, Rect.class, areaType);
-            Method scale = NativeContract.method(owner, "i", void.class, data, float.class);
-            Method valid = NativeContract.method(owner, "e", boolean.class, data, screenSize);
-            Method position = NativeContract.method(owner, "l", void.class, data, previewScale, screenSize);
+            EditorBinding.ClockBoxMethods methods = EditorBinding.clockBoxMethods(owner, data);
+            Method limit = methods.limit();
+            Method position = methods.mapPreview();
 
             // Native clock scale range
             hooks.add(module.hook(limit).setId("dressroom-advanced.label-scale-range").intercept(chain -> {
@@ -84,7 +76,7 @@ final class EditorClockBox {
                 return chain.proceed(new Object[] {(int) Math.ceil(stock.width()),
                         (int) Math.ceil(stock.height()), chain.getArg(2), chain.getArg(3)});
             })::unhook);
-            for (Method method : new Method[] {scale, valid}) {
+            for (Method method : new Method[] {methods.scale(), methods.valid()}) {
                 hooks.add(module.hook(method).setId("dressroom-advanced.label-clock-scale").intercept(chain -> {
                     Object model = chain.getArg(0);
                     ClockLabelFit.Size previous = scaleSize.get();
