@@ -23,6 +23,11 @@ final class ClockLabelScale {
         return reference / zoom(viewScale) / zoom(nativeScale);
     }
 
+    static boolean labelLayoutEnabled(float reference, boolean mediaExpanded) {
+        return !mediaExpanded && Float.isFinite(reference) && reference > 0f;
+    }
+
+
     static float zoom(float value) {
         return Float.isFinite(value) && value > 0f ? value : 1f;
     }

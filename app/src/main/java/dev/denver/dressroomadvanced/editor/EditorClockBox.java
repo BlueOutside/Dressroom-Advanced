@@ -28,7 +28,8 @@ final class EditorClockBox {
         }
     }
 
-    private record Frame(int top, int height, float scale, float center, boolean labels) {}
+    private record Frame(
+            int top, int height, float scale, float center, boolean labels, boolean hideDate) {}
 
     private EditorClockBox() {}
 
@@ -46,7 +47,9 @@ final class EditorClockBox {
                 int height = number(data, "getScaledHeight");
                 int top = number(data, "getY");
                 float scale = ((Number) Reflect.call(data, "getScale")).floatValue();
-                if (height > 0) preview.frame = new Frame(top, height, scale, top + height / 2f, false);
+                if (height > 0) preview.frame =
+                        new Frame(top, height, scale, top + height / 2f, false,
+                                DateEffects.hideDate(clock));
                 previews.put(positioner, preview);
             }
         } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
@@ -135,9 +138,13 @@ final class EditorClockBox {
         int top = number(data, "getY");
         float scale = ((Number) Reflect.call(data, "getScale")).floatValue();
         boolean labels = DateEffects.stockSize(clock) != null;
+        boolean hideDate = DateEffects.hideDate(clock);
         float center = top + height / 2f;
         Frame previous = preview.frame;
-        if (previous != null && scale == previous.scale && (labels || previous.labels)) {
+        if (previous != null
+                && ClockLabelFit.preserveEditorCenter(
+                        previous.scale, scale, previous.hideDate, hideDate,
+                        labels, previous.labels)) {
             if (height != previous.height) {
                 center = previous.center;
                 int centered = ClockLabelFit.centeredStart(center, height, area.top, area.bottom);
@@ -147,7 +154,7 @@ final class EditorClockBox {
                 center = previous.center;
             }
         }
-        preview.frame = new Frame(top, height, scale, center, labels);
+        preview.frame = new Frame(top, height, scale, center, labels, hideDate);
     }
 
     private static int number(Object target, String name) throws ReflectiveOperationException {

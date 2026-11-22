@@ -3,6 +3,11 @@ package dev.denver.dressroomadvanced;
 public final class ClockLabelScaleTest {
     private static int checks;
 
+    private static void check(boolean value, String message) {
+        if (!value) throw new AssertionError(message);
+        checks++;
+    }
+
     private static void equal(float expected, float actual) {
         if (!(Math.abs(expected - actual) < .2f))
             throw new AssertionError("Expected " + expected + " but got " + actual);
@@ -36,6 +41,18 @@ public final class ClockLabelScaleTest {
         equal(40, 20 * zoom * appliedFactor * 2);
         equal(20, 20 * ClockLabelScale.labelFactor(1, 1.125f, 1.5f) * 1.125f * 1.5f);
         equal(1, ClockLabelScale.labelFactor(1, Float.NaN, 0));
+        check(!ClockLabelScale.labelLayoutEnabled(1f, true),
+                "Expanded media player keeps Samsung clock geometry");
+        check(ClockLabelScale.labelLayoutEnabled(1f, false),
+                "Lock screen applies custom label layout");
+        check(!ClockLabelScale.labelLayoutEnabled(0f, false),
+                "Stock labels do not enter the layout scaling path");
+        check(ClockLabelFit.preserveEditorCenter(
+                        1f, 1f, false, false, true, true),
+                "Stable editor label state preserves the clock center");
+        check(!ClockLabelFit.preserveEditorCenter(
+                        1f, 1f, false, true, true, true),
+                "Hide-date state change does not reuse the old clock center");
 
         ClockLabelFit.Size walls = new ClockLabelFit.Size(420, 240);
         ClockLabelFit.Scales loose = ClockLabelFit.fit(walls, new ClockLabelFit.Scales(2, 1),

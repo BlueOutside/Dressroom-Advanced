@@ -162,6 +162,10 @@ final class DateEffects {
         setAppearance(clock, Appearance.from(settings));
     }
 
+    static boolean hideDate(View clock) {
+        return appearance(clock).hide();
+    }
+
     static void editorBounds(View clock, Rect area, float scale, int maxHeight) {
         if (area.isEmpty()) return;
         scale = ClockLabelScale.zoom(scale);
@@ -292,7 +296,12 @@ final class DateEffects {
         if (dateRow != null && weather != null) {
             updateText(dateRow, hide && weather.getVisibility() != View.VISIBLE);
         }
-        if (!(appearance.reference() > 0f)) {
+        boolean mediaExpanded = false;
+        try {
+            mediaExpanded = ClockTransitionBinding.of(clock).mediaExpanded.getBoolean(clock);
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+        }
+        if (!ClockLabelScale.labelLayoutEnabled(appearance.reference(), mediaExpanded)) {
             ClockLabelLayout previous = labelLayouts.remove(clock);
             if (previous != null) previous.restore();
             return;
@@ -383,12 +392,12 @@ final class DateEffects {
     private static void updateText(View date, boolean hide) {
         if (date == null) return;
         if (hide) {
-            if (date.getVisibility() != View.GONE || !originalVisibility.containsKey(date))
+            if (date.getVisibility() != View.INVISIBLE || !originalVisibility.containsKey(date))
                 originalVisibility.put(date, date.getVisibility());
-            if (date.getVisibility() != View.GONE) date.setVisibility(View.GONE);
+            if (date.getVisibility() != View.INVISIBLE) date.setVisibility(View.INVISIBLE);
         } else {
             Integer original = originalVisibility.remove(date);
-            if (original != null && date.getVisibility() == View.GONE) date.setVisibility(original);
+            if (original != null && date.getVisibility() == View.INVISIBLE) date.setVisibility(original);
         }
     }
 

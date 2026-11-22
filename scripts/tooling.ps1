@@ -12,12 +12,16 @@ function Get-ProjectConfig([string]$Project) {
     return [pscustomobject]$config
 }
 function Invoke-ProjectTool([string]$Program,[string[]]$Arguments) {
-    $previous = $env:JAVA_TOOL_OPTIONS
-    try {
-        $env:JAVA_TOOL_OPTIONS = ($previous + ' -Xint -Xms16m -Xmx256m -XX:+UseSerialGC -XX:ReservedCodeCacheSize=8m -XX:MaxMetaspaceSize=96m -XX:ActiveProcessorCount=2').Trim()
-        & $Program @Arguments
-        if ($LASTEXITCODE -ne 0) { throw "$Program failed with exit code $LASTEXITCODE" }
-    } finally { $env:JAVA_TOOL_OPTIONS = $previous }
+    $name = [IO.Path]::GetFileNameWithoutExtension($Program)
+    if ($name -eq 'javac') {
+        $Arguments = @('-J-Xms128m','-J-Xmx1024m') + $Arguments
+    } elseif ($name -eq 'java') {
+        $Arguments = @('-Xms128m','-Xmx1024m') + $Arguments
+    } elseif ($name -eq 'jar') {
+        $Arguments = @('-J-Xms128m','-J-Xmx1024m') + $Arguments
+    }
+    & $Program @Arguments
+    if ($LASTEXITCODE -ne 0) { throw "$Program failed with exit code $LASTEXITCODE" }
 }
 
 function Get-ProjectYamlJar([string]$Project,[string]$BuildRoot) {

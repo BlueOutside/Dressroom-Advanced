@@ -48,4 +48,13 @@ final class ClockLabelFit {
     static int centeredStart(float center, int length, int min, int max) {
         return Math.max(min, Math.min(Math.round(center - length / 2f), max - length));
     }
+
+    static boolean preserveEditorCenter(
+            float previousScale, float scale,
+            boolean previousHideDate, boolean hideDate,
+            boolean labels, boolean previousLabels) {
+        return Float.compare(previousScale, scale) == 0
+                && previousHideDate == hideDate
+                && (labels || previousLabels);
+    }
 }
