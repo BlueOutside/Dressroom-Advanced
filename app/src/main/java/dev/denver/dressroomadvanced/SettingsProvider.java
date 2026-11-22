@@ -122,6 +122,37 @@ public final class SettingsProvider extends ContentProvider {
                     ? FontFiles.begin(getContext())
                     : FontFiles.result(getContext(), argument);
         }
+        if ("getLyrics".equals(method)) {
+            checkCaller(false);
+            if (extras == null) return Bundle.EMPTY;
+            String artist = extras.getString("artist", "");
+            String title = extras.getString("title", "");
+            String album = extras.getString("album", "");
+            long durationMs = extras.getLong("durationMs", 0L);
+            dev.denver.dressroomadvanced.lyrics.LyricsEntry entry =
+                    dev.denver.dressroomadvanced.lyrics.LyricsRepository.getInstance(getContext())
+                            .getLyrics(artist, title, album, durationMs);
+            return entry != null ? entry.toBundle() : Bundle.EMPTY;
+        }
+        if ("getLyricsCacheInfo".equals(method)) {
+            checkCaller(false);
+            dev.denver.dressroomadvanced.lyrics.LyricsCache.CacheInfo info =
+                    dev.denver.dressroomadvanced.lyrics.LyricsRepository.getInstance(getContext())
+                            .cache().getCacheInfo();
+            Bundle result = new Bundle();
+            result.putInt("count", info.trackCount());
+            result.putLong("bytes", info.totalBytes());
+            result.putString("formattedSize", info.formatSize());
+            return result;
+        }
+        if ("clearLyricsCache".equals(method)) {
+            checkCaller(true);
+            dev.denver.dressroomadvanced.lyrics.LyricsRepository.getInstance(getContext())
+                    .cache().clear();
+            Bundle result = new Bundle();
+            result.putBoolean("cleared", true);
+            return result;
+        }
         if (DiyNowBarStore.METHOD_READ.equals(method)
                 || DiyNowBarStore.METHOD_READ_STACK_ORDER.equals(method)
                 || DiyNowBarStore.METHOD_READ_LIVE_STACK.equals(method)

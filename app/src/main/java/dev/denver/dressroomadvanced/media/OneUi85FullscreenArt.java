@@ -5,6 +5,7 @@ import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
+import android.graphics.Color;
 import android.graphics.ColorFilter;
 import android.graphics.Paint;
 import android.graphics.PixelFormat;
@@ -147,7 +148,24 @@ final class OneUi85FullscreenArt {
                 : "now_bar_media_album_art_vi_container");
         View image = find(item, "facewidget_album_art_background");
         if (frame == null || !(image instanceof ImageView art)) return;
-        sources.put(frame, new Source(item, frame, art, holder, binding));
+        Source source = new Source(item, frame, art, holder, binding);
+        sources.put(frame, source);
+        try {
+            View controlsView = source.controls.get();
+            View titleArtist = find(item, "facewidget_music_page_title_artist_container");
+            if (titleArtist == null) titleArtist = find(item, "facewidget_music_page_title");
+            ViewGroup pageContainer = item instanceof ViewGroup itemGroup ? itemGroup : null;
+            if (controlsView instanceof ViewGroup hostGroup) {
+                var lyricsCtrl = dev.denver.dressroomadvanced.lyrics.LyricsController.bind(
+                        pageContainer, hostGroup, titleArtist, frame);
+                if (lyricsCtrl != null) {
+                    boolean lyricsEnabled = RuntimeExtras.enabled(hostGroup.getContext(), "lockscreenLyrics");
+                    boolean autoScroll = RuntimeExtras.enabled(hostGroup.getContext(), "lyricsSyncedHighlight");
+                    int textSize = RuntimeExtras.get(hostGroup.getContext()).getInt("lyricsTextSize", 28);
+                    lyricsCtrl.setPreferences(lyricsEnabled, autoScroll, textSize);
+                }
+            }
+        } catch (Exception ignored) {}
         frame.addOnAttachStateChangeListener(
                 new View.OnAttachStateChangeListener() {
                     @Override
@@ -1019,6 +1037,16 @@ final class OneUi85FullscreenArt {
 
         @Override
         protected void onDraw(Canvas canvas) {
+            if (dev.denver.dressroomadvanced.lyrics.LyricsController.isLyricsActive()) {
+                bounds.set(0, 0, getWidth(), getHeight());
+                if (artworkBlur != null && !bounds.isEmpty()) {
+                    artworkBlur.draw(canvas, bounds);
+                } else if (bitmap != null && !bitmap.isRecycled()) {
+                    canvas.drawBitmap(bitmap, null, bounds, fadePaint);
+                }
+                canvas.drawColor(Color.argb(45, 0, 0, 0));
+                return;
+            }
             if (liveCover.drawAmbient(canvas, root.get(), this)) return;
             if (bitmap == null || bitmap.isRecycled()) return;
             bounds.set(0, 0, getWidth(), getHeight());
@@ -1033,6 +1061,10 @@ final class OneUi85FullscreenArt {
         }
 
         private void drawBlurOverlay(Canvas canvas) {
+            if (dev.denver.dressroomadvanced.lyrics.LyricsController.isLyricsActive()) {
+                canvas.drawColor(Color.argb(55, 0, 0, 0));
+                return;
+            }
             ViewGroup parent = root.get();
             boolean topBlurDisabled =
                     MediaFullscreenExtras.isTopBlurDisabled(
