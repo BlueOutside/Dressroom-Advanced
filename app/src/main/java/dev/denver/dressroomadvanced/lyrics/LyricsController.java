@@ -112,12 +112,16 @@ public final class LyricsController {
     public void setAodMode(boolean aod) {
         lyricsView.setLineByLineMode(aod);
         if (aod) {
+            Main.HANDLER.removeCallbacks(aodTickRunnable);
             long nowUptimeMs = SystemClock.uptimeMillis();
             syncMediaController(nowUptimeMs);
             long posMs = playbackPosition();
             boolean playing = cachedPlaybackState != null
                     && cachedPlaybackState.getState() == PlaybackState.STATE_PLAYING;
-            lyricsView.stepFrame(posMs, 0.5f, nowUptimeMs, playing);
+            lyricsView.stepFrame(posMs, 0.1f, nowUptimeMs, playing);
+            if (playing) {
+                Main.HANDLER.postDelayed(aodTickRunnable, 120L);
+            }
         }
     }
     private static final String STATUS_CLOCK_TAG = "dressroom_lyrics_status_clock";
@@ -214,9 +218,9 @@ public final class LyricsController {
             boolean playing = cachedPlaybackState != null
                     && cachedPlaybackState.getState() == PlaybackState.STATE_PLAYING;
             lyricsView.setLineByLineMode(true);
-            lyricsView.stepFrame(posMs, 0.5f, nowUptimeMs, playing);
+            lyricsView.stepFrame(posMs, 0.1f, nowUptimeMs, playing);
             if (playing) {
-                Main.HANDLER.postDelayed(this, 500L);
+                Main.HANDLER.postDelayed(this, 120L);
             } else {
                 Main.HANDLER.postDelayed(this, 1000L);
             }
@@ -233,7 +237,7 @@ public final class LyricsController {
 
             if (!interactive) {
                 Main.HANDLER.removeCallbacks(aodTickRunnable);
-                Main.HANDLER.postDelayed(aodTickRunnable, 500L);
+                Main.HANDLER.post(aodTickRunnable);
                 return;
             }
 

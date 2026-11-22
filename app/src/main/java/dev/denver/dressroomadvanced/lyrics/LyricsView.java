@@ -1017,55 +1017,65 @@ public final class LyricsView extends FrameLayout {
             }
         }
 
-        // 3. Choose scroll anchor (prefer incoming/latest active lead line; if inside interlude before
-        //    its final 500ms handoff, anchor on the active interlude)
+        // 3. Choose scroll anchor (in line-by-line mode, directly synchronize with the active line)
         int anchorIndex = -1;
-        // Prefer latest active non-interlude lead line
-        for (int i = count - 1; i >= 0; i--) {
-            LyricLine line = lyricLines.get(i);
-            if (line.isActiveAt(lineFocusPosMs) && !line.isInterlude() && !line.isBackgroundVocal()) {
-                anchorIndex = i;
-                break;
+        if (lineByLineMode) {
+            int lineByLineIdx = LrcParser.findActiveLineIndex(lyricLines, positionMs + 250L);
+            if (lineByLineIdx < 0 && !lyricLines.isEmpty() && positionMs >= lyricLines.get(0).timestampMs() - 600L) {
+                lineByLineIdx = 0;
             }
-        }
-        // Fallback: active interlude (before its final 520ms handoff to the next verse)
-        if (anchorIndex < 0) {
-            for (int i = count - 1; i >= 0; i--) {
-                if (activeScratch[i] && lyricLines.get(i).isInterlude()) {
-                    long nextVocal = rowHolders.get(i).nextVocalMs;
-                    if (nextVocal > 0L && (nextVocal - positionMs) <= LrcParser.DEFAULT_LINE_ADVANCE_LEAD_MS
-                            && i + 1 < count) {
-                        anchorIndex = i + 1;
-                    } else {
-                        anchorIndex = i;
-                    }
-                    break;
-                }
+            for (int i = 0; i < count; i++) {
+                activeScratch[i] = (i == lineByLineIdx);
             }
-        }
-        // Fallback: active backing vocal or binary-search nearest line
-        if (anchorIndex < 0) {
+            anchorIndex = lineByLineIdx;
+        } else {
+            // Prefer latest active non-interlude lead line
             for (int i = count - 1; i >= 0; i--) {
-                if (activeScratch[i]) {
+                LyricLine line = lyricLines.get(i);
+                if (line.isActiveAt(lineFocusPosMs) && !line.isInterlude() && !line.isBackgroundVocal()) {
                     anchorIndex = i;
                     break;
                 }
             }
-        }
-        if (anchorIndex < 0) {
-            int fallback = LrcParser.findActiveLineIndex(lyricLines, lineFocusPosMs);
-            if (fallback < 0) fallback = 0;
-            // Skip collapsed GONE interludes when selecting fallback anchor
-            while (fallback < count && rowHolders.get(fallback).view.getVisibility() == GONE) {
-                fallback++;
-            }
-            if (fallback >= count) {
-                fallback = count - 1;
-                while (fallback >= 0 && rowHolders.get(fallback).view.getVisibility() == GONE) {
-                    fallback--;
+            // Fallback: active interlude (before its final 520ms handoff to the next verse)
+            if (anchorIndex < 0) {
+                for (int i = count - 1; i >= 0; i--) {
+                    if (activeScratch[i] && lyricLines.get(i).isInterlude()) {
+                        long nextVocal = rowHolders.get(i).nextVocalMs;
+                        if (nextVocal > 0L && (nextVocal - positionMs) <= LrcParser.DEFAULT_LINE_ADVANCE_LEAD_MS
+                                && i + 1 < count) {
+                            anchorIndex = i + 1;
+                        } else {
+                            anchorIndex = i;
+                        }
+                        break;
+                    }
                 }
             }
-            anchorIndex = fallback;
+            // Fallback: active backing vocal or binary-search nearest line
+            if (anchorIndex < 0) {
+                for (int i = count - 1; i >= 0; i--) {
+                    if (activeScratch[i]) {
+                        anchorIndex = i;
+                        break;
+                    }
+                }
+            }
+            if (anchorIndex < 0) {
+                int fallback = LrcParser.findActiveLineIndex(lyricLines, lineFocusPosMs);
+                if (fallback < 0) fallback = 0;
+                // Skip collapsed GONE interludes when selecting fallback anchor
+                while (fallback < count && rowHolders.get(fallback).view.getVisibility() == GONE) {
+                    fallback++;
+                }
+                if (fallback >= count) {
+                    fallback = count - 1;
+                    while (fallback >= 0 && rowHolders.get(fallback).view.getVisibility() == GONE) {
+                        fallback--;
+                    }
+                }
+                anchorIndex = fallback;
+            }
         }
 
         // 4. Apple Music manual-browse state:
@@ -1321,7 +1331,9 @@ public final class LyricsView extends FrameLayout {
         if (contentHeight <= 0 || anchorView.getVisibility() != VISIBLE || anchorView.getHeight() <= 0) {
             return;
         }
-        int anchorTopOffset = Math.max(dpToPx(24), Math.round(scrollHeight * 0.085f));
+        int anchorTopOffset = lineByLineMode
+                ? Math.max(dpToPx(48), Math.round(scrollHeight * 0.28f))
+                : Math.max(dpToPx(24), Math.round(scrollHeight * 0.085f));
         int maxScrollY = Math.max(0, contentHeight - scrollHeight);
         int targetScrollY = Math.max(0, Math.min(maxScrollY, anchorView.getTop() - anchorTopOffset));
 
