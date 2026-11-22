@@ -93,7 +93,12 @@ public final class LyricsCache {
 
     public void put(LyricsEntry entry) {
         if (entry == null) return;
-        String key = cacheKey(entry.artist(), entry.title());
+        put(entry.artist(), entry.title(), entry);
+    }
+
+    public void put(String artist, String title, LyricsEntry entry) {
+        if (entry == null) return;
+        String key = cacheKey(artist, title);
         synchronized (lock) {
             if (!cacheDir.isDirectory() && !cacheDir.mkdirs()) return;
 

@@ -658,8 +658,12 @@ public final class LyricsController {
             String album = metadata.getString(MediaMetadata.METADATA_KEY_ALBUM);
             long durationMs = metadata.getLong(MediaMetadata.METADATA_KEY_DURATION);
 
-            String trackKey = artist + "|" + title;
-            android.util.Log.i("DressroomLyrics", "onTrackChanged: trackKey=" + trackKey);
+            LyricsSanitizer.SanitizedTrack sanitized = LyricsSanitizer.sanitize(artist, title);
+            String displayTitle = !sanitized.title().isEmpty() ? sanitized.title() : title;
+            String displayArtist = !sanitized.artist().isEmpty() ? sanitized.artist() : artist;
+
+            String trackKey = displayArtist + "|" + displayTitle;
+            android.util.Log.i("DressroomLyrics", "onTrackChanged: trackKey=" + trackKey + " (raw=" + artist + "|" + title + ")");
 
             Bitmap cover = null;
             if (metadata != null) {
@@ -669,7 +673,7 @@ public final class LyricsController {
             if (cover == null && albumArtRef.get() instanceof ImageView iv && iv.getDrawable() instanceof BitmapDrawable bd) {
                 cover = bd.getBitmap();
             }
-            lyricsView.setTrackInfo(title, artist, cover);
+            lyricsView.setTrackInfo(displayTitle, displayArtist, cover);
 
             if (lyricsActive) {
                 ViewGroup shade = MediaFullscreenExtras.getNotificationShadeWindowView();
@@ -685,7 +689,7 @@ public final class LyricsController {
             // Reset lyrics view with loading state
             lyricsView.setLyrics(null);
 
-            LyricsBridge.requestLyrics(context, artist, title, album, durationMs, entry -> {
+            LyricsBridge.requestLyrics(context, displayArtist, displayTitle, album, durationMs, entry -> {
                 android.util.Log.i("DressroomLyrics", "Lyrics received: entry=" + (entry != null ? entry.source() : "null"));
                 if (trackKey.equals(currentTrackKey)) {
                     lyricsView.setLyrics(entry);

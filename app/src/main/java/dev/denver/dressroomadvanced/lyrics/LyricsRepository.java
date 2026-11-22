@@ -65,8 +65,15 @@ public final class LyricsRepository {
             return LyricsEntry.notFound(artist, title, album, durationMs);
         }
 
-        // 1. Check local disk cache
+        LyricsSanitizer.SanitizedTrack sanitized = LyricsSanitizer.sanitize(artist, title);
+        String cleanArtist = sanitized.artist();
+        String cleanTitle = sanitized.title();
+
+        // 1. Check local disk cache (under raw and cleaned names)
         LyricsEntry cached = cache.get(artist, title);
+        if (cached == null && (!cleanArtist.equals(artist) || !cleanTitle.equals(title))) {
+            cached = cache.get(cleanArtist, cleanTitle);
+        }
         if (cached != null) {
             if (cached.notFound()) {
                 if (!cached.isExpired(System.currentTimeMillis(), LyricsCache.NEGATIVE_TTL_MS)) {
@@ -77,49 +84,94 @@ public final class LyricsRepository {
             }
         }
 
-        // 2. Fetch from network (deduplicated by track key)
-        String fetchKey = LyricsCache.cacheKey(artist, title);
+        // 2. Fetch from network (deduplicated by cleaned track key)
+        String fetchKey = LyricsCache.cacheKey(cleanArtist, cleanTitle);
         try {
             Future<LyricsEntry> future = activeFetches.computeIfAbsent(
                     fetchKey,
-                    k -> fetchPool.submit(() -> fetchFromNetwork(artist, title, album, durationMs)));
+                    k -> fetchPool.submit(() -> fetchFromNetwork(artist, title, cleanArtist, cleanTitle, album, durationMs)));
             LyricsEntry result = future.get();
             activeFetches.remove(fetchKey);
             return result;
         } catch (Exception e) {
             activeFetches.remove(fetchKey);
             Log.w(TAG, "Failed resolving lyrics for " + artist + " - " + title, e);
-            return LyricsEntry.notFound(artist, title, album, durationMs);
+            return LyricsEntry.notFound(cleanArtist, cleanTitle, album, durationMs);
         }
     }
 
-    private LyricsEntry fetchFromNetwork(String artist, String title, String album, long durationMs) {
+    private void storeBoth(LyricsEntry entry, String rawArtist, String rawTitle, String cleanArtist, String cleanTitle) {
+        if (entry == null) return;
+        cache.put(cleanArtist, cleanTitle, entry);
+        if (!rawArtist.equalsIgnoreCase(cleanArtist) || !rawTitle.equalsIgnoreCase(cleanTitle)) {
+            cache.put(rawArtist, rawTitle, entry);
+        }
+    }
+
+    private LyricsEntry fetchFromNetwork(
+            String rawArtist,
+            String rawTitle,
+            String cleanArtist,
+            String cleanTitle,
+            String album,
+            long durationMs) {
         long durationSec = durationMs > 0 ? Math.round(durationMs / 1000.0) : 0L;
 
-        // Step 1A: LRCLIB Exact Match
-        LyricsEntry lrclibExact = fetchLrclibExact(artist, title, album, durationSec);
-        if (lrclibExact != null && lrclibExact.hasLyrics()) {
-            cache.put(lrclibExact);
-            return lrclibExact;
+        // Step 1A: LRCLIB Exact Match with cleaned title and artist
+        LyricsEntry entry = fetchLrclibExact(cleanArtist, cleanTitle, album, durationSec);
+        if (entry == null && album != null && !album.trim().isEmpty()) {
+            entry = fetchLrclibExact(cleanArtist, cleanTitle, null, durationSec);
+        }
+        if (entry != null && entry.hasLyrics()) {
+            storeBoth(entry, rawArtist, rawTitle, cleanArtist, cleanTitle);
+            return entry;
         }
 
-        // Step 1B: LRCLIB Search Fallback
-        LyricsEntry lrclibSearch = fetchLrclibSearch(artist, title, durationSec);
-        if (lrclibSearch != null && lrclibSearch.hasLyrics()) {
-            cache.put(lrclibSearch);
-            return lrclibSearch;
+        // Step 1B: LRCLIB Search Fallback with cleaned title and artist
+        entry = fetchLrclibSearch(cleanArtist, cleanTitle, durationSec);
+        if (entry != null && entry.hasLyrics()) {
+            storeBoth(entry, rawArtist, rawTitle, cleanArtist, cleanTitle);
+            return entry;
+        }
+
+        // Step 1C: If cleanTitle contained featured artists, try stripping them
+        String noFeat = LyricsSanitizer.stripFeatures(cleanTitle);
+        if (!noFeat.equalsIgnoreCase(cleanTitle)) {
+            entry = fetchLrclibExact(cleanArtist, noFeat, null, durationSec);
+            if (entry == null) {
+                entry = fetchLrclibSearch(cleanArtist, noFeat, durationSec);
+            }
+            if (entry != null && entry.hasLyrics()) {
+                storeBoth(entry, rawArtist, rawTitle, cleanArtist, cleanTitle);
+                return entry;
+            }
+        }
+
+        // Step 1D: If raw differed from clean, try raw as fallback
+        if (!rawArtist.equalsIgnoreCase(cleanArtist) || !rawTitle.equalsIgnoreCase(cleanTitle)) {
+            entry = fetchLrclibExact(rawArtist, rawTitle, album, durationSec);
+            if (entry == null) {
+                entry = fetchLrclibSearch(rawArtist, rawTitle, durationSec);
+            }
+            if (entry != null && entry.hasLyrics()) {
+                storeBoth(entry, rawArtist, rawTitle, cleanArtist, cleanTitle);
+                return entry;
+            }
         }
 
         // Step 2: Secondary Fallback — lyrics.ovh
-        LyricsEntry ovhEntry = fetchLyricsOvh(artist, title, album, durationMs);
-        if (ovhEntry != null && ovhEntry.hasLyrics()) {
-            cache.put(ovhEntry);
-            return ovhEntry;
+        entry = fetchLyricsOvh(cleanArtist, cleanTitle, album, durationMs);
+        if (entry == null && (!rawArtist.equalsIgnoreCase(cleanArtist) || !rawTitle.equalsIgnoreCase(cleanTitle))) {
+            entry = fetchLyricsOvh(rawArtist, rawTitle, album, durationMs);
+        }
+        if (entry != null && entry.hasLyrics()) {
+            storeBoth(entry, rawArtist, rawTitle, cleanArtist, cleanTitle);
+            return entry;
         }
 
         // Step 3: Negative Caching
-        LyricsEntry notFound = LyricsEntry.notFound(artist, title, album, durationMs);
-        cache.put(notFound);
+        LyricsEntry notFound = LyricsEntry.notFound(cleanArtist, cleanTitle, album, durationMs);
+        storeBoth(notFound, rawArtist, rawTitle, cleanArtist, cleanTitle);
         return notFound;
     }
 
