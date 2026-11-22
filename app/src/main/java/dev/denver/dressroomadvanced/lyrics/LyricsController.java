@@ -62,7 +62,17 @@ public final class LyricsController {
     private String currentTrackKey = "";
 
     private final View.OnLayoutChangeListener layoutListener =
-            (v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> updateLyricsBounds();
+            (v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
+                if (isVisible) {
+                    View host = controlHostRef.get();
+                    if (host == null || !host.isAttachedToWindow() || host.getVisibility() != View.VISIBLE || host.getHeight() <= 0) {
+                        android.util.Log.i("DressroomLyrics", "layoutListener: host detached/hidden/zero height -> hideLyrics");
+                        hideLyrics();
+                        return;
+                    }
+                    updateLyricsBounds();
+                }
+            };
 
     private final Runnable tickRunnable = new Runnable() {
         @Override
@@ -226,26 +236,20 @@ public final class LyricsController {
             controlHost.addView(toggleButton, btnLp);
         }
 
-        attachLyricsView(targetPage);
+        setupControlHost(controlHost);
 
-        // Also watch for attachment to window to find real FaceWidgetMusicPage parent if needed
-        controlHost.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
+        targetPage.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
             @Override
-            public void onViewAttachedToWindow(View v) {
-                android.util.Log.i("DressroomLyrics", "controlHost onViewAttachedToWindow");
-                ViewGroup bestContainer = findBestContainer(v);
-                if (bestContainer != null && bestContainer != pageContainerRef.get()) {
-                    android.util.Log.i("DressroomLyrics", "Found better container on attach: " + bestContainer.getClass().getName());
-                    pageContainerRef.clear();
-                    pageContainerRef = new WeakReference<>(bestContainer);
-                    attachLyricsView(bestContainer);
-                }
-                updateLyricsBounds();
+            public void onViewAttachedToWindow(View v) {}
+
+            @Override
+            public void onViewDetachedFromWindow(View v) {
+                android.util.Log.i("DressroomLyrics", "targetPage detached from window -> hideLyrics");
+                hideLyrics();
             }
-
-            @Override
-            public void onViewDetachedFromWindow(View v) {}
         });
+
+        attachLyricsView(targetPage);
 
         targetPage.addOnLayoutChangeListener(layoutListener);
         if (controlHost != targetPage) {
@@ -320,6 +324,66 @@ public final class LyricsController {
 
     private static LyricsController activeInstance;
 
+    public static void hideActiveLyrics() {
+        Main.HANDLER.post(() -> {
+            if (activeInstance != null && activeInstance.isVisible) {
+                android.util.Log.i("DressroomLyrics", "hideActiveLyrics called");
+                activeInstance.hideLyrics();
+            }
+        });
+    }
+
+    private void setupControlHost(ViewGroup controlHost) {
+        if (controlHost == null) return;
+        controlHost.setOnTouchListener((v, event) -> {
+            if (lyricsActive) {
+                // Consume touches on empty background so Samsung doesn't collapse player while lyrics are active
+                return true;
+            }
+            return false;
+        });
+
+        controlHost.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
+            @Override
+            public void onViewAttachedToWindow(View v) {
+                android.util.Log.i("DressroomLyrics", "controlHost onViewAttachedToWindow");
+                ViewGroup bestContainer = findBestContainer(v);
+                if (bestContainer != null && bestContainer != pageContainerRef.get()) {
+                    android.util.Log.i("DressroomLyrics", "Found better container on attach: " + bestContainer.getClass().getName());
+                    pageContainerRef.clear();
+                    pageContainerRef = new WeakReference<>(bestContainer);
+                    attachLyricsView(bestContainer);
+                }
+                updateLyricsBounds();
+            }
+
+            @Override
+            public void onViewDetachedFromWindow(View v) {
+                android.util.Log.i("DressroomLyrics", "controlHost onViewDetachedFromWindow -> hideLyrics");
+                hideLyrics();
+            }
+        });
+
+        try {
+            int devId = controlHost.getResources().getIdentifier(
+                    "facewidget_music_page_device", "id", "com.samsung.android.app.aodservice");
+            if (devId != 0) {
+                View devView = controlHost.findViewById(devId);
+                if (devView != null) {
+                    devView.setOnTouchListener((v, event) -> lyricsActive);
+                }
+            }
+            int outId = controlHost.getResources().getIdentifier(
+                    "facewidget_music_icon_device_media_output_container", "id", "com.samsung.android.app.aodservice");
+            if (outId != 0) {
+                View outView = controlHost.findViewById(outId);
+                if (outView != null) {
+                    outView.setOnTouchListener((v, event) -> lyricsActive);
+                }
+            }
+        } catch (Exception ignored) {}
+    }
+
     public static synchronized LyricsController bind(ViewGroup container) {
         return bind(container, container, null, null);
     }
@@ -338,9 +402,22 @@ public final class LyricsController {
     }
 
     public void updateTarget(ViewGroup pageContainer, ViewGroup controlHost, View titleArtist, View albumArt) {
-        if (pageContainer != null) this.pageContainerRef = new WeakReference<>(pageContainer);
+        if (pageContainer != null) {
+            this.pageContainerRef = new WeakReference<>(pageContainer);
+            pageContainer.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
+                @Override
+                public void onViewAttachedToWindow(View v) {}
+
+                @Override
+                public void onViewDetachedFromWindow(View v) {
+                    android.util.Log.i("DressroomLyrics", "pageContainer onViewDetachedFromWindow -> hideLyrics");
+                    hideLyrics();
+                }
+            });
+        }
         if (controlHost != null) {
             this.controlHostRef = new WeakReference<>(controlHost);
+            setupControlHost(controlHost);
             if (toggleButton.getParent() != controlHost) {
                 if (toggleButton.getParent() instanceof ViewGroup p) p.removeView(toggleButton);
                 FrameLayout.LayoutParams btnLp = new FrameLayout.LayoutParams(
@@ -539,16 +616,25 @@ public final class LyricsController {
         MediaClockVisibility.setLyricsMode(false);
         MediaFullscreenExtras.invalidateAllHosts();
 
-        lyricsView.animate()
-                .alpha(0f)
-                .setDuration(180)
-                .setListener(new AnimatorListenerAdapter() {
-                    @Override
-                    public void onAnimationEnd(Animator animation) {
-                        lyricsView.setVisibility(View.GONE);
-                    }
-                })
-                .start();
+        View host = controlHostRef.get();
+        boolean hostMissing = host == null || !host.isAttachedToWindow() || host.getVisibility() != View.VISIBLE;
+
+        if (hostMissing) {
+            lyricsView.animate().cancel();
+            lyricsView.setVisibility(View.GONE);
+            lyricsView.setAlpha(0f);
+        } else {
+            lyricsView.animate()
+                    .alpha(0f)
+                    .setDuration(180)
+                    .setListener(new AnimatorListenerAdapter() {
+                        @Override
+                        public void onAnimationEnd(Animator animation) {
+                            lyricsView.setVisibility(View.GONE);
+                        }
+                    })
+                    .start();
+        }
 
         // Restore clock and widgets container
         ViewGroup shade = MediaFullscreenExtras.getNotificationShadeWindowView();

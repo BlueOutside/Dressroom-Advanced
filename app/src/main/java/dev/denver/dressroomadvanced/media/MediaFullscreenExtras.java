@@ -2079,10 +2079,14 @@ public final class MediaFullscreenExtras {
                                             "Media compact-content reveal unavailable", error);
                                 }
                                 Object result = chain.proceed();
-                                if (Boolean.FALSE.equals(chain.getArg(0))
-                                        && !animatedFullscreenReturn
-                                        && chain.getThisObject() instanceof View mediaCard) {
-                                    finishCompactCollapse(mediaCard, cardContract);
+                                if (Boolean.FALSE.equals(chain.getArg(0))) {
+                                    if (LyricsController.isLyricsActive()) {
+                                        LyricsController.hideActiveLyrics();
+                                    }
+                                    if (!animatedFullscreenReturn
+                                            && chain.getThisObject() instanceof View mediaCard) {
+                                        finishCompactCollapse(mediaCard, cardContract);
+                                    }
                                 }
                                 return result;
                             });
@@ -2093,6 +2097,9 @@ public final class MediaFullscreenExtras {
                     .setId("dressroom-advanced.media-collapse-geometry")
                     .intercept(
                             chain -> {
+                                if (LyricsController.isLyricsActive()) {
+                                    LyricsController.hideActiveLyrics();
+                                }
                                 View big = (View) chain.getArg(2),
                                         small = (View) chain.getArg(3);
                                 ViewParent before = small.getParent();
@@ -2146,6 +2153,9 @@ public final class MediaFullscreenExtras {
                     .setId("dressroom-advanced.media-collapse-cleanup")
                     .intercept(
                             chain -> {
+                                if (LyricsController.isLyricsActive()) {
+                                    LyricsController.hideActiveLyrics();
+                                }
                                 View small = (View) chain.getArg(1);
                                 Art state = collapsing.remove(small);
                                 Object result = chain.proceed();
