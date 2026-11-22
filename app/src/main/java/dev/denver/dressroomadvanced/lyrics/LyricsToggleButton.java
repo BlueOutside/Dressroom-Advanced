@@ -1,5 +1,6 @@
 package dev.denver.dressroomadvanced.lyrics;
 
+import android.animation.ValueAnimator;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -9,14 +10,20 @@ import android.graphics.PorterDuff;
 import android.graphics.PorterDuffXfermode;
 import android.util.TypedValue;
 import android.view.View;
+import android.view.animation.DecelerateInterpolator;
+import android.view.animation.OvershootInterpolator;
 
 /**
  * Apple Music style lyrics button: a circular frosted glass icon with
  * Apple's quotation speech bubble icon, dynamically toggling between
- * inactive (translucent/white) and active (bright disc/dark bubble) states.
+ * inactive (translucent/white) and active (bright disc/dark bubble) states
+ * with smooth animated color crossfade and tactile press bounce.
  */
 public final class LyricsToggleButton extends View {
     private boolean isActive = false;
+    private float progress = 0f;
+    private ValueAnimator colorAnimator;
+
     private final Paint bgPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint bubblePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint clearPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -27,9 +34,35 @@ public final class LyricsToggleButton extends View {
     }
 
     public void setActive(boolean active) {
-        if (this.isActive == active) return;
+        setActive(active, true);
+    }
+
+    public void setActive(boolean active, boolean animate) {
+        if (this.isActive == active && Math.abs(progress - (active ? 1f : 0f)) < 0.01f) return;
         this.isActive = active;
-        invalidate();
+
+        if (!animate) {
+            if (colorAnimator != null) colorAnimator.cancel();
+            progress = active ? 1f : 0f;
+            invalidate();
+            return;
+        }
+
+        if (colorAnimator != null) colorAnimator.cancel();
+        colorAnimator = ValueAnimator.ofFloat(progress, active ? 1f : 0f);
+        colorAnimator.setDuration(240);
+        colorAnimator.setInterpolator(new DecelerateInterpolator(1.5f));
+        colorAnimator.addUpdateListener(anim -> {
+            progress = (Float) anim.getAnimatedValue();
+            invalidate();
+        });
+        colorAnimator.start();
+
+        // Subtle tactile bounce on press
+        animate().scaleX(0.90f).scaleY(0.90f).setDuration(90).withEndAction(() -> {
+            animate().scaleX(1.0f).scaleY(1.0f).setDuration(160)
+                    .setInterpolator(new OvershootInterpolator(2.0f)).start();
+        }).start();
     }
 
     public boolean isActive() {
@@ -47,12 +80,9 @@ public final class LyricsToggleButton extends View {
         float cy = h / 2f;
         float radius = Math.min(w, h) / 2f - dpToPx(1.5f);
 
-        // 1. Circular disc
-        if (isActive) {
-            bgPaint.setColor(Color.argb(240, 255, 255, 255));
-        } else {
-            bgPaint.setColor(Color.argb(55, 255, 255, 255));
-        }
+        // 1. Circular disc: smooth blend from inactive translucent (55) to active luminous (240)
+        int bgAlpha = (int) (55 + (240 - 55) * progress);
+        bgPaint.setColor(Color.argb(bgAlpha, 255, 255, 255));
         canvas.drawCircle(cx, cy, radius, bgPaint);
 
         // 2. Bubble in a layer so CLEAR mode punches cleanly through the bubble to the disc
@@ -83,11 +113,12 @@ public final class LyricsToggleButton extends View {
         tailPath.close();
         bubblePath.op(tailPath, Path.Op.UNION);
 
-        if (isActive) {
-            bubblePaint.setColor(Color.argb(230, 20, 20, 20));
-        } else {
-            bubblePaint.setColor(Color.argb(242, 255, 255, 255));
-        }
+        // Bubble color: smooth blend from white (242) to charcoal (20)
+        int bubbleR = (int) (242 + (20 - 242) * progress);
+        int bubbleG = (int) (242 + (20 - 242) * progress);
+        int bubbleB = (int) (242 + (20 - 242) * progress);
+        int bubbleA = (int) (242 + (230 - 242) * progress);
+        bubblePaint.setColor(Color.argb(bubbleA, bubbleR, bubbleG, bubbleB));
         canvas.drawPath(bubblePath, bubblePaint);
 
         // 3. Cutout quotation marks inside speech bubble

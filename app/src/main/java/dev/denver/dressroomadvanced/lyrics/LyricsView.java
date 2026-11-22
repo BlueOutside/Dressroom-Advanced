@@ -1,5 +1,7 @@
 package dev.denver.dressroomadvanced.lyrics;
 
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
 import android.content.Context;
 import android.graphics.Bitmap;
@@ -17,6 +19,8 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewOutlineProvider;
 import android.view.ViewParent;
+import android.view.animation.AccelerateInterpolator;
+import android.view.animation.PathInterpolator;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -246,6 +250,91 @@ public final class LyricsView extends FrameLayout {
 
     public void setOnCloseListener(Runnable listener) {
         this.closeListener = listener;
+    }
+
+    public void prepareForOpen() {
+        setAlpha(0f);
+        setVisibility(View.VISIBLE);
+        if (headerLayout != null) {
+            headerLayout.setAlpha(0f);
+            headerLayout.setTranslationY(-dpToPx(16));
+        }
+        if (contentContainer != null) {
+            contentContainer.setAlpha(0f);
+            contentContainer.setTranslationY(dpToPx(48));
+        }
+    }
+
+    public void animateOpen() {
+        prepareForOpen();
+
+        // 1. Root container fade in
+        animate()
+                .alpha(1f)
+                .setDuration(340)
+                .setInterpolator(new PathInterpolator(0.2f, 0f, 0.1f, 1f))
+                .setListener(null)
+                .start();
+
+        // 2. Header slides down slightly and fades in
+        if (headerLayout != null) {
+            headerLayout.animate()
+                    .alpha(1f)
+                    .translationY(0f)
+                    .setDuration(320)
+                    .setInterpolator(new PathInterpolator(0.2f, 0f, 0.1f, 1f))
+                    .start();
+        }
+
+        // 3. Lyrics scroll content slides up from below and fades in
+        if (contentContainer != null) {
+            contentContainer.animate()
+                    .alpha(1f)
+                    .translationY(0f)
+                    .setDuration(380)
+                    .setInterpolator(new PathInterpolator(0.18f, 0f, 0.08f, 1f))
+                    .start();
+        }
+    }
+
+    public void animateClose(Runnable onEnd) {
+        animate()
+                .alpha(0f)
+                .setDuration(240)
+                .setInterpolator(new AccelerateInterpolator(1.4f))
+                .setListener(new AnimatorListenerAdapter() {
+                    @Override
+                    public void onAnimationEnd(Animator animation) {
+                        setVisibility(View.GONE);
+                        setAlpha(1f);
+                        if (headerLayout != null) {
+                            headerLayout.setTranslationY(0f);
+                            headerLayout.setAlpha(1f);
+                        }
+                        if (contentContainer != null) {
+                            contentContainer.setTranslationY(0f);
+                            contentContainer.setAlpha(1f);
+                        }
+                        if (onEnd != null) onEnd.run();
+                    }
+                })
+                .start();
+
+        if (headerLayout != null) {
+            headerLayout.animate()
+                    .alpha(0f)
+                    .translationY(-dpToPx(12))
+                    .setDuration(200)
+                    .start();
+        }
+
+        if (contentContainer != null) {
+            contentContainer.animate()
+                    .alpha(0f)
+                    .translationY(dpToPx(36))
+                    .setDuration(220)
+                    .start();
+        }
     }
 
     public void setTrackInfo(String title, String artist, Bitmap cover) {

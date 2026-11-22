@@ -20,6 +20,7 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewParent;
+import android.view.animation.PathInterpolator;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.TextView;
@@ -486,7 +487,11 @@ public final class LyricsController {
                     || name.contains("lock_icon") || className.contains("LockIcon")
                     || name.contains("keyguard_indication") || name.contains("carrier")) {
                 android.util.Log.i("DressroomLyrics", "hideMatchingViews: " + name + " (" + className + ") -> alpha " + targetAlpha);
-                child.animate().alpha(targetAlpha).setDuration(200).start();
+                child.animate()
+                        .alpha(targetAlpha)
+                        .setDuration(260)
+                        .setInterpolator(new PathInterpolator(0.2f, 0f, 0.1f, 1f))
+                        .start();
                 if (targetAlpha == 0f) {
                     child.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
                         @Override
@@ -571,12 +576,7 @@ public final class LyricsController {
                 + (lyricsView.getParent() != null ? lyricsView.getParent().getClass().getName() : "null")
                 + " bounds=" + lyricsView.getLeft() + "," + lyricsView.getTop() + " " + lyricsView.getWidth() + "x" + lyricsView.getHeight());
         lyricsView.bringToFront();
-        lyricsView.setVisibility(View.VISIBLE);
-        lyricsView.animate()
-                .alpha(1f)
-                .setDuration(220)
-                .setListener(null)
-                .start();
+        lyricsView.animateOpen();
 
         // Hide clock and complication widgets
         ViewGroup shade = MediaFullscreenExtras.getNotificationShadeWindowView();
@@ -587,11 +587,22 @@ public final class LyricsController {
 
         View titleArtist = titleArtistRef.get();
         if (titleArtist != null) {
-            titleArtist.animate().alpha(0f).setDuration(180).start();
+            titleArtist.animate()
+                    .alpha(0f)
+                    .translationY(dpToPx(16))
+                    .setDuration(240)
+                    .setInterpolator(new PathInterpolator(0.2f, 0f, 0.1f, 1f))
+                    .start();
         }
         View albumArt = albumArtRef.get();
         if (albumArt != null) {
-            albumArt.animate().alpha(0f).setDuration(180).start();
+            albumArt.animate()
+                    .alpha(0f)
+                    .scaleX(0.93f)
+                    .scaleY(0.93f)
+                    .setDuration(240)
+                    .setInterpolator(new PathInterpolator(0.2f, 0f, 0.1f, 1f))
+                    .start();
         }
 
         toggleButton.bringToFront();
@@ -615,16 +626,7 @@ public final class LyricsController {
             lyricsView.setVisibility(View.GONE);
             lyricsView.setAlpha(0f);
         } else {
-            lyricsView.animate()
-                    .alpha(0f)
-                    .setDuration(180)
-                    .setListener(new AnimatorListenerAdapter() {
-                        @Override
-                        public void onAnimationEnd(Animator animation) {
-                            lyricsView.setVisibility(View.GONE);
-                        }
-                    })
-                    .start();
+            lyricsView.animateClose(null);
         }
 
         // Restore clock and widgets container
@@ -636,11 +638,22 @@ public final class LyricsController {
 
         View titleArtist = titleArtistRef.get();
         if (titleArtist != null) {
-            titleArtist.animate().alpha(1f).setDuration(200).start();
+            titleArtist.animate()
+                    .alpha(1f)
+                    .translationY(0f)
+                    .setDuration(260)
+                    .setInterpolator(new PathInterpolator(0.2f, 0f, 0.1f, 1f))
+                    .start();
         }
         View albumArt = albumArtRef.get();
         if (albumArt != null) {
-            albumArt.animate().alpha(1f).setDuration(200).start();
+            albumArt.animate()
+                    .alpha(1f)
+                    .scaleX(1.0f)
+                    .scaleY(1.0f)
+                    .setDuration(260)
+                    .setInterpolator(new PathInterpolator(0.2f, 0f, 0.1f, 1f))
+                    .start();
         }
 
         toggleButton.setActive(false);
