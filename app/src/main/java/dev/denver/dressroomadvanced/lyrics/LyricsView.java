@@ -534,33 +534,6 @@ public final class LyricsView extends FrameLayout {
     private static Typeface getLyricsTypeface(Context context) {
         if (cachedSfProHeavy != null) return cachedSfProHeavy;
 
-        if (context != null) {
-            try {
-                Context modCtx = context.createPackageContext(
-                        "dev.denver.dressroomadvanced",
-                        Context.CONTEXT_IGNORE_SECURITY);
-                cachedSfProHeavy = Typeface.createFromAsset(
-                        modCtx.getAssets(),
-                        "fonts/SF-Pro-Display-Heavy.otf");
-                if (cachedSfProHeavy != null) {
-                    android.util.Log.i("DressroomLyrics", "Loaded SF Pro Display Heavy font from module assets");
-                    return cachedSfProHeavy;
-                }
-            } catch (Throwable t) {
-                android.util.Log.w("DressroomLyrics", "Could not load SF Pro from module context: " + t.getMessage());
-            }
-
-            try {
-                cachedSfProHeavy = Typeface.createFromAsset(
-                        context.getAssets(),
-                        "fonts/SF-Pro-Display-Heavy.otf");
-                if (cachedSfProHeavy != null) {
-                    android.util.Log.i("DressroomLyrics", "Loaded SF Pro Display Heavy font from local context");
-                    return cachedSfProHeavy;
-                }
-            } catch (Throwable ignored) {}
-        }
-
         if (android.os.Build.VERSION.SDK_INT >= 28) {
             cachedSfProHeavy = Typeface.create(Typeface.SANS_SERIF, 800, false);
         } else {

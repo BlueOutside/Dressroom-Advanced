@@ -18,7 +18,7 @@ public final class LyricsSanitizer {
 
     // Bracketed noise: (Official Music Video), [4K Upgrade], (2020 Remaster), etc.
     private static final Pattern PATTERN_BRACKET_NOISE = Pattern.compile(
-            "(?i)\\s*[\\(\\[\\{【](?:\\s*" + NOISE_WORDS + "|\\s*[-–—|/&,:]\\s*|\\s*\\d{4}\\s*)+[\\)\\]\\}】]");
+            "(?i)\\s*[\\(\\[\\{【](?:\\s*" + NOISE_WORDS + "|\\s*[-–|/&,:]\\s*|\\s*\\d{4}\\s*)+[\\)\\]\\}】]");
 
     // Live concert tag in brackets: (Live at Wembley, 1986), [Live from London]
     private static final Pattern PATTERN_LIVE_BRACKET = Pattern.compile(
@@ -26,7 +26,7 @@ public final class LyricsSanitizer {
 
     // Trailing delimiter noise: " - Official Video", " | Music Video", " // Official Lyric Video"
     private static final Pattern PATTERN_TRAILING_DELIMITER = Pattern.compile(
-            "(?i)\\s*(?:[-–—|/]|//)\\s*(?:(?:\\s*" + NOISE_WORDS + "|\\s*[-–—|/&,:]\\s*|\\s*\\d{4}\\s*)+)\\s*$");
+            "(?i)\\s*(?:[-–|/]|//)\\s*(?:(?:\\s*" + NOISE_WORDS + "|\\s*[-–|/&,:]\\s*|\\s*\\d{4}\\s*)+)\\s*$");
 
     // Standalone trailing noise words: " official music video", " official audio"
     private static final Pattern PATTERN_TRAILING_WORDS = Pattern.compile(
@@ -34,7 +34,7 @@ public final class LyricsSanitizer {
 
     // Leading track numbers: "01 - Title", "01. Title"
     private static final Pattern PATTERN_TRACK_NUM = Pattern.compile(
-            "^\\s*\\d{1,3}\\s*[-–—.]\\s*");
+            "^\\s*\\d{1,3}\\s*[-–.]\\s*");
 
     // Featured artists: (feat. Drake), [ft. Artist], feat. Artist
     private static final Pattern PATTERN_FEATURES = Pattern.compile(
@@ -84,7 +84,7 @@ public final class LyricsSanitizer {
         if (artist != null && !artist.trim().isEmpty()) {
             String cleanArt = cleanArtist(artist);
             if (!cleanArt.isEmpty()) {
-                String prefixPattern = "(?i)^\\s*" + Pattern.quote(cleanArt) + "\\s*[-–—:]\\s*";
+                String prefixPattern = "(?i)^\\s*" + Pattern.quote(cleanArt) + "\\s*[-–:]\\s*";
                 s = s.replaceFirst(prefixPattern, "");
             }
         }
@@ -142,8 +142,8 @@ public final class LyricsSanitizer {
                 || artist.equalsIgnoreCase("unknown artist")
                 || artist.equalsIgnoreCase("<unknown>");
 
-        if (isGenericArtist && (title.contains(" - ") || title.contains(" – ") || title.contains(" — "))) {
-            String[] parts = title.split("\\s+[-–—]\\s+", 2);
+        if (isGenericArtist && (title.contains(" - ") || title.contains(" – "))) {
+            String[] parts = title.split("\\s+[-–]\\s+", 2);
             if (parts.length == 2 && !parts[0].trim().isEmpty() && !parts[1].trim().isEmpty()) {
                 artist = parts[0].trim();
                 title = parts[1].trim();
