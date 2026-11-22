@@ -421,8 +421,11 @@ public final class LyricsController {
             if (name.contains("blur") || name.contains("backdrop")) {
                 continue;
             }
-            if (name.contains("clock") || name.contains("complication") || name.contains("facewidget_clock")) {
-                android.util.Log.i("DressroomLyrics", "hideMatchingViews: " + name + " -> alpha " + targetAlpha);
+            String className = child.getClass().getSimpleName();
+            if (name.contains("clock") || name.contains("complication") || name.contains("facewidget_clock")
+                    || name.contains("lock_icon") || className.contains("LockIcon")
+                    || name.contains("keyguard_indication") || name.contains("carrier")) {
+                android.util.Log.i("DressroomLyrics", "hideMatchingViews: " + name + " (" + className + ") -> alpha " + targetAlpha);
                 child.animate().alpha(targetAlpha).setDuration(200).start();
             } else if (child instanceof ViewGroup vg) {
                 hideMatchingViews(vg, targetAlpha);

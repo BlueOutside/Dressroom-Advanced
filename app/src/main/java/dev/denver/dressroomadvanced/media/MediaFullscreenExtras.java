@@ -1457,7 +1457,7 @@ public final class MediaFullscreenExtras {
                     if (destination.isEmpty()) destination.set(0, 0, getWidth(), getHeight());
                     canvas.drawBitmap(bitmap, null, destination, paint);
                 }
-                canvas.drawColor(Color.argb(85, 0, 0, 0));
+                canvas.drawColor(Color.argb(45, 0, 0, 0));
                 return;
             }
             if (!liveCover.drawAmbient(canvas, root.get(), this)) drawArtwork(canvas);

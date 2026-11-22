@@ -5,8 +5,11 @@ import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.Outline;
+import android.graphics.RenderEffect;
+import android.graphics.Shader;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.os.Build;
 import android.text.TextUtils;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -26,9 +29,18 @@ import java.util.List;
 /**
  * Apple Music style lyrics view for lockscreen expanded media player.
  * Features a top header with track artwork thumbnail, title, artist,
- * and large, bold, left-aligned auto-scrolling lyrics with fading edges.
+ * and large, bold, left-aligned auto-scrolling lyrics with defocus blur and fading edges.
  */
 public final class LyricsView extends FrameLayout {
+    private static final RenderEffect INACTIVE_BLUR_EFFECT;
+    static {
+        if (Build.VERSION.SDK_INT >= 31) {
+            INACTIVE_BLUR_EFFECT = RenderEffect.createBlurEffect(7f, 7f, Shader.TileMode.CLAMP);
+        } else {
+            INACTIVE_BLUR_EFFECT = null;
+        }
+    }
+
     private final LinearLayout headerLayout;
     private final ImageView headerArtView;
     private final TextView headerTitleView;
@@ -47,7 +59,7 @@ public final class LyricsView extends FrameLayout {
     private int activeLineIndex = -1;
     private boolean isSynced = false;
     private boolean autoScrollEnabled = true;
-    private int textSizeSp = 28;
+    private int textSizeSp = 32;
     private boolean userInteracting = false;
     private long lastUserScrollMs = 0L;
 
@@ -108,35 +120,34 @@ public final class LyricsView extends FrameLayout {
         headerTitleView.setTextColor(Color.WHITE);
         headerTitleView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17);
         headerTitleView.setTypeface(getLyricsTypeface(context));
+        headerTitleView.setLetterSpacing(-0.01f);
         headerTitleView.setSingleLine(true);
         headerTitleView.setEllipsize(TextUtils.TruncateAt.END);
-        headerTitleView.setShadowLayer(4f, 0f, 2f, Color.argb(160, 0, 0, 0));
         textCol.addView(headerTitleView);
 
         headerArtistView = new TextView(context);
-        headerArtistView.setTextColor(Color.argb(200, 255, 255, 255));
+        headerArtistView.setTextColor(Color.argb(190, 255, 255, 255));
         headerArtistView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
         headerArtistView.setSingleLine(true);
         headerArtistView.setEllipsize(TextUtils.TruncateAt.END);
-        headerArtistView.setShadowLayer(4f, 0f, 2f, Color.argb(160, 0, 0, 0));
         headerArtistView.setPadding(0, dpToPx(2), 0, 0);
         textCol.addView(headerArtistView);
 
         headerLayout.addView(textCol);
 
-        // Header Close Button (circular pill button)
+        // Header Close Button (frosted glass circular pill button)
         headerCloseBtn = new TextView(context);
         headerCloseBtn.setText("✕");
         headerCloseBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
         headerCloseBtn.setTypeface(Typeface.DEFAULT_BOLD);
         headerCloseBtn.setTextColor(Color.WHITE);
         headerCloseBtn.setGravity(Gravity.CENTER);
-        int closeSize = dpToPx(36);
+        int closeSize = dpToPx(32);
         LinearLayout.LayoutParams closeLp = new LinearLayout.LayoutParams(closeSize, closeSize);
         headerCloseBtn.setLayoutParams(closeLp);
         GradientDrawable closeBg = new GradientDrawable();
         closeBg.setShape(GradientDrawable.OVAL);
-        closeBg.setColor(Color.argb(140, 0, 0, 0));
+        closeBg.setColor(Color.argb(55, 255, 255, 255));
         headerCloseBtn.setBackground(closeBg);
         headerCloseBtn.setClickable(true);
         headerCloseBtn.setFocusable(true);
@@ -201,13 +212,13 @@ public final class LyricsView extends FrameLayout {
         linesContainer = new LinearLayout(context);
         linesContainer.setOrientation(LinearLayout.VERTICAL);
         linesContainer.setGravity(Gravity.START);
-        linesContainer.setPadding(dpToPx(28), dpToPx(20), dpToPx(28), dpToPx(130));
+        linesContainer.setPadding(dpToPx(28), dpToPx(16), dpToPx(28), dpToPx(100));
 
         plainLyricsView = new TextView(context);
         plainLyricsView.setTextColor(Color.WHITE);
         plainLyricsView.setTextSize(TypedValue.COMPLEX_UNIT_SP, textSizeSp);
         plainLyricsView.setTypeface(getLyricsTypeface(context));
-        plainLyricsView.setShadowLayer(8f, 0f, 3f, Color.argb(160, 0, 0, 0));
+        plainLyricsView.setLetterSpacing(-0.02f);
         plainLyricsView.setLineSpacing(dpToPx(4), 1.12f);
         plainLyricsView.setGravity(Gravity.START);
         plainLyricsView.setPadding(0, dpToPx(8), 0, dpToPx(8));
@@ -220,13 +231,13 @@ public final class LyricsView extends FrameLayout {
         scrollView.setVisibility(GONE);
         contentContainer.addView(scrollView, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
 
-        // Source attribution label
+        // Source attribution label (scrolled footer at bottom of lyrics container)
         attributionView = new TextView(context);
-        attributionView.setTextColor(Color.argb(130, 255, 255, 255));
-        attributionView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
-        attributionView.setGravity(Gravity.START | Gravity.BOTTOM);
-        attributionView.setPadding(dpToPx(24), 0, 0, dpToPx(6));
-        contentContainer.addView(attributionView, new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT, Gravity.START | Gravity.BOTTOM));
+        attributionView.setTextColor(Color.argb(120, 255, 255, 255));
+        attributionView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        attributionView.setTypeface(getLyricsTypeface(context));
+        attributionView.setGravity(Gravity.START);
+        attributionView.setPadding(dpToPx(4), dpToPx(28), dpToPx(4), dpToPx(16));
     }
 
     public void setOnLyricSeekListener(OnLyricSeekListener listener) {
@@ -254,12 +265,15 @@ public final class LyricsView extends FrameLayout {
         if (!enabled) {
             for (TextView tv : lineViews) {
                 tv.setAlpha(0.9f);
+                if (Build.VERSION.SDK_INT >= 31) {
+                    tv.setRenderEffect(null);
+                }
             }
         }
     }
 
     public void setTextSizeSp(int sizeSp) {
-        this.textSizeSp = Math.max(16, Math.min(36, sizeSp));
+        this.textSizeSp = Math.max(16, Math.min(38, sizeSp));
         plainLyricsView.setTextSize(TypedValue.COMPLEX_UNIT_SP, textSizeSp);
         for (TextView tv : lineViews) {
             tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, textSizeSp);
@@ -302,9 +316,12 @@ public final class LyricsView extends FrameLayout {
                 lineTv.setTextSize(TypedValue.COMPLEX_UNIT_SP, textSizeSp);
                 lineTv.setTypeface(getLyricsTypeface(ctx));
                 lineTv.setTextColor(Color.WHITE);
-                lineTv.setShadowLayer(8f, 0f, 3f, Color.argb(160, 0, 0, 0));
-                lineTv.setAlpha(0.38f);
-                lineTv.setLineSpacing(dpToPx(2), 1.06f);
+                lineTv.setLetterSpacing(-0.02f);
+                lineTv.setAlpha(0.40f);
+                if (INACTIVE_BLUR_EFFECT != null) {
+                    lineTv.setRenderEffect(INACTIVE_BLUR_EFFECT);
+                }
+                lineTv.setLineSpacing(dpToPx(2), 1.08f);
                 lineTv.setGravity(Gravity.START);
                 lineTv.setPadding(dpToPx(4), linePadding, dpToPx(4), linePadding);
 
@@ -319,6 +336,8 @@ public final class LyricsView extends FrameLayout {
                         LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
                 lineViews.add(lineTv);
             }
+            linesContainer.addView(attributionView, new LinearLayout.LayoutParams(
+                    LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
             scrollView.scrollTo(0, 0);
         } else if (entry.hasPlainLyrics()) {
             isSynced = false;
@@ -326,6 +345,8 @@ public final class LyricsView extends FrameLayout {
             plainLyricsView.setText(entry.plainLyrics());
             String src = "lyrics.ovh".equalsIgnoreCase(entry.source()) ? "lyrics.ovh" : entry.source();
             attributionView.setText(src + " • Plain");
+            linesContainer.addView(attributionView, new LinearLayout.LayoutParams(
+                    LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
             scrollView.scrollTo(0, 0);
         }
     }
@@ -346,17 +367,23 @@ public final class LyricsView extends FrameLayout {
             return;
         }
 
-        // Highlight active line and dim others
+        // Highlight active line (unblurred, full alpha, subtle zoom) and defocus others (blurred, low alpha)
         if (oldIndex >= 0 && oldIndex < lineViews.size()) {
             TextView oldTv = lineViews.get(oldIndex);
-            oldTv.animate().alpha(0.38f).scaleX(1.0f).scaleY(1.0f).setDuration(220).start();
+            oldTv.animate().alpha(0.40f).scaleX(1.0f).scaleY(1.0f).setDuration(220).start();
+            if (INACTIVE_BLUR_EFFECT != null) {
+                oldTv.setRenderEffect(INACTIVE_BLUR_EFFECT);
+            }
         }
 
         if (newIndex >= 0 && newIndex < lineViews.size()) {
             TextView newTv = lineViews.get(newIndex);
             newTv.setPivotX(0f);
             newTv.setPivotY(newTv.getHeight() / 2f);
-            newTv.animate().alpha(1.0f).scaleX(1.04f).scaleY(1.04f).setDuration(220).start();
+            newTv.animate().alpha(1.0f).scaleX(1.03f).scaleY(1.03f).setDuration(220).start();
+            if (Build.VERSION.SDK_INT >= 31) {
+                newTv.setRenderEffect(null);
+            }
 
             // Auto-scroll so active line is positioned around 35% from the top (Apple Music style)
             long now = System.currentTimeMillis();
