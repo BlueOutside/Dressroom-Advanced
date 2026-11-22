@@ -7,7 +7,7 @@ import java.util.Set;
 import java.util.WeakHashMap;
 import java.util.function.Consumer;
 
-final class MediaCoverWakefulness {
+public final class MediaCoverWakefulness {
     private static final Set<LiveCoverController> covers =
             Collections.newSetFromMap(new WeakHashMap<>());
     private static boolean installed;
@@ -29,6 +29,12 @@ final class MediaCoverWakefulness {
 
     static void remove(LiveCoverController cover) {
         covers.remove(cover);
+    }
+
+    public static void setLyricsBlur(boolean active) {
+        for (LiveCoverController cover : new ArrayList<>(covers)) {
+            if (cover != null) cover.setLyricsBlur(active);
+        }
     }
 
     static void install(DressroomModule module, ClassLoader loader) {

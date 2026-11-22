@@ -30,6 +30,7 @@ import android.widget.TextClock;
 import android.widget.TextView;
 
 import dev.denver.dressroomadvanced.MediaClockVisibility;
+import dev.denver.dressroomadvanced.MediaCoverWakefulness;
 import dev.denver.dressroomadvanced.MediaFullscreenExtras;
 
 import java.lang.ref.WeakReference;
@@ -698,6 +699,7 @@ public final class LyricsController {
         if (isVisible) return;
         isVisible = true;
         lyricsActive = true;
+        MediaCoverWakefulness.setLyricsBlur(true);
         MediaClockVisibility.setLyricsMode(true);
         MediaFullscreenExtras.invalidateAllHosts();
 
@@ -742,6 +744,7 @@ public final class LyricsController {
         if (!isVisible) return;
         isVisible = false;
         lyricsActive = false;
+        MediaCoverWakefulness.setLyricsBlur(false);
         MediaClockVisibility.setLyricsMode(false);
         MediaFullscreenExtras.invalidateAllHosts();
 

@@ -87,9 +87,13 @@ public final class MediaFullscreenExtras {
 
     public static void invalidateAllHosts() {
         Main.HANDLER.post(() -> {
+            boolean lyricsActive = LyricsController.isLyricsActive();
             for (WeakReference<Backdrop> ref : hosts.values()) {
                 Backdrop host = ref == null ? null : ref.get();
                 if (host != null) {
+                    if (host.liveCover != null) {
+                        host.liveCover.setLyricsBlur(lyricsActive);
+                    }
                     host.candidatesDirty = true;
                     host.blurDirty = true;
                     host.invalidate();
@@ -1465,6 +1469,7 @@ public final class MediaFullscreenExtras {
 
         private void drawForegroundBlur(Canvas canvas) {
             if (LyricsController.isLyricsActive()) {
+                canvas.drawColor(Color.argb(55, 0, 0, 0));
                 return;
             }
             ViewGroup parent = root.get();

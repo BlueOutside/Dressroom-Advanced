@@ -5,6 +5,7 @@ import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
+import android.graphics.Color;
 import android.graphics.ColorFilter;
 import android.graphics.Paint;
 import android.graphics.PixelFormat;
@@ -1036,6 +1037,16 @@ final class OneUi85FullscreenArt {
 
         @Override
         protected void onDraw(Canvas canvas) {
+            if (dev.denver.dressroomadvanced.lyrics.LyricsController.isLyricsActive()) {
+                bounds.set(0, 0, getWidth(), getHeight());
+                if (artworkBlur != null && !bounds.isEmpty()) {
+                    artworkBlur.draw(canvas, bounds);
+                } else if (bitmap != null && !bitmap.isRecycled()) {
+                    canvas.drawBitmap(bitmap, null, bounds, fadePaint);
+                }
+                canvas.drawColor(Color.argb(45, 0, 0, 0));
+                return;
+            }
             if (liveCover.drawAmbient(canvas, root.get(), this)) return;
             if (bitmap == null || bitmap.isRecycled()) return;
             bounds.set(0, 0, getWidth(), getHeight());
@@ -1050,6 +1061,10 @@ final class OneUi85FullscreenArt {
         }
 
         private void drawBlurOverlay(Canvas canvas) {
+            if (dev.denver.dressroomadvanced.lyrics.LyricsController.isLyricsActive()) {
+                canvas.drawColor(Color.argb(55, 0, 0, 0));
+                return;
+            }
             ViewGroup parent = root.get();
             boolean topBlurDisabled =
                     MediaFullscreenExtras.isTopBlurDisabled(
