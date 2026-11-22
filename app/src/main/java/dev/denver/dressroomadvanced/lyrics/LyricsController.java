@@ -394,6 +394,9 @@ public final class LyricsController {
                     name = child.getResources().getResourceEntryName(child.getId());
                 } catch (Exception ignored) {}
             }
+            if (name.contains("blur") || name.contains("backdrop")) {
+                continue;
+            }
             if (name.contains("clock") || name.contains("complication") || name.contains("facewidget_clock")) {
                 android.util.Log.i("DressroomLyrics", "hideMatchingViews: " + name + " -> alpha " + targetAlpha);
                 child.animate().alpha(targetAlpha).setDuration(200).start();

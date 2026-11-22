@@ -131,10 +131,12 @@ public final class MediaClockVisibility {
                     && RuntimeExtras.enabled(root.getContext(), KEY)
                     && (!dozing.contains(owner) || WallpaperAod.shown(root.getContext())));
         if (window.hidden) {
-            View tagged = root.findViewWithTag(BLUR_TAG);
-            if (tagged != null) window.blurHosts.add(tagged);
             for (View view : window.clocks) hide(window, view);
-            for (View view : window.blurHosts) hideBlur(window, view);
+            if (!lyricsMode) {
+                View tagged = root.findViewWithTag(BLUR_TAG);
+                if (tagged != null) window.blurHosts.add(tagged);
+                for (View view : window.blurHosts) hideBlur(window, view);
+            }
         } else if (!window.transitionAlphas.isEmpty()) {
             for (View view : window.clocks) show(window, view);
             for (View view : window.blurHosts) show(window, view);
