@@ -17,7 +17,7 @@ final class ExtrasPreferences {
     };
 
     static final String[] DEFAULT_TRUE_FLAGS = {
-        ClockInlineSeconds.KEY, LiveCoverController.WIFI_ONLY
+        ClockInlineSeconds.KEY, LiveCoverController.WIFI_ONLY, "lockscreenLyrics", "lyricsSyncedHighlight"
     };
 
     private ExtrasPreferences() {}
@@ -39,6 +39,9 @@ final class ExtrasPreferences {
         b.putInt(
                 "stackCards",
                 Math.max(3, Math.min(8, input == null ? 3 : input.getInt("stackCards", 3))));
+        b.putInt(
+                "lyricsTextSize",
+                Math.max(16, Math.min(36, input == null ? 28 : input.getInt("lyricsTextSize", 28))));
         b.putInt(
                 LiveCoverController.SOURCE,
                 LiveCoverController.clampSource(
@@ -111,6 +114,7 @@ final class ExtrasPreferences {
             for (String flag : FLAGS) json.put(flag, b.getBoolean(flag));
             for (String flag : DEFAULT_TRUE_FLAGS) json.put(flag, b.getBoolean(flag, true));
             json.put("stackCards", b.getInt("stackCards", 3));
+            json.put("lyricsTextSize", b.getInt("lyricsTextSize", 28));
             json.put(
                     LiveCoverController.SOURCE,
                     b.getInt(LiveCoverController.SOURCE, LiveCoverController.SOURCE_SPOTIFY_FIRST));
@@ -129,6 +133,7 @@ final class ExtrasPreferences {
         for (String flag : FLAGS) b.putBoolean(flag, json.optBoolean(flag));
         for (String flag : DEFAULT_TRUE_FLAGS) b.putBoolean(flag, json.optBoolean(flag, true));
         b.putInt("stackCards", json.optInt("stackCards", 3));
+        b.putInt("lyricsTextSize", json.optInt("lyricsTextSize", 28));
         b.putInt(
                 LiveCoverController.SOURCE,
                 json.optInt(LiveCoverController.SOURCE, LiveCoverController.SOURCE_SPOTIFY_FIRST));
