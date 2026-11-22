@@ -96,8 +96,8 @@ final class DiyNowBarCard {
         "AI Presence (Snake)",
         "Outer Glow Ring",
         "Gradient Fill",
-        "AI Mesh Warp (MVC)",
-        "Guiding Light (4-Color)"
+        "AI Border Travel",
+        "Guiding Light"
     };
 
     static final String[] SYMBOL_KEYS = {

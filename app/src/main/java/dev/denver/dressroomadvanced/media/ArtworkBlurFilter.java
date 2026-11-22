@@ -220,6 +220,7 @@ final class ArtworkBlurFilter {
         private Tier topSoftTier;
         private Tier topMediumTier;
         private final RenderNode fadedBand = new RenderNode("Fullscreen media controls fade");
+        private final RenderNode lyricsBackdropFade = new RenderNode("Lyrics backdrop fade");
         private final RenderNode topBand = new RenderNode("Fullscreen media top progressive fade");
         private final Paint bandFadePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint topFadePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -312,6 +313,7 @@ final class ArtworkBlurFilter {
                             fullscreen(owner),
                             true);
             fadedBand.setUseCompositingLayer(true, null);
+            lyricsBackdropFade.setUseCompositingLayer(true, null);
             topBand.setUseCompositingLayer(true, null);
             bandFadePaint.setBlendMode(BlendMode.DST_IN);
             topFadePaint.setBlendMode(BlendMode.DST_IN);
@@ -392,6 +394,26 @@ final class ArtworkBlurFilter {
             canvas.translate(destination.left, destination.top);
             canvas.scale(destination.width() / w, destination.height() / h);
             canvas.drawRenderNode(node);
+            canvas.restoreToCount(save);
+        }
+
+        void drawLyricsBackdrop(Canvas canvas, RectF destination, float opacity) {
+            if (opacity <= 0f || destination.isEmpty()) return;
+            RenderNode node = blurred();
+            int w = node.getWidth(), h = node.getHeight();
+            if (w <= 0 || h <= 0 || !node.hasDisplayList()) return;
+            if (!lyricsBackdropFade.hasDisplayList() || lyricsBackdropFade.getWidth() != w
+                    || lyricsBackdropFade.getHeight() != h) {
+                lyricsBackdropFade.setPosition(0, 0, w, h);
+                Canvas record = lyricsBackdropFade.beginRecording();
+                record.drawRenderNode(node);
+                lyricsBackdropFade.endRecording();
+            }
+            lyricsBackdropFade.setAlpha(Math.max(0f, Math.min(1f, opacity)));
+            int save = canvas.save();
+            canvas.translate(destination.left, destination.top);
+            canvas.scale(destination.width() / w, destination.height() / h);
+            canvas.drawRenderNode(lyricsBackdropFade);
             canvas.restoreToCount(save);
         }
 
@@ -597,6 +619,7 @@ final class ArtworkBlurFilter {
             if (topSoftTier != null) topSoftTier.discard();
             if (topMediumTier != null) topMediumTier.discard();
             fadedBand.discardDisplayList();
+            lyricsBackdropFade.discardDisplayList();
             topBand.discardDisplayList();
             viewportWidth = viewportHeight = cacheWidth = cacheHeight = 0;
             bandRevision = topBandRevision = -1;

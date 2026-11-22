@@ -21,10 +21,10 @@ final class DiyNowBarLabs {
     static final String[] GLOBAL_SHADER_LABELS = {
         "Off (Samsung default)",
         "AI Presence (Snake Sweep)",
-        "AI Mesh Warp (MVC)",
+        "AI Border Travel",
         "Outer Glow Ring",
         "Gradient Fill",
-        "Guiding Light (4-Color)"
+        "Guiding Light"
     };
 
     boolean nativeBatteryCard;

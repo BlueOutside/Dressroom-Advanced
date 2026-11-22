@@ -43,6 +43,9 @@ final class WidgetPlacement {
                     || time.getWidth() == 0 || time.getHeight() == 0
                     || (useNativePage && !shown(time))) {
                 time = useNativePage ? findPageClock(window) : findClock(window);
+                // A ROM version can be newer than its installed clock provider.
+                // Page binding is optional; do not abandon docking when it is absent.
+                if (time == null && useNativePage) time = findClock(window);
                 clock = new WeakReference<>(time);
             }
             if (time == null && lastClockRect.isEmpty() && settings.getInt("anchor") != 5) return true;
@@ -51,7 +54,9 @@ final class WidgetPlacement {
             Matrix inverse = new Matrix();
             if (!parentGlobal.invert(inverse)) return true;
             RectF screen = rect(window, inverse);
-            RectF current = rect(view, inverse);
+            // The runtime root can fill the screen even when its widget grid is narrower.
+            // Dock the visible group, not that full-width wrapper.
+            RectF current = rect(placementContent(view), inverse);
             RectF clockRect;
             if (time != null) {
                 clockRect = rect(time, inverse);
@@ -188,6 +193,18 @@ final class WidgetPlacement {
         transform.mapRect(rect);
         inverse.mapRect(rect);
         return rect;
+    }
+
+    private static View placementContent(View root) {
+        if (root instanceof ViewGroup group) {
+            for (int i = 0; i < group.getChildCount(); i++) {
+                View child = group.getChildAt(i);
+                if (child.getClass().getName().equals(
+                                "com.samsung.android.app.facewidget.complication.KeyguardComplicationWidgetContainer")
+                        && child.getWidth() > 0 && child.getHeight() > 0) return child;
+            }
+        }
+        return root;
     }
 
     private static View findClock(View root) {

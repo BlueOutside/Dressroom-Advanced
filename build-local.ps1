@@ -50,6 +50,7 @@ try {
     [IO.Compression.ZipFileExtensions]::ExtractToFile($entry,(Join-Path $apiDir 'classes.jar'),$true)
 } finally { $archive.Dispose() }
 $apiJar = Join-Path $apiDir 'classes.jar'
+$yamlJar = Get-ProjectYamlJar $project $buildRoot
 $classes = Join-Path $buildRoot 'classes'
 $dex = Join-Path $buildRoot 'dex'
 $sourceList = Join-Path $buildRoot 'javac-sources.txt'
@@ -57,10 +58,10 @@ $sources = Get-ChildItem (Join-Path $project 'app/src/main/java') -Recurse -Filt
     ForEach-Object { '"' + $_.FullName.Replace('\', '/') + '"' }
 # Keep long checkout paths and the growing source list off the Windows command line.
 [IO.File]::WriteAllLines($sourceList, [string[]]$sources, [Text.UTF8Encoding]::new($false))
-Invoke-ProjectTool 'javac' @('--release','17','-encoding','UTF-8','-classpath',"$androidJar;$apiJar",'-d',$classes,"@$sourceList")
+Invoke-ProjectTool 'javac' @('--release','17','-encoding','UTF-8','-classpath',"$androidJar;$apiJar;$yamlJar",'-d',$classes,"@$sourceList")
 $moduleJar = Join-Path $buildRoot 'module.jar'
 Invoke-ProjectTool 'jar' @('--create','--file',$moduleJar,'-C',$classes,'.')
-Invoke-ProjectTool (Join-Path $tools 'd8.bat') @('--lib',$androidJar,'--classpath',$apiJar,'--min-api',"$($config.minSdk)",'--output',$dex,$moduleJar)
+Invoke-ProjectTool (Join-Path $tools 'd8.bat') @('--lib',$androidJar,'--classpath',$apiJar,'--min-api',"$($config.minSdk)",'--output',$dex,$moduleJar,$yamlJar)
 # Gradle owns version/SDK values; the CLI generates its manifest from the same values.
 $manifest = [xml](Get-Content -LiteralPath (Join-Path $project 'app/src/main/AndroidManifest.xml') -Raw)
 $androidNamespace = 'http://schemas.android.com/apk/res/android'
@@ -77,7 +78,7 @@ $null = $manifest.manifest.PrependChild($sdkElement)
 $generatedManifest = Join-Path $buildRoot 'AndroidManifest.xml'; $manifest.Save($generatedManifest)
 $baseApk = Join-Path $buildRoot 'unsigned.apk'
 Invoke-ProjectTool (Join-Path $tools 'aapt.exe') @('package','-f','-M',$generatedManifest,'-S',(Join-Path $project 'app/src/main/res'),'-I',$androidJar,'-F',$baseApk)
-Invoke-ProjectTool 'jar' @('--update','--file',$baseApk,'-C',$dex,'classes.dex','-C',(Join-Path $project 'app/src/main/resources'),'META-INF/xposed')
+Invoke-ProjectTool 'jar' @('--update','--file',$baseApk,'-C',$dex,'classes.dex','-C',(Join-Path $project 'app/src/main/resources'),'META-INF')
 $aligned = Join-Path $buildRoot 'aligned.apk'
 Invoke-ProjectTool (Join-Path $tools 'zipalign.exe') @('-f','4',$baseApk,$aligned)
 $outputDir = Join-Path $project 'artifacts/current'

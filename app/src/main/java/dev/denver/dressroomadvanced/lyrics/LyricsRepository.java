@@ -13,6 +13,7 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -74,7 +75,7 @@ public final class LyricsRepository {
         if (cached == null && (!cleanArtist.equals(artist) || !cleanTitle.equals(title))) {
             cached = cache.get(cleanArtist, cleanTitle);
         }
-        if (cached != null) {
+        if (cached != null && cached.matchesDuration(durationMs)) {
             if (cached.notFound()) {
                 if (!cached.isExpired(System.currentTimeMillis(), LyricsCache.NEGATIVE_TTL_MS)) {
                     return cached;
@@ -85,7 +86,8 @@ public final class LyricsRepository {
         }
 
         // 2. Fetch from network (deduplicated by cleaned track key)
-        String fetchKey = LyricsCache.cacheKey(cleanArtist, cleanTitle);
+        String fetchKey = LyricsCache.cacheKey(cleanArtist, cleanTitle)
+                + "|" + album + "|" + durationMs;
         try {
             Future<LyricsEntry> future = activeFetches.computeIfAbsent(
                     fetchKey,
@@ -187,22 +189,17 @@ public final class LyricsRepository {
                 urlBuilder.append("&duration=").append(durationSec);
             }
 
-            HttpURLConnection conn = openConnection(urlBuilder.toString());
-            int code = conn.getResponseCode();
-            if (code == 200) {
-                String response = readResponse(conn.getInputStream());
-                JSONObject json = new JSONObject(response);
-                String synced = json.optString("syncedLyrics", null);
-                String plain = json.optString("plainLyrics", null);
-                boolean instrumental = json.optBoolean("instrumental", false);
-                if (instrumental && (plain == null || plain.isEmpty())) {
-                    plain = "♪ Instrumental ♪";
+            HttpURLConnection conn = null;
+            try {
+                conn = openConnection(urlBuilder.toString());
+                int code = conn.getResponseCode();
+                if (code == 200) {
+                    String response = readResponse(conn.getInputStream());
+                    JSONObject json = new JSONObject(response);
+                    return lrclibEntry(json, artist, title, album, durationSec * 1000L);
                 }
-                if ((synced != null && !synced.isEmpty()) || (plain != null && !plain.isEmpty())) {
-                    return new LyricsEntry(
-                            artist, title, album, durationSec * 1000L,
-                            synced, plain, "lrclib", System.currentTimeMillis(), false);
-                }
+            } finally {
+                if (conn != null) conn.disconnect();
             }
         } catch (Exception e) {
             Log.d(TAG, "LRCLIB exact get failed: " + e.getMessage());
@@ -214,53 +211,54 @@ public final class LyricsRepository {
         try {
             String url = "https://lrclib.net/api/search?artist_name=" + encode(artist)
                     + "&track_name=" + encode(title);
-            HttpURLConnection conn = openConnection(url);
-            int code = conn.getResponseCode();
-            if (code == 200) {
-                String response = readResponse(conn.getInputStream());
-                JSONArray array = new JSONArray(response);
-                if (array.length() == 0) return null;
+            HttpURLConnection conn = null;
+            try {
+                conn = openConnection(url);
+                int code = conn.getResponseCode();
+                if (code == 200) {
+                    String response = readResponse(conn.getInputStream());
+                    JSONArray array = new JSONArray(response);
+                    if (array.length() == 0) return null;
 
-                JSONObject bestMatch = null;
-                int bestScore = -1;
+                    JSONObject bestMatch = null;
+                    int bestScore = -1;
 
-                for (int i = 0; i < array.length(); i++) {
-                    JSONObject item = array.getJSONObject(i);
-                    String synced = item.optString("syncedLyrics", null);
-                    String plain = item.optString("plainLyrics", null);
-                    boolean hasSynced = synced != null && !synced.trim().isEmpty();
-                    boolean hasPlain = plain != null && !plain.trim().isEmpty();
-                    if (!hasSynced && !hasPlain) continue;
+                    for (int i = 0; i < array.length(); i++) {
+                        JSONObject item = array.getJSONObject(i);
+                        String synced = optNullableString(item, "syncedLyrics");
+                        String plain = optNullableString(item, "plainLyrics");
+                        boolean hasSynced = (synced != null && !synced.trim().isEmpty())
+                                || item.optBoolean("hasWordSync", false);
+                        boolean hasPlain = plain != null && !plain.trim().isEmpty();
+                        if (!hasSynced && !hasPlain) continue;
 
-                    long duration = item.optLong("duration", 0L);
-                    boolean durationClose = targetDurationSec > 0 && duration > 0
-                            && Math.abs(duration - targetDurationSec) <= 5;
+                        long duration = item.optLong("duration", 0L);
+                        if (targetDurationSec > 0L && duration > 0L
+                                && Math.abs(duration - targetDurationSec) > 5L) continue;
+                        boolean durationClose = targetDurationSec > 0 && duration > 0
+                                && Math.abs(duration - targetDurationSec) <= 5;
 
-                    int score = 0;
-                    if (hasSynced && durationClose) score = 4;
-                    else if (hasSynced) score = 3;
-                    else if (hasPlain && durationClose) score = 2;
-                    else if (hasPlain) score = 1;
+                        int score = 0;
+                        if (hasSynced && durationClose) score = 4;
+                        else if (hasSynced) score = 3;
+                        else if (hasPlain && durationClose) score = 2;
+                        else if (hasPlain) score = 1;
+                        if (item.optBoolean("hasWordSync", false)) score += 2;
 
-                    if (score > bestScore) {
-                        bestScore = score;
-                        bestMatch = item;
+                        if (score > bestScore) {
+                            bestScore = score;
+                            bestMatch = item;
+                        }
+                    }
+
+                    if (bestMatch != null && bestScore > 0) {
+                        String album = bestMatch.optString("albumName", "");
+                        long duration = bestMatch.optLong("duration", targetDurationSec) * 1000L;
+                        return lrclibEntry(bestMatch, artist, title, album, duration);
                     }
                 }
-
-                if (bestMatch != null && bestScore > 0) {
-                    String synced = bestMatch.optString("syncedLyrics", null);
-                    String plain = bestMatch.optString("plainLyrics", null);
-                    String album = bestMatch.optString("albumName", "");
-                    long duration = bestMatch.optLong("duration", targetDurationSec) * 1000L;
-                    boolean instrumental = bestMatch.optBoolean("instrumental", false);
-                    if (instrumental && (plain == null || plain.isEmpty())) {
-                        plain = "♪ Instrumental ♪";
-                    }
-                    return new LyricsEntry(
-                            artist, title, album, duration,
-                            synced, plain, "lrclib", System.currentTimeMillis(), false);
-                }
+            } finally {
+                if (conn != null) conn.disconnect();
             }
         } catch (Exception e) {
             Log.d(TAG, "LRCLIB search failed: " + e.getMessage());
@@ -268,25 +266,57 @@ public final class LyricsRepository {
         return null;
     }
 
+    private LyricsEntry lrclibEntry(JSONObject json, String artist, String title, String album, long durationMs) {
+        String synced = optNullableString(json, "syncedLyrics");
+        String plain = optNullableString(json, "plainLyrics");
+        List<LyricLine> timed = List.of();
+        try {
+            Lyricsfile.Document document = Lyricsfile.parse(optNullableString(json, "lyricsfile"));
+            timed = document.lines();
+            if (document.plain() != null) plain = document.plain();
+            if (document.instrumental()) plain = "\u266A Instrumental \u266A";
+        } catch (RuntimeException invalid) {
+            Log.d(TAG, "Invalid Lyricsfile, using LRC/plain fallback: " + invalid.getClass().getSimpleName());
+        }
+        if (json.optBoolean("instrumental", false) && (plain == null || plain.isEmpty()))
+            plain = "\u266A Instrumental \u266A";
+        LyricsEntry entry = new LyricsEntry(artist, title, album, durationMs, synced, plain,
+                "lrclib", System.currentTimeMillis(), false, timed);
+        return entry.hasLyrics() ? entry : null;
+    }
+
     private LyricsEntry fetchLyricsOvh(String artist, String title, String album, long durationMs) {
         try {
             String url = "https://api.lyrics.ovh/v1/" + encodePath(artist) + "/" + encodePath(title);
-            HttpURLConnection conn = openConnection(url);
-            int code = conn.getResponseCode();
-            if (code == 200) {
-                String response = readResponse(conn.getInputStream());
-                JSONObject json = new JSONObject(response);
-                String lyrics = json.optString("lyrics", null);
-                if (lyrics != null && !lyrics.trim().isEmpty()) {
-                    return new LyricsEntry(
-                            artist, title, album, durationMs,
-                            null, lyrics.trim(), "lyrics.ovh", System.currentTimeMillis(), false);
+            HttpURLConnection conn = null;
+            try {
+                conn = openConnection(url);
+                int code = conn.getResponseCode();
+                if (code == 200) {
+                    String response = readResponse(conn.getInputStream());
+                    JSONObject json = new JSONObject(response);
+                    String lyrics = optNullableString(json, "lyrics");
+                    if (lyrics != null && !lyrics.trim().isEmpty()) {
+                        return new LyricsEntry(
+                                artist, title, album, durationMs,
+                                null, lyrics.trim(), "lyrics.ovh", System.currentTimeMillis(), false);
+                    }
                 }
+            } finally {
+                if (conn != null) conn.disconnect();
             }
         } catch (Exception e) {
             Log.d(TAG, "lyrics.ovh failed: " + e.getMessage());
         }
         return null;
+    }
+
+    private static String optNullableString(JSONObject obj, String key) {
+        if (obj == null || obj.isNull(key)) return null;
+        String value = obj.optString(key, null);
+        return (value == null || value.trim().isEmpty() || "null".equalsIgnoreCase(value.trim()))
+                ? null
+                : value;
     }
 
     private static HttpURLConnection openConnection(String spec) throws Exception {

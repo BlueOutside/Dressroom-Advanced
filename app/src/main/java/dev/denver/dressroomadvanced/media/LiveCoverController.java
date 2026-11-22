@@ -1155,19 +1155,21 @@ final class LiveCoverController implements LiveCoverPlayer.FrameListener {
         return null;
     }
 
-    private boolean lyricsBlurActive = false;
+    private float lyricsBlurAmount;
+    private final RenderEffect[] lyricsBlurEffects = new RenderEffect[17];
+    private int lyricsBlurWidth, lyricsBlurHeight, appliedLyricsBlurBucket = -1;
 
-    void setLyricsBlur(boolean active) {
-        if (this.lyricsBlurActive != active) {
-            this.lyricsBlurActive = active;
-            main.post(this::updateRealtimeBlur);
-        }
+    void setLyricsBlurAmount(float amount) {
+        if (lyricsBlurAmount == amount) return;
+        lyricsBlurAmount = amount;
+        updateRealtimeBlur();
     }
 
     private void updateRealtimeBlur() {
         if (Build.VERSION.SDK_INT < 31) return;
         if (surfaceHost == null) return;
-        if (lyricsBlurActive) {
+        int bucket = Math.max(0, Math.min(16, Math.round(lyricsBlurAmount * 16f)));
+        if (bucket > 0) {
             int w = surfaceHost.getWidth() > 0 ? surfaceHost.getWidth() : layoutWidth;
             int h = surfaceHost.getHeight() > 0 ? surfaceHost.getHeight() : layoutHeight;
             if (w <= 0 || h <= 0) {
@@ -1175,11 +1177,20 @@ final class LiveCoverController implements LiveCoverPlayer.FrameListener {
                 w = dm.widthPixels;
                 h = dm.heightPixels;
             }
-            RenderEffect effect = createRealtimeBlur(120f, w, h);
-            surfaceHost.setRenderEffect(effect);
-        } else {
+            if (lyricsBlurWidth != w || lyricsBlurHeight != h) {
+                java.util.Arrays.fill(lyricsBlurEffects, null);
+                lyricsBlurWidth = w;
+                lyricsBlurHeight = h;
+                appliedLyricsBlurBucket = -1;
+            }
+            if (appliedLyricsBlurBucket == bucket) return;
+            if (lyricsBlurEffects[bucket] == null)
+                lyricsBlurEffects[bucket] = createRealtimeBlur(120f * bucket / 16f, w, h);
+            surfaceHost.setRenderEffect(lyricsBlurEffects[bucket]);
+        } else if (appliedLyricsBlurBucket != 0) {
             surfaceHost.setRenderEffect(null);
         }
+        appliedLyricsBlurBucket = bucket;
     }
 
     private static RenderEffect createRealtimeBlur(float radius, int width, int height) {
@@ -1226,7 +1237,7 @@ final class LiveCoverController implements LiveCoverPlayer.FrameListener {
                     View.MeasureSpec.makeMeasureSpec(h, View.MeasureSpec.EXACTLY));
             surfaceHost.layout(l, t, l + w, t + h);
         }
-        if (lyricsBlurActive) {
+        if (lyricsBlurAmount > 0f) {
             updateRealtimeBlur();
         }
     }

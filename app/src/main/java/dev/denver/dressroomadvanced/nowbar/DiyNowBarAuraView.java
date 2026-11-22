@@ -1,6 +1,7 @@
 package dev.denver.dressroomadvanced;
 
 import android.content.Context;
+import android.content.res.Configuration;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -266,6 +267,7 @@ final class DiyNowBarAuraView extends View {
 
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private RuntimeShader shader;
+    private DiyOuterGlowShader originalOuterGlow;
     private int mode = DiyNowBarCard.EFFECT_NONE;
     private int color1 = 0xFF4E8CFF;
     private int color2 = 0xFFA86BFF;
@@ -304,8 +306,10 @@ final class DiyNowBarAuraView extends View {
         this.cornerRadiusPx = Math.max(0f, radiusPx);
         this.insetPx = Math.max(0f, outerInsetPx);
         if (modeChanged || shader == null) {
+            originalOuterGlow = null;
             shader = buildShader(effectMode);
             paint.setShader(shader);
+            setRenderEffect(originalOuterGlow == null ? null : originalOuterGlow.blur());
             startUptimeMs = SystemClock.uptimeMillis();
         }
         setVisibility(shader == null ? GONE : VISIBLE);
@@ -332,13 +336,17 @@ final class DiyNowBarAuraView extends View {
             String src =
                     switch (effectMode) {
                         case DiyNowBarCard.EFFECT_AI_PRESENCE -> AI_PRESENCE_AGSL;
-                        case DiyNowBarCard.EFFECT_OUTER_GLOW -> OUTER_GLOW_AGSL;
+                        case DiyNowBarCard.EFFECT_OUTER_GLOW -> {
+                            originalOuterGlow = DiyOuterGlowShader.create(getContext());
+                            yield originalOuterGlow == null ? OUTER_GLOW_AGSL : null;
+                        }
                         case DiyNowBarCard.EFFECT_GRADIENT_FILL -> GRADIENT_FILL_AGSL;
                         case DiyNowBarCard.EFFECT_AI_MESH_WARP -> AI_MESH_WARP_AGSL;
                         case DiyNowBarCard.EFFECT_GUIDING_LIGHT -> GUIDING_LIGHT_AGSL;
                         default -> null;
                     };
-            return src == null ? null : new RuntimeShader(src);
+            return originalOuterGlow != null ? originalOuterGlow.shader()
+                    : src == null ? null : new RuntimeShader(src);
         } catch (Throwable error) {
             android.util.Log.w(DressroomModule.TAG, "AGSL shader unavailable", error);
             return null;
@@ -348,7 +356,8 @@ final class DiyNowBarAuraView extends View {
     private boolean shouldAnimate() {
         return shader != null
                 && isAttachedToWindow()
-                && getVisibility() == VISIBLE
+                && isShown()
+                && getWindowVisibility() == VISIBLE
                 && darkAmount < 0.25f;
     }
 
@@ -384,6 +393,12 @@ final class DiyNowBarAuraView extends View {
     }
 
     @Override
+    protected void onWindowVisibilityChanged(int visibility) {
+        super.onWindowVisibilityChanged(visibility);
+        syncAnimationState();
+    }
+
+    @Override
     protected void onDraw(Canvas canvas) {
         if (shader == null) return;
         int w = getWidth();
@@ -393,6 +408,12 @@ final class DiyNowBarAuraView extends View {
         if (opacity <= 0.01f) return;
         float elapsedSec = (SystemClock.uptimeMillis() - startUptimeMs) / 1000f;
         try {
+            if (originalOuterGlow != null) {
+                originalOuterGlow.draw(canvas, paint, w, h, elapsedSec, cornerRadiusPx,
+                        insetPx, color1, color2, opacity,
+                        getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE);
+                return;
+            }
             shader.setFloatUniform("uRes", w, h);
             shader.setFloatUniform("uTime", elapsedSec);
             shader.setFloatUniform("uRadius", cornerRadiusPx);
@@ -411,7 +432,13 @@ final class DiyNowBarAuraView extends View {
                 shader.setFloatUniform("uInset", insetPx, insetPx);
             }
             canvas.drawRect(0f, 0f, w, h, paint);
-        } catch (Throwable ignored) {
+        } catch (RuntimeException | LinkageError error) {
+            // Stop a bad provider shader instead of retrying it on every frame.
+            shader = null;
+            paint.setShader(null);
+            setRenderEffect(null);
+            syncAnimationState();
+            DressroomModule.note("DIY Now Bar shader draw unavailable", error);
         }
     }
 }

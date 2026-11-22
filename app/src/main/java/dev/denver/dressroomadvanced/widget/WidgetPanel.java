@@ -32,6 +32,10 @@ final class WidgetPanel {
         void change(Bundle b, int value) throws Exception;
     }
 
+    interface FloatChoice {
+        void change(Bundle b, float value) throws Exception;
+    }
+
     WidgetPanel(Context context, ClassLoader loader, EditorWidgets editor) {
         this.context = context;
         this.loader = loader;
@@ -578,14 +582,19 @@ final class WidgetPanel {
                     syncedHighlight,
                     next -> next.putBoolean("lyricsSyncedHighlight", !syncedHighlight),
                     false);
+            TextView lyricsPreview = renderLyricsFontPreview(b);
             slider(
                     "Lyrics text size",
-                    18,
-                    36,
+                    16,
+                    38,
                     b.getInt("lyricsTextSize", 28),
                     " sp",
-                    (next, value) -> next.putInt("lyricsTextSize", value),
+                    (next, value) -> {
+                        next.putInt("lyricsTextSize", value);
+                        updateLyricsFontPreview(lyricsPreview, next);
+                    },
                     false);
+            renderLyricsFontSection(b, lyricsPreview);
             renderLyricsCacheSection();
         }
         if (editor.stackAvailable()) {
@@ -664,6 +673,216 @@ final class WidgetPanel {
         group = content;
         status = label("");
         status.setVisibility(View.GONE);
+    }
+
+    private TextView renderLyricsFontPreview(Bundle b) {
+        TextView preview = label("Synced lyrics preview");
+        preview.setPadding(dp(4), dp(8), dp(4), dp(8));
+        preview.setSingleLine(false);
+        preview.setMaxLines(2);
+        updateLyricsFontPreview(preview, b);
+        return preview;
+    }
+
+    private void updateLyricsFontPreview(TextView preview, Bundle b) {
+        if (preview == null || b == null) return;
+        String fontFile = b.getString(ExtrasPreferences.LYRICS_FONT_FILE, "");
+        Bundle axes = b.getBundle(ExtrasPreferences.LYRICS_FONT_AXES);
+        int weight =
+                b.getInt(
+                        ExtrasPreferences.LYRICS_FONT_WEIGHT,
+                        ExtrasPreferences.DEFAULT_LYRICS_FONT_WEIGHT);
+        int textSizeSp = b.getInt("lyricsTextSize", 28);
+        preview.setTypeface(VariableFonts.lyricsTypeface(context, fontFile, axes, weight));
+        preview.setTextSize(TypedValue.COMPLEX_UNIT_SP, Math.max(15f, Math.min(28f, textSizeSp * 0.78f)));
+    }
+
+    private void renderLyricsFontSection(Bundle b, TextView preview) throws Exception {
+        String fontFile = b.getString(ExtrasPreferences.LYRICS_FONT_FILE, "");
+        String fontFileName = b.getString(ExtrasPreferences.LYRICS_FONT_FILE_NAME, "");
+        Bundle fontAxesBundle = FontAxisSettings.clean(b.getBundle(ExtrasPreferences.LYRICS_FONT_AXES));
+
+        TextView chooseFont = label("Choose lyrics font");
+        PanelRows.action(
+                chooseFont,
+                "Choose lyrics font",
+                fontFile.isEmpty() ? "TTF, OTF or TTC" : fontFileName);
+        chooseFont.setOnClickListener(v -> pickLyricsFont());
+
+        if (!fontFile.isEmpty()) {
+            TextView useDefault = label("Use default lyrics font");
+            PanelRows.action(useDefault, "Use default lyrics font", "");
+            useDefault.setOnClickListener(
+                    v ->
+                            change(
+                                    next -> {
+                                        next.putString(ExtrasPreferences.LYRICS_FONT_FILE, "");
+                                        next.putString(ExtrasPreferences.LYRICS_FONT_FILE_NAME, "");
+                                        next.putBundle(ExtrasPreferences.LYRICS_FONT_AXES, new Bundle());
+                                    },
+                                    false,
+                                    true));
+
+            VariableFonts.Axes axes = VariableFonts.importedAxes(context, fontFile);
+            if (axes != null && axes.hasAny()) {
+                for (FontAxes.Axis axis : axes.values) {
+                    if (axis.max() <= axis.min()) continue;
+                    float current =
+                            axis.clamp(
+                                    fontAxesBundle.containsKey(axis.tag())
+                                            ? fontAxesBundle.getFloat(axis.tag())
+                                            : axis.defaultValue());
+                    if (axis.tag().equals("ital") && axis.min() == 0 && axis.max() == 1) {
+                        boolean italic = current >= 0.5f;
+                        toggle(
+                                axis.label(),
+                                italic,
+                                next -> {
+                                    Bundle updated =
+                                            FontAxisSettings.clean(
+                                                    next.getBundle(ExtrasPreferences.LYRICS_FONT_AXES));
+                                    updated.putFloat(axis.tag(), italic ? 0f : 1f);
+                                    next.putBundle(ExtrasPreferences.LYRICS_FONT_AXES, updated);
+                                    updateLyricsFontPreview(preview, next);
+                                },
+                                false);
+                    } else {
+                        floatSlider(
+                                axis.label(),
+                                axis.min(),
+                                axis.max(),
+                                current,
+                                1000,
+                                (next, value) -> {
+                                    Bundle updated =
+                                            FontAxisSettings.clean(
+                                                    next.getBundle(ExtrasPreferences.LYRICS_FONT_AXES));
+                                    updated.putFloat(axis.tag(), axis.clamp(value));
+                                    next.putBundle(ExtrasPreferences.LYRICS_FONT_AXES, updated);
+                                    updateLyricsFontPreview(preview, next);
+                                });
+                    }
+                }
+            } else {
+                note("This font has no adjustable axes.");
+            }
+        } else {
+            slider(
+                    "Font weight",
+                    100,
+                    900,
+                    b.getInt(
+                            ExtrasPreferences.LYRICS_FONT_WEIGHT,
+                            ExtrasPreferences.DEFAULT_LYRICS_FONT_WEIGHT),
+                    "",
+                    (next, value) -> {
+                        next.putInt(ExtrasPreferences.LYRICS_FONT_WEIGHT, value);
+                        updateLyricsFontPreview(preview, next);
+                    },
+                    false);
+        }
+    }
+
+    private void pickLyricsFont() {
+        int screen = renderedScreen;
+        java.lang.ref.WeakReference<WidgetPanel> reference = new java.lang.ref.WeakReference<>(this);
+        try {
+            checkScreen();
+            FontPicker.open(
+                    context,
+                    result -> {
+                        WidgetPanel panel = reference.get();
+                        if (panel == null
+                                || !panel.content.isAttachedToWindow()
+                                || screen != ScreenIdentity.current()) return;
+                        String err = result.getString("error", "");
+                        if (!err.isEmpty()) {
+                            panel.setStatus(err);
+                            return;
+                        }
+                        String file = result.getString("fontFile", "");
+                        if (file.isEmpty()) return;
+                        String name = result.getString("fontFileName", "Custom font");
+                        Bundle defaultAxes = new Bundle();
+                        VariableFonts.Axes importedAxes = VariableFonts.importedAxes(panel.context, file);
+                        if (importedAxes != null) {
+                            for (FontAxes.Axis axis : importedAxes.values) {
+                                defaultAxes.putFloat(axis.tag(), axis.defaultValue());
+                            }
+                        }
+                        panel.change(
+                                next -> {
+                                    next.putString(ExtrasPreferences.LYRICS_FONT_FILE, file);
+                                    next.putString(ExtrasPreferences.LYRICS_FONT_FILE_NAME, name);
+                                    next.putBundle(ExtrasPreferences.LYRICS_FONT_AXES, defaultAxes);
+                                },
+                                false,
+                                true);
+                    });
+        } catch (RuntimeException error) {
+            error(error);
+        }
+    }
+
+    private static String formatAxisValue(float value) {
+        return String.format(java.util.Locale.ROOT, "%.2f", value).replaceAll("\\.?0+$", "");
+    }
+
+    private void floatSlider(
+            String name,
+            float min,
+            float max,
+            float current,
+            int steps,
+            FloatChoice edit)
+            throws Exception {
+        int maxSteps = Math.max(1, steps);
+        float span = max - min;
+        float clamped = Math.max(min, Math.min(max, current));
+        LinearLayout parent = group;
+        group = new LinearLayout(context);
+        group.setOrientation(LinearLayout.VERTICAL);
+        parent.addView(group, new LinearLayout.LayoutParams(-1, -2));
+        TextView caption = label(name + "   " + formatAxisValue(clamped));
+        View slider = nativeView(EditorBinding.Row.SLIDER);
+        Reflect.call(slider, "setMax", maxSteps);
+        int initialProgress = span > 0f ? Math.round(((clamped - min) / span) * maxSteps) : 0;
+        Reflect.call(slider, "setProgress", Math.max(0, Math.min(maxSteps, initialProgress)));
+        slider.setContentDescription(name);
+        add(slider);
+        PanelRows.slider(group, caption, slider);
+        group = parent;
+        Class<?> listener =
+                Class.forName(
+                        "androidx.appcompat.widget.SeslSeekBar$OnSeekBarChangeListener",
+                        false,
+                        loader);
+        float[] pending = {clamped};
+        Object proxy =
+                Proxy.newProxyInstance(
+                        loader,
+                        new Class<?>[] {listener},
+                        (p, m, args) -> {
+                            if (m.getDeclaringClass() == Object.class) {
+                                if (m.getName().equals("equals")) return p == args[0];
+                                if (m.getName().equals("hashCode"))
+                                    return System.identityHashCode(p);
+                                return "Widget float slider";
+                            }
+                            if (m.getName().equals("onProgressChanged")
+                                    && Boolean.TRUE.equals(args[2])) {
+                                int pos = ((Number) args[1]).intValue();
+                                float value = min + span * (pos / (float) maxSteps);
+                                pending[0] = Math.max(min, Math.min(max, value));
+                                caption.setText(name + "   " + formatAxisValue(pending[0]));
+                                change(next -> edit.change(next, pending[0]), false, false);
+                            }
+                            if (m.getName().equals("onStopTrackingTouch")) {
+                                change(next -> edit.change(next, pending[0]), false, false);
+                            }
+                            return null;
+                        });
+        Reflect.call(slider, "setOnSeekBarChangeListener", proxy);
     }
 
     private void renderLyricsCacheSection() {

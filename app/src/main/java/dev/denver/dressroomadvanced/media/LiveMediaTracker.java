@@ -21,7 +21,7 @@ import java.util.concurrent.CopyOnWriteArraySet;
  * combining {@link MediaSessionManager#getActiveSessions} with {@link MediaArtworkUncap}'s
  * {@code MediaDataLoaderResult} notifications. Uses only public Android SDK APIs.
  */
-final class LiveMediaTracker {
+public final class LiveMediaTracker {
     static final String SPOTIFY_CANVAS_URI_KEY = "com.spotify.music.extra.CANVAS_URI";
 
     private static final Handler main = new Handler(Looper.getMainLooper());
@@ -142,13 +142,13 @@ final class LiveMediaTracker {
         return best;
     }
 
-    static void addListener(Context context, Runnable listener) {
+    public static void addListener(Context context, Runnable listener) {
         if (listener == null) return;
         listeners.add(listener);
         ensureStarted(context);
     }
 
-    static void removeListener(Runnable listener) {
+    public static void removeListener(Runnable listener) {
         if (listener != null) listeners.remove(listener);
     }
 

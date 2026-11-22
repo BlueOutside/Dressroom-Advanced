@@ -5,7 +5,13 @@ import android.os.Bundle;
 
 import org.json.JSONObject;
 
-final class ExtrasPreferences {
+public final class ExtrasPreferences {
+    public static final String LYRICS_FONT_FILE = "lyricsFontFile";
+    public static final String LYRICS_FONT_FILE_NAME = "lyricsFontFileName";
+    public static final String LYRICS_FONT_WEIGHT = "lyricsFontWeight";
+    public static final String LYRICS_FONT_AXES = "lyricsFontAxes";
+    public static final int DEFAULT_LYRICS_FONT_WEIGHT = 700;
+
     static final String[] FLAGS = {
         "keepCharging", "fullscreenArt", LiveCoverController.KEY, "keepStretch", "textCard",
         "swipeBlur", AodWidgetAppearance.KEY, WallpaperAod.CLOCK_BLUR, StretchSuggestions.KEY,
@@ -30,6 +36,20 @@ final class ExtrasPreferences {
         return true;
     }
 
+    static boolean sameLyricsFont(Bundle a, Bundle b) {
+        if (a == null || b == null) return false;
+        String fileA = cleanFontId(a.getString(LYRICS_FONT_FILE));
+        String fileB = cleanFontId(b.getString(LYRICS_FONT_FILE));
+        if (!fileA.equals(fileB)) return false;
+        if (!text(a.getString(LYRICS_FONT_FILE_NAME), 100)
+                .equals(text(b.getString(LYRICS_FONT_FILE_NAME), 100))) return false;
+        if (clampLyricsWeight(a.getInt(LYRICS_FONT_WEIGHT, DEFAULT_LYRICS_FONT_WEIGHT))
+                != clampLyricsWeight(b.getInt(LYRICS_FONT_WEIGHT, DEFAULT_LYRICS_FONT_WEIGHT)))
+            return false;
+        return FontAxisSettings.key(a.getBundle(LYRICS_FONT_AXES))
+                .equals(FontAxisSettings.key(b.getBundle(LYRICS_FONT_AXES)));
+    }
+
     static Bundle clean(Bundle input) {
         Bundle b = new Bundle();
         if (input != null) ScreenIdentity.copy(input, b);
@@ -41,7 +61,25 @@ final class ExtrasPreferences {
                 Math.max(3, Math.min(8, input == null ? 3 : input.getInt("stackCards", 3))));
         b.putInt(
                 "lyricsTextSize",
-                Math.max(16, Math.min(36, input == null ? 28 : input.getInt("lyricsTextSize", 28))));
+                Math.max(16, Math.min(38, input == null ? 28 : input.getInt("lyricsTextSize", 28))));
+        String fontFile = input == null ? "" : cleanFontId(input.getString(LYRICS_FONT_FILE));
+        b.putString(LYRICS_FONT_FILE, fontFile);
+        b.putString(
+                LYRICS_FONT_FILE_NAME,
+                fontFile.isEmpty() || input == null
+                        ? ""
+                        : text(input.getString(LYRICS_FONT_FILE_NAME), 100));
+        b.putInt(
+                LYRICS_FONT_WEIGHT,
+                clampLyricsWeight(
+                        input == null
+                                ? DEFAULT_LYRICS_FONT_WEIGHT
+                                : input.getInt(LYRICS_FONT_WEIGHT, DEFAULT_LYRICS_FONT_WEIGHT)));
+        b.putBundle(
+                LYRICS_FONT_AXES,
+                fontFile.isEmpty() || input == null
+                        ? new Bundle()
+                        : FontAxisSettings.clean(input.getBundle(LYRICS_FONT_AXES)));
         b.putInt(
                 LiveCoverController.SOURCE,
                 LiveCoverController.clampSource(
@@ -54,6 +92,16 @@ final class ExtrasPreferences {
         b.putString("message", text(input == null ? null : input.getString("message"), 180));
         BlurAppearanceSettings.clean(input, b);
         return b;
+    }
+
+    static String cleanFontId(String id) {
+        if (id == null) return "";
+        String trimmed = id.trim();
+        return trimmed.matches("[0-9a-f]{64}") ? trimmed : "";
+    }
+
+    static int clampLyricsWeight(int weight) {
+        return Math.max(100, Math.min(900, weight));
     }
 
     static String text(String text, int limit) {
@@ -87,7 +135,18 @@ final class ExtrasPreferences {
 
     static Bundle store(Context context, String method, Bundle input)
             throws org.json.JSONException {
-        Bundle result = store(context.getSharedPreferences("committed_lockscreen_extras", 0), method, input);
+        Bundle sanitizedInput = input;
+        if (method.equals("commitExtras") && input != null) {
+            String fontFile = cleanFontId(input.getString(LYRICS_FONT_FILE));
+            if (!fontFile.isEmpty() && !FontFiles.file(context, fontFile).isFile()) {
+                sanitizedInput = new Bundle(input);
+                sanitizedInput.putString(LYRICS_FONT_FILE, "");
+                sanitizedInput.putString(LYRICS_FONT_FILE_NAME, "");
+                sanitizedInput.putBundle(LYRICS_FONT_AXES, new Bundle());
+            }
+        }
+        Bundle result =
+                store(context.getSharedPreferences("committed_lockscreen_extras", 0), method, sanitizedInput);
         if (method.equals("commitExtras")) context.getContentResolver().notifyChange(SettingsProvider.URI, null);
         return result;
     }
@@ -115,6 +174,17 @@ final class ExtrasPreferences {
             for (String flag : DEFAULT_TRUE_FLAGS) json.put(flag, b.getBoolean(flag, true));
             json.put("stackCards", b.getInt("stackCards", 3));
             json.put("lyricsTextSize", b.getInt("lyricsTextSize", 28));
+            json.put(LYRICS_FONT_FILE, b.getString(LYRICS_FONT_FILE, ""));
+            json.put(LYRICS_FONT_FILE_NAME, b.getString(LYRICS_FONT_FILE_NAME, ""));
+            json.put(LYRICS_FONT_WEIGHT, b.getInt(LYRICS_FONT_WEIGHT, DEFAULT_LYRICS_FONT_WEIGHT));
+            Bundle axes = FontAxisSettings.clean(b.getBundle(LYRICS_FONT_AXES));
+            if (!axes.isEmpty()) {
+                JSONObject axesJson = new JSONObject();
+                for (String tag : axes.keySet()) {
+                    axesJson.put(tag, (double) axes.getFloat(tag));
+                }
+                json.put(LYRICS_FONT_AXES, axesJson);
+            }
             json.put(
                     LiveCoverController.SOURCE,
                     b.getInt(LiveCoverController.SOURCE, LiveCoverController.SOURCE_SPOTIFY_FIRST));
@@ -134,6 +204,24 @@ final class ExtrasPreferences {
         for (String flag : DEFAULT_TRUE_FLAGS) b.putBoolean(flag, json.optBoolean(flag, true));
         b.putInt("stackCards", json.optInt("stackCards", 3));
         b.putInt("lyricsTextSize", json.optInt("lyricsTextSize", 28));
+        b.putString(LYRICS_FONT_FILE, json.optString(LYRICS_FONT_FILE, ""));
+        b.putString(LYRICS_FONT_FILE_NAME, json.optString(LYRICS_FONT_FILE_NAME, ""));
+        b.putInt(LYRICS_FONT_WEIGHT, json.optInt(LYRICS_FONT_WEIGHT, DEFAULT_LYRICS_FONT_WEIGHT));
+        JSONObject axesJson = json.optJSONObject(LYRICS_FONT_AXES);
+        if (axesJson != null) {
+            Bundle axes = new Bundle();
+            java.util.Iterator<String> tags = axesJson.keys();
+            while (tags.hasNext()) {
+                String tag = tags.next();
+                double value = axesJson.optDouble(tag);
+                if (FontAxes.validTag(tag)
+                        && Double.isFinite(value)
+                        && Float.isFinite((float) value)) {
+                    axes.putFloat(tag, (float) value);
+                }
+            }
+            b.putBundle(LYRICS_FONT_AXES, FontAxisSettings.clean(axes));
+        }
         b.putInt(
                 LiveCoverController.SOURCE,
                 json.optInt(LiveCoverController.SOURCE, LiveCoverController.SOURCE_SPOTIFY_FIRST));

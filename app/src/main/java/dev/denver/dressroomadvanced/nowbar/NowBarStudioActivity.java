@@ -81,8 +81,8 @@ public final class NowBarStudioActivity extends Activity {
         "Native Samsung AIPresenceView metaball snake sweep",
         "Native Samsung OuterGlowView dual-pass AGSL halo",
         "Native linear gradient wash across the card",
-        "Native Samsung AIPresenceView 8-point MVC mesh warp",
-        "Native Samsung GuidingLightEffect 4-color edge aura"
+        "Samsung's moving color border around the pill",
+        "Samsung's soft, animated edge lighting"
     };
 
     private static final String[] QUICK_ACTION_LABELS = {

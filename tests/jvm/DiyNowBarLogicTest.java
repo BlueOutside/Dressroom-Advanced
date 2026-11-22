@@ -361,7 +361,7 @@ public final class DiyNowBarLogicTest {
         labs.sanitize();
         check(labs.globalCardShader == DiyNowBarCard.EFFECT_AI_MESH_WARP, "Valid global shader kept");
         check(
-                "AI Mesh Warp (MVC)".equals(DiyNowBarLabs.globalShaderLabel(labs.globalCardShader)),
+                "AI Border Travel".equals(DiyNowBarLabs.globalShaderLabel(labs.globalCardShader)),
                 "Global shader label");
 
         DiyNowBarLabs copy = labs.copy();

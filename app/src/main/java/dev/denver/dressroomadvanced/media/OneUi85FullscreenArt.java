@@ -26,7 +26,7 @@ import java.util.Set;
 import java.util.WeakHashMap;
 
 /** The 8.5 player fades its own content; it has no cover-to-pill movement to reproduce. */
-final class OneUi85FullscreenArt {
+public final class OneUi85FullscreenArt {
     private static final Map<View, Source> sources = new WeakHashMap<>();
     private static final Map<ViewGroup, WeakReference<Layer>> layers = new WeakHashMap<>();
     private static final Set<ClassLoader> installed =
@@ -36,6 +36,40 @@ final class OneUi85FullscreenArt {
     private static DressroomModule traceModule;
 
     private OneUi85FullscreenArt() {}
+
+    static void invalidateLyricsBackdrop() {
+        for (WeakReference<Layer> ref : layers.values()) {
+            Layer layer = ref == null ? null : ref.get();
+            if (layer == null) continue;
+            layer.invalidate();
+            layer.blurOverlay.invalidate();
+        }
+    }
+
+    public static Bitmap currentArtworkBitmap() {
+        for (WeakReference<Layer> ref : layers.values()) {
+            Layer layer = ref == null ? null : ref.get();
+            if (layer != null && layer.bitmap != null && !layer.bitmap.isRecycled()) {
+                return layer.bitmap;
+            }
+        }
+        for (Source source : sources.values()) {
+            if (source == null) continue;
+            Bitmap bmp = source.bitmap();
+            if (bmp != null && !bmp.isRecycled()) return bmp;
+        }
+        return null;
+    }
+
+    public static boolean isFullscreenBackdropActive() {
+        for (WeakReference<Layer> ref : layers.values()) {
+            Layer layer = ref == null ? null : ref.get();
+            if (layer != null && layer.getVisibility() == View.VISIBLE && layer.coverAlpha > 0.01f) {
+                return true;
+            }
+        }
+        return false;
+    }
 
     private static void traceLog(String message) {
         if (traceModule != null)
@@ -111,6 +145,8 @@ final class OneUi85FullscreenArt {
                             layer.clearBanner();
                             layer.update();
                             layer.invalidate();
+                            dev.denver.dressroomadvanced.lyrics.LyricsController.updateAllPreferences(
+                                    layer.getContext());
                         }
                     }
                 });
@@ -157,12 +193,9 @@ final class OneUi85FullscreenArt {
             ViewGroup pageContainer = item instanceof ViewGroup itemGroup ? itemGroup : null;
             if (controlsView instanceof ViewGroup hostGroup) {
                 var lyricsCtrl = dev.denver.dressroomadvanced.lyrics.LyricsController.bind(
-                        pageContainer, hostGroup, titleArtist, frame);
+                        pageContainer, hostGroup, titleArtist, frame, source::bitmap);
                 if (lyricsCtrl != null) {
-                    boolean lyricsEnabled = RuntimeExtras.enabled(hostGroup.getContext(), "lockscreenLyrics");
-                    boolean autoScroll = RuntimeExtras.enabled(hostGroup.getContext(), "lyricsSyncedHighlight");
-                    int textSize = RuntimeExtras.get(hostGroup.getContext()).getInt("lyricsTextSize", 28);
-                    lyricsCtrl.setPreferences(lyricsEnabled, autoScroll, textSize);
+                    lyricsCtrl.applyPreferences(RuntimeExtras.get(hostGroup.getContext()));
                 }
             }
         } catch (Exception ignored) {}
@@ -667,6 +700,7 @@ final class OneUi85FullscreenArt {
                                 && !releasedWakeHold);
                 bitmap = next;
                 blurDirty = true;
+                dev.denver.dressroomadvanced.lyrics.LyricsController.notifyArtworkUpdated(next);
                 invalidate();
                 blurOverlay.invalidate();
             }
@@ -1037,34 +1071,43 @@ final class OneUi85FullscreenArt {
 
         @Override
         protected void onDraw(Canvas canvas) {
-            if (dev.denver.dressroomadvanced.lyrics.LyricsController.isLyricsActive()) {
+            float lyricsMix = MediaCoverWakefulness.lyricsBlurAmount();
+            if (lyricsMix < 1f && !liveCover.drawAmbient(canvas, root.get(), this)
+                    && bitmap != null && !bitmap.isRecycled()) {
                 bounds.set(0, 0, getWidth(), getHeight());
-                if (artworkBlur != null && !bounds.isEmpty()) {
-                    artworkBlur.draw(canvas, bounds);
-                } else if (bitmap != null && !bitmap.isRecycled()) {
-                    canvas.drawBitmap(bitmap, null, bounds, fadePaint);
+                fadePaint.setAlpha(Math.round(coverAlpha * 255));
+                drawCover(canvas, bounds, fadePaint);
+                if (trace && nativeExpanded && !nativeFade && !tracedDraw) {
+                    tracedDraw = true;
+                    traceLog("settled cover drawn hardware=" + canvas.isHardwareAccelerated());
                 }
-                canvas.drawColor(Color.argb(45, 0, 0, 0));
-                return;
             }
-            if (liveCover.drawAmbient(canvas, root.get(), this)) return;
-            if (bitmap == null || bitmap.isRecycled()) return;
-            bounds.set(0, 0, getWidth(), getHeight());
-            // Keep the view opaque in HWUI. Changing View.alpha at 1 can switch off
-            // its compositing layer exactly when the native blur regions settle.
-            fadePaint.setAlpha(Math.round(coverAlpha * 255));
-            drawCover(canvas, bounds, fadePaint);
-            if (trace && nativeExpanded && !nativeFade && !tracedDraw) {
-                tracedDraw = true;
-                traceLog("settled cover drawn hardware=" + canvas.isHardwareAccelerated());
+            if (lyricsMix > 0f) {
+                bounds.set(0, 0, getWidth(), getHeight());
+                if (canvas.isHardwareAccelerated() && artworkBlur != null && !bounds.isEmpty()
+                        && (blurDirty || liveBlurDirty || artworkBlur.needsRecording(getWidth(), getHeight()))) {
+                    Canvas record = artworkBlur.beginRecording(getWidth(), getHeight());
+                    RectF blurRect = artworkBlur.sourceBounds();
+                    boolean skipStatic = liveCover.coversBlurSource();
+                    if (!skipStatic) drawBlurCover(record, blurRect, paint);
+                    boolean drewLive = liveCover.drawBlurFrames(record, root.get(), blurRect, bounds, paint);
+                    if (skipStatic && !drewLive) drawBlurCover(record, blurRect, paint);
+                    artworkBlur.endRecording();
+                    blurDirty = false;
+                    liveBlurDirty = false;
+                }
+                if (artworkBlur != null && !bounds.isEmpty()) {
+                    artworkBlur.drawLyricsBackdrop(canvas, bounds, lyricsMix);
+                }
+                canvas.drawColor(Color.argb(Math.round(45 * lyricsMix), 0, 0, 0));
             }
         }
 
         private void drawBlurOverlay(Canvas canvas) {
-            if (dev.denver.dressroomadvanced.lyrics.LyricsController.isLyricsActive()) {
-                canvas.drawColor(Color.argb(55, 0, 0, 0));
-                return;
-            }
+            float lyricsMix = MediaCoverWakefulness.lyricsBlurAmount();
+            if (lyricsMix > 0f) canvas.drawColor(Color.argb(Math.round(55 * lyricsMix), 0, 0, 0));
+            if (lyricsMix >= 1f) return;
+            float playerMix = 1f - lyricsMix;
             ViewGroup parent = root.get();
             boolean topBlurDisabled =
                     MediaFullscreenExtras.isTopBlurDisabled(
@@ -1074,14 +1117,14 @@ final class OneUi85FullscreenArt {
                 ArtworkBlurFilter.Layers art = liveCover.ambientArtworkBlur();
                 if (canvas.isHardwareAccelerated() && art != null) {
                     bounds.set(0, 0, getWidth(), getHeight());
-                    if (!bannerBounds.isEmpty()) drawBannerBlur(canvas, art, 1f);
+                    if (!bannerBounds.isEmpty()) drawBannerBlur(canvas, art, playerMix);
                     if (!topBlurDisabled && topBandEndNorm > topBandSolidNorm) {
                         art.drawTopProgressiveBand(
                                 canvas,
                                 bounds,
                                 getHeight() * topBandSolidNorm,
                                 getHeight() * topBandEndNorm,
-                                1f,
+                                playerMix,
                                 null);
                     }
                 }
@@ -1121,14 +1164,14 @@ final class OneUi85FullscreenArt {
                             bounds,
                             null,
                             coverAlpha);
-                if (banner && coverAlpha > .005f) drawBannerBlur(canvas, artworkBlur, coverAlpha);
+                if (banner && coverAlpha > .005f) drawBannerBlur(canvas, artworkBlur, coverAlpha * playerMix);
                 if (topBand) {
                     artworkBlur.drawTopProgressiveBand(
                             canvas,
                             bounds,
                             topBandSolid,
                             topBandEnd,
-                            topBandOpacity * coverAlpha,
+                            topBandOpacity * coverAlpha * playerMix,
                             null);
                 }
             } else {

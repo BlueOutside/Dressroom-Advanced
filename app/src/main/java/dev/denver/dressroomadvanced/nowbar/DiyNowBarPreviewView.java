@@ -34,6 +34,7 @@ final class DiyNowBarPreviewView extends LinearLayout {
     private final CardOverlayLayout cardContainer;
     private final View radialGlowView;
     private final DiyNowBarAuraView innerAura;
+    private final DiyNowBarNativeShaders.Preview nativeEffectPreview;
     private final FrameLayout contentSlot;
     private final TextView hintLabel;
     private final TextView modeToggle;
@@ -172,6 +173,9 @@ final class DiyNowBarPreviewView extends LinearLayout {
         innerAura = new DiyNowBarAuraView(ui.host);
         cardContainer.addView(innerAura);
 
+        nativeEffectPreview = new DiyNowBarNativeShaders.Preview(ui.host, this::showUnavailablePreview);
+        cardContainer.addView(nativeEffectPreview);
+
         contentSlot = new FrameLayout(ui.host);
         cardContainer.addView(
                 contentSlot,
@@ -300,6 +304,14 @@ final class DiyNowBarPreviewView extends LinearLayout {
             radialGlowView.setVisibility(GONE);
         }
 
+        if (DiyNowBarNativeShaders.isNativeCapableEffect(effect)) {
+            innerAura.configure(DiyNowBarCard.EFFECT_NONE, 0, 0, radius, 0f);
+            outerAura.configure(DiyNowBarCard.EFFECT_NONE, 0, 0, radius, 0f);
+            if (!nativeEffectPreview.configure(effect, card.effectColor1, card.effectColor2, radius, !aodMode))
+                showUnavailablePreview();
+            return;
+        }
+        nativeEffectPreview.configure(DiyNowBarCard.EFFECT_NONE, 0, 0, radius, false);
         if (effect == DiyNowBarCard.EFFECT_OUTER_GLOW) {
             innerAura.configure(DiyNowBarCard.EFFECT_NONE, 0, 0, radius, 0f);
             outerAura.configure(effect, card.effectColor1, card.effectColor2, radius, ui.dp(12));
@@ -315,6 +327,11 @@ final class DiyNowBarPreviewView extends LinearLayout {
             outerAura.configure(DiyNowBarCard.EFFECT_NONE, 0, 0, radius, 0f);
             innerAura.configure(DiyNowBarCard.EFFECT_NONE, 0, 0, radius, 0f);
         }
+    }
+
+    private void showUnavailablePreview() {
+        if (hintLabel != null && card != null && DiyNowBarNativeShaders.isNativeCapableEffect(card.effect))
+            hintLabel.setText("Native preview unavailable on this provider");
     }
 
     private void renderContent() {

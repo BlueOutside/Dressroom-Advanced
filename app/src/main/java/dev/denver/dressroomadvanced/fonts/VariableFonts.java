@@ -23,7 +23,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
 
-final class VariableFonts {
+public final class VariableFonts {
     interface Profile {
         Bundle settings(View view);
     }
@@ -258,6 +258,71 @@ final class VariableFonts {
     static Axes importedAxes(Context context, String id) {
         Source source = imported(context, id);
         return source == null ? null : source.axes;
+    }
+
+    /**
+     * Loads an imported custom font (via {@link FontFiles}) with optional variable font axis
+     * coordinates, caching the resulting {@link Typeface}. Safe to call from SystemUI or the editor.
+     */
+    public static Typeface importedTypeface(Context context, String id, Bundle values) {
+        if (context == null || id == null || id.isEmpty()) return null;
+        try {
+            Source source = imported(context, id);
+            if (source == null || source.uri == null) return null;
+            List<FontVariationAxis> variations = new ArrayList<>();
+            StringBuilder keyParts = new StringBuilder(source.key);
+            for (FontAxes.Axis axis :
+                    source.axes == null ? List.<FontAxes.Axis>of() : source.axes.values) {
+                float value =
+                        values != null && values.containsKey(axis.tag())
+                                ? values.getFloat(axis.tag())
+                                : axis.defaultValue();
+                if (!Float.isFinite(value)) value = axis.defaultValue();
+                value = axis.clamp(value);
+                variations.add(new FontVariationAxis(axis.tag(), value));
+                keyParts.append('|')
+                        .append(axis.tag())
+                        .append('=')
+                        .append(Float.floatToIntBits(value));
+            }
+            String key = keyParts.toString();
+            Typeface cached = typefaces.get(key);
+            if (cached != null) return cached;
+            Typeface result;
+            try (android.os.ParcelFileDescriptor fd =
+                    context.getContentResolver().openFileDescriptor(source.uri, "r")) {
+                if (fd == null) return null;
+                Typeface.Builder builder = new Typeface.Builder(fd.getFileDescriptor());
+                if (!variations.isEmpty()) {
+                    builder.setFontVariationSettings(
+                            variations.toArray(new FontVariationAxis[0]));
+                }
+                result = builder.build();
+            }
+            if (result != null) typefaces.put(key, result);
+            return result;
+        } catch (Throwable error) {
+            return null;
+        }
+    }
+
+    /**
+     * Resolves the lyrics {@link Typeface}: imported custom font (with variable axes) when
+     * configured, or the system sans-serif font at the requested weight otherwise.
+     */
+    public static Typeface lyricsTypeface(
+            Context context, String fontFile, Bundle fontAxes, int defaultWeight) {
+        if (fontFile != null && !fontFile.isEmpty()) {
+            Typeface custom = importedTypeface(context, fontFile, fontAxes);
+            if (custom != null) return custom;
+        }
+        int clampedWeight = Math.max(100, Math.min(900, defaultWeight));
+        String key = "lyrics-default|wght=" + clampedWeight;
+        Typeface cached = typefaces.get(key);
+        if (cached != null) return cached;
+        Typeface result = Typeface.create(Typeface.DEFAULT, clampedWeight, false);
+        if (result != null) typefaces.put(key, result);
+        return result != null ? result : Typeface.DEFAULT_BOLD;
     }
 
     private static Source imported(Context context, String id) {

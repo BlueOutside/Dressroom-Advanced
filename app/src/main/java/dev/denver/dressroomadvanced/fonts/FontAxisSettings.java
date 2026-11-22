@@ -5,14 +5,14 @@ import android.os.Bundle;
 import java.util.ArrayList;
 import java.util.Collections;
 
-final class FontAxisSettings {
+public final class FontAxisSettings {
     private FontAxisSettings() {}
 
     static boolean nativeStretch(Bundle profile) {
         return profile == null || profile.getString("fontFile", "").isEmpty();
     }
 
-    static Bundle clean(Bundle input) {
+    public static Bundle clean(Bundle input) {
         Bundle result = new Bundle();
         if (input == null) return result;
         ArrayList<String> tags = new ArrayList<>(input.keySet());
@@ -36,7 +36,7 @@ final class FontAxisSettings {
         return result;
     }
 
-    static String key(Bundle values) {
+    public static String key(Bundle values) {
         Bundle clean = clean(values);
         ArrayList<String> tags = new ArrayList<>(clean.keySet());
         Collections.sort(tags);

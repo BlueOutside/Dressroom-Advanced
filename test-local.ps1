@@ -29,14 +29,15 @@ $sources=@(foreach($name in $names){
 })
 $androidJar=Join-Path $Sdk "platforms/android-$($config.compileSdk)/android.jar"
 $apiJar=Join-Path $buildRoot 'api/classes.jar'
+$yamlJar=Get-ProjectYamlJar $project $buildRoot
 $testRoot=Join-Path $buildRoot "tests/$Suite"
 $classes=Join-Path $testRoot 'classes'
 New-Item -ItemType Directory -Force -Path $classes | Out-Null
-Invoke-ProjectTool 'javac' (@('--release','17','-encoding','UTF-8','-classpath',"$jsonJar;$androidJar;$moduleJar;$apiJar",'-d',$classes)+$sources)
+Invoke-ProjectTool 'javac' (@('--release','17','-encoding','UTF-8','-classpath',"$jsonJar;$androidJar;$moduleJar;$apiJar;$yamlJar",'-d',$classes)+$sources)
 $results=[Collections.Generic.List[string]]::new()
 if($Suite -eq 'Jvm'){
     foreach($name in $names){
-        $output=@(Invoke-ProjectTool 'java' @('-classpath',"$classes;$jsonJar;$moduleJar;$androidJar", "dev.denver.dressroomadvanced.$name"))
+        $output=@(Invoke-ProjectTool 'java' @('-classpath',"$classes;$jsonJar;$moduleJar;$androidJar;$yamlJar", "dev.denver.dressroomadvanced.$name"))
         foreach($line in $output){$results.Add("$line");Write-Output $line}
     }
 }else{
@@ -44,7 +45,7 @@ if($Suite -eq 'Jvm'){
     $probe=Join-Path $testRoot 'probe.jar';$dex=Join-Path $testRoot 'dex'
     New-Item -ItemType Directory -Force -Path $dex | Out-Null
     Invoke-ProjectTool 'jar' @('--create','--file',$probe,'-C',$classes,'.')
-    Invoke-ProjectTool (Join-Path $tools 'd8.bat') @('--lib',$androidJar,'--min-api',"$($config.minSdk)",'--output',$dex,$probe,$moduleJar,$apiJar)
+    Invoke-ProjectTool (Join-Path $tools 'd8.bat') @('--lib',$androidJar,'--min-api',"$($config.minSdk)",'--output',$dex,$probe,$moduleJar,$apiJar,$yamlJar)
     $deviceJar=Join-Path $testRoot 'device.jar'
     Invoke-ProjectTool 'jar' @('--create','--file',$deviceJar,'-C',$dex,'classes.dex')
     $remote='/data/local/tmp/dressroom-advanced-contracts.jar'

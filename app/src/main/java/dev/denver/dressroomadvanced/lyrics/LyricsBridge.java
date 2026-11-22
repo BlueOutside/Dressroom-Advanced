@@ -47,9 +47,9 @@ public final class LyricsBridge {
             return;
         }
 
-        String requestKey = LyricsCache.cacheKey(artist, title);
+        String requestKey = LyricsCache.cacheKey(artist, title) + "|" + album + "|" + durationMs;
         LyricsEntry current = inMemoryCachedEntry;
-        if (current != null && requestKey.equals(inMemoryCacheKey)) {
+        if (current != null && requestKey.equals(inMemoryCacheKey) && current.matchesDuration(durationMs)) {
             if (callback != null) callback.accept(current);
             return;
         }

@@ -61,6 +61,7 @@ final class EditorExtras {
         if (!ExtrasPreferences.sameFlags(draft, saved)) return;
         if (draft.getInt("stackCards", 3) != saved.getInt("stackCards", 3)) return;
         if (draft.getInt("lyricsTextSize", 28) != saved.getInt("lyricsTextSize", 28)) return;
+        if (!ExtrasPreferences.sameLyricsFont(draft, saved)) return;
         if (draft.getInt(LiveCoverController.SOURCE, LiveCoverController.SOURCE_SPOTIFY_FIRST)
                 != saved.getInt(
                         LiveCoverController.SOURCE, LiveCoverController.SOURCE_SPOTIFY_FIRST))
@@ -86,6 +87,7 @@ final class EditorExtras {
         if (!ExtrasPreferences.sameFlags(a, b)) return false;
         return a.getInt("stackCards", 3) == b.getInt("stackCards", 3)
                 && a.getInt("lyricsTextSize", 28) == b.getInt("lyricsTextSize", 28)
+                && ExtrasPreferences.sameLyricsFont(a, b)
                 && a.getInt(LiveCoverController.SOURCE, LiveCoverController.SOURCE_SPOTIFY_FIRST)
                         == b.getInt(
                                 LiveCoverController.SOURCE,

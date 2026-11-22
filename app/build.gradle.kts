@@ -12,4 +12,7 @@ android {
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     buildTypes { release { isMinifyEnabled = false } }
 }
-dependencies { compileOnly("io.github.libxposed:api:102.0.0") }
+dependencies {
+    compileOnly("io.github.libxposed:api:102.0.0")
+    implementation("org.yaml:snakeyaml:2.7")
+}

@@ -19,3 +19,17 @@ function Invoke-ProjectTool([string]$Program,[string[]]$Arguments) {
         if ($LASTEXITCODE -ne 0) { throw "$Program failed with exit code $LASTEXITCODE" }
     } finally { $env:JAVA_TOOL_OPTIONS = $previous }
 }
+
+function Get-ProjectYamlJar([string]$Project,[string]$BuildRoot) {
+    $source = Get-Content -LiteralPath (Join-Path $Project 'app/build.gradle.kts') -Raw
+    $match = [regex]::Match($source, 'org\.yaml:snakeyaml:([^"\s]+)')
+    if (-not $match.Success) { throw 'Missing SnakeYAML dependency in app/build.gradle.kts' }
+    $version = $match.Groups[1].Value
+    $directory = Join-Path $BuildRoot 'libs'
+    New-Item -ItemType Directory -Force -Path $directory | Out-Null
+    $jar = Join-Path $directory "snakeyaml-$version.jar"
+    if (-not (Test-Path -LiteralPath $jar)) {
+        Invoke-WebRequest -Uri "https://repo.maven.apache.org/maven2/org/yaml/snakeyaml/$version/snakeyaml-$version.jar" -OutFile $jar
+    }
+    return $jar
+}

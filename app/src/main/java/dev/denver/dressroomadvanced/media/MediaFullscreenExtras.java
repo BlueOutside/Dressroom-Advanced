@@ -85,14 +85,38 @@ public final class MediaFullscreenExtras {
         return null;
     }
 
+    public static Bitmap currentArtworkBitmap() {
+        for (WeakReference<Backdrop> ref : hosts.values()) {
+            Backdrop host = ref == null ? null : ref.get();
+            if (host != null && host.bitmap != null && !host.bitmap.isRecycled()) {
+                return host.bitmap;
+            }
+        }
+        for (Art state : art.values()) {
+            if (state == null) continue;
+            Bitmap bmp = state.bitmap();
+            if (bmp != null && !bmp.isRecycled()) return bmp;
+        }
+        return null;
+    }
+
+    public static boolean isFullscreenBackdropActive() {
+        for (WeakReference<Backdrop> ref : hosts.values()) {
+            Backdrop host = ref == null ? null : ref.get();
+            if (host != null && host.showing && host.getVisibility() == View.VISIBLE) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public static void invalidateAllHosts() {
         Main.HANDLER.post(() -> {
-            boolean lyricsActive = LyricsController.isLyricsActive();
             for (WeakReference<Backdrop> ref : hosts.values()) {
                 Backdrop host = ref == null ? null : ref.get();
                 if (host != null) {
                     if (host.liveCover != null) {
-                        host.liveCover.setLyricsBlur(lyricsActive);
+                        host.liveCover.setLyricsBlurAmount(MediaCoverWakefulness.lyricsBlurAmount());
                     }
                     host.candidatesDirty = true;
                     host.blurDirty = true;
@@ -102,6 +126,15 @@ public final class MediaFullscreenExtras {
                 }
             }
         });
+    }
+
+    static void invalidateLyricsBackdrop() {
+        for (WeakReference<Backdrop> ref : hosts.values()) {
+            Backdrop host = ref == null ? null : ref.get();
+            if (host == null) continue;
+            host.invalidate();
+            host.overlayLayer.invalidate();
+        }
     }
 
     static boolean shouldCloseAmbient(
@@ -941,7 +974,10 @@ public final class MediaFullscreenExtras {
                 for (Saved saved : hidden.values()) saved.apply();
                 hiddenDirty = false;
             }
-            if (contentChanged) MediaClockContrast.prefetch(image);
+            if (contentChanged) {
+                MediaClockContrast.prefetch(image);
+                LyricsController.notifyArtworkUpdated(image);
+            }
             if (best.closing || best.small.get() != null || p < .50f) {
                 if (MediaClockContrast.isActive(parent)) MediaClockContrast.clear(parent);
                 if (MediaStatusBarContrast.isActive(parent)) MediaStatusBarContrast.clear(parent);
@@ -1316,7 +1352,6 @@ public final class MediaFullscreenExtras {
         }
 
         private void drawArtwork(Canvas canvas) {
-            if (LyricsController.isLyricsActive()) return;
             Bitmap image = bitmap;
             if (!showing || image == null || image.isRecycled() || destination.isEmpty()) return;
             float scale =
@@ -1452,26 +1487,23 @@ public final class MediaFullscreenExtras {
 
         @Override
         protected void onDraw(Canvas canvas) {
-            if (LyricsController.isLyricsActive()) {
+            float lyricsMix = MediaCoverWakefulness.lyricsBlurAmount();
+            if (lyricsMix < 1f && !liveCover.drawAmbient(canvas, root.get(), this)) drawArtwork(canvas);
+            if (lyricsMix > 0f) {
                 ViewGroup parent = root.get();
                 ensureArtworkBlurRecorded(parent);
                 if (artworkBlur != null && !destination.isEmpty()) {
-                    artworkBlur.draw(canvas, destination);
-                } else if (bitmap != null && !bitmap.isRecycled()) {
-                    if (destination.isEmpty()) destination.set(0, 0, getWidth(), getHeight());
-                    canvas.drawBitmap(bitmap, null, destination, paint);
+                    artworkBlur.drawLyricsBackdrop(canvas, destination, lyricsMix);
                 }
-                canvas.drawColor(Color.argb(45, 0, 0, 0));
-                return;
+                canvas.drawColor(Color.argb(Math.round(45 * lyricsMix), 0, 0, 0));
             }
-            if (!liveCover.drawAmbient(canvas, root.get(), this)) drawArtwork(canvas);
         }
 
         private void drawForegroundBlur(Canvas canvas) {
-            if (LyricsController.isLyricsActive()) {
-                canvas.drawColor(Color.argb(55, 0, 0, 0));
-                return;
-            }
+            float lyricsMix = MediaCoverWakefulness.lyricsBlurAmount();
+            if (lyricsMix > 0f) canvas.drawColor(Color.argb(Math.round(55 * lyricsMix), 0, 0, 0));
+            if (lyricsMix >= 1f) return;
+            float playerMix = 1f - lyricsMix;
             ViewGroup parent = root.get();
             boolean topBlurDisabled =
                     isTopBlurDisabled(
@@ -1487,7 +1519,7 @@ public final class MediaFullscreenExtras {
                             getHeight() * bandTopNorm,
                             getHeight() * bandSolidNorm,
                             getHeight(),
-                            1f,
+                            playerMix,
                             null);
                     if (!topBlurDisabled && topBandEndNorm > topBandSolidNorm) {
                         ambient.drawTopProgressiveBand(
@@ -1495,7 +1527,7 @@ public final class MediaFullscreenExtras {
                                 ambientRect,
                                 getHeight() * topBandSolidNorm,
                                 getHeight() * topBandEndNorm,
-                                1f,
+                                playerMix,
                                 null);
                     }
                 }
@@ -1555,7 +1587,7 @@ public final class MediaFullscreenExtras {
                                 controlsBandTop,
                                 controlsBandSolid,
                                 destination.bottom,
-                                controlsBandOpacity,
+                                controlsBandOpacity * playerMix,
                                 outline);
                     }
                     if (topBand) {
@@ -1564,7 +1596,7 @@ public final class MediaFullscreenExtras {
                                 destination,
                                 topBandSolid,
                                 topBandEnd,
-                                topBandOpacity,
+                                topBandOpacity * playerMix,
                                 outline);
                     }
                 } else {
@@ -1593,7 +1625,8 @@ public final class MediaFullscreenExtras {
                                     View view = (View) contract.albumArtParent().get(object);
                                     ImageView image = (ImageView) contract.albumArtBg().get(object);
                                     if (view != null) {
-                                        art.put(view, new Art(view, image, object, contract));
+                                        Art artState = new Art(view, image, object, contract);
+                                        art.put(view, artState);
                                         markCandidatesDirty();
                                         try {
                                             MediaInteraction.bind(owner, object, view);
@@ -1605,10 +1638,6 @@ public final class MediaFullscreenExtras {
                                             View titleArtist = (View) OneUi9MediaBinding.read(contract.titleArtist(), object);
                                             Object arg1 = chain.getArg(1);
                                             Object arg2 = chain.getArg(2);
-                                            android.util.Log.i("DressroomLyrics", "Holder ctor: controlHost=" + controlHost
-                                                    + ", titleArtist=" + titleArtist
-                                                    + ", arg1=" + (arg1 != null ? arg1.getClass().getName() : "null")
-                                                    + ", arg2=" + (arg2 != null ? arg2.getClass().getName() : "null"));
 
                                             ViewGroup pageContainer = null;
                                             if (arg2 instanceof ViewGroup pageGroup) {
@@ -1617,17 +1646,18 @@ public final class MediaFullscreenExtras {
                                                 pageContainer = itemGroup;
                                             } else if (controlHost != null && controlHost.getParent() instanceof ViewGroup parentGroup) {
                                                 pageContainer = parentGroup;
-                                            } else if (view != null && view.getParent() instanceof ViewGroup parentGroup) {
+                                            } else if (view.getParent() instanceof ViewGroup parentGroup) {
                                                 pageContainer = parentGroup;
                                             }
                                             if (controlHost instanceof ViewGroup hostGroup) {
                                                 var lyricsCtrl = dev.denver.dressroomadvanced.lyrics.LyricsController.bind(
-                                                        pageContainer, hostGroup, titleArtist, view);
+                                                        pageContainer,
+                                                        hostGroup,
+                                                        titleArtist,
+                                                        view,
+                                                        artState::bitmap);
                                                 if (lyricsCtrl != null) {
-                                                    boolean lyricsEnabled = RuntimeExtras.enabled(hostGroup.getContext(), "lockscreenLyrics");
-                                                    boolean autoScroll = RuntimeExtras.enabled(hostGroup.getContext(), "lyricsSyncedHighlight");
-                                                    int textSize = RuntimeExtras.get(hostGroup.getContext()).getInt("lyricsTextSize", 28);
-                                                    lyricsCtrl.setPreferences(lyricsEnabled, autoScroll, textSize);
+                                                    lyricsCtrl.applyPreferences(RuntimeExtras.get(hostGroup.getContext()));
                                                 }
                                             }
                                         } catch (Exception err) {

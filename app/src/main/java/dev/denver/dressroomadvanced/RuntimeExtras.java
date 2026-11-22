@@ -9,7 +9,7 @@ import android.os.SystemClock;
 
 import java.util.ArrayList;
 
-final class RuntimeExtras {
+public final class RuntimeExtras {
     private static Bundle cached, lastKnown;
     private static int screen = -1;
     private static boolean foldObserved;
@@ -26,7 +26,7 @@ final class RuntimeExtras {
 
     static Bundle defaults() { return defaults; }
 
-    static synchronized Bundle get(Context c) {
+    public static synchronized Bundle get(Context c) {
         if (context == null) {
             context = c.getApplicationContext();
             if (context == null) context = c;
@@ -107,7 +107,11 @@ final class RuntimeExtras {
     }
 
     private static void changed() {
-        for (Runnable listener : new ArrayList<>(listeners))
+        ArrayList<Runnable> snapshot;
+        synchronized (listeners) {
+            snapshot = new ArrayList<>(listeners);
+        }
+        for (Runnable listener : snapshot)
             try {
                 listener.run();
             } catch (RuntimeException error) {
@@ -115,11 +119,14 @@ final class RuntimeExtras {
             }
     }
 
-    static boolean enabled(Context c, String key) {
+    public static boolean enabled(Context c, String key) {
         return get(c).getBoolean(key);
     }
 
-    static void listen(Runnable listener) {
-        listeners.add(listener);
+    public static void listen(Runnable listener) {
+        if (listener == null) return;
+        synchronized (listeners) {
+            if (!listeners.contains(listener)) listeners.add(listener);
+        }
     }
 }

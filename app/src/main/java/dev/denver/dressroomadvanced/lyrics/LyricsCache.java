@@ -69,7 +69,9 @@ public final class LyricsCache {
 
             try {
                 String jsonText = readFileToString(file);
-                LyricsEntry entry = LyricsEntry.fromJson(new JSONObject(jsonText));
+                JSONObject json = new JSONObject(jsonText);
+                if (json.optInt("lyricsSchema") < 2) return null;
+                LyricsEntry entry = LyricsEntry.fromJson(json);
                 if (entry == null) {
                     file.delete();
                     return null;

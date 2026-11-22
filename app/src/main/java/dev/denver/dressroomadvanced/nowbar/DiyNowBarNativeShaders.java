@@ -1,7 +1,9 @@
 package dev.denver.dressroomadvanced;
 
 import android.content.Context;
+import android.content.ContextWrapper;
 import android.content.res.Resources;
+import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Outline;
 import android.graphics.RuntimeShader;
@@ -29,8 +31,8 @@ import java.util.WeakHashMap;
  *   preset & 6 perimeter brushes recolored to the user's palette, keeping the pill center clear).
  * - GuidingLightEffect v2.2.1 (aod.w23 inside nudge_container) with 4-color lighting.
  *
- * AI Presence and Outer Glow run directly on DiyNowBarAuraView's 120fps VSync single-pass AGSL
- * shaders so Lock Screen matches Studio 1:1 with zero RenderEffect blur / drag lag.
+ * AI Presence uses the shared aura renderer. Outer Glow uses the provider's original
+ * shader through DiyOuterGlowShader, with a persistent blur pass in both Studio and runtime.
  */
 final class DiyNowBarNativeShaders {
     private static final String PKG_AOD = "com.samsung.android.app.aodservice";
@@ -113,6 +115,191 @@ final class DiyNowBarNativeShaders {
     }
 
     private DiyNowBarNativeShaders() {}
+
+    /** Hosts the same provider views used at runtime, without creating a native Now Bar card. */
+    static final class Preview extends FrameLayout {
+        private NativeHandles handles;
+        private Context providerContext;
+        private View ai;
+        private FrameLayout guidingSurface;
+        private Object guiding;
+        private int effect, primary, secondary, appliedWidth = -1, appliedHeight = -1;
+        private int appliedPrimary, appliedSecondary;
+        private float radius, appliedRadius = -1f;
+        private boolean awake, running, failed, paletteApplied, updating;
+        private final Runnable unavailable;
+
+        Preview(Context context, Runnable unavailable) {
+            super(context);
+            this.unavailable = unavailable;
+            setWillNotDraw(false);
+            setBackgroundColor(Color.TRANSPARENT);
+            setClickable(false);
+            setFocusable(false);
+            setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
+            setClipToOutline(true);
+            setOutlineProvider(new ViewOutlineProvider() {
+                @Override public void getOutline(View view, Outline outline) {
+                    outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(), radius);
+                }
+            });
+            setVisibility(GONE);
+        }
+
+        boolean configure(int nextEffect, int color1, int color2, float corner, boolean awake) {
+            if (effect != nextEffect) {
+                release();
+                effect = nextEffect;
+                failed = false;
+            }
+            primary = color1;
+            secondary = color2;
+            radius = corner;
+            this.awake = awake;
+            if (!isNativeCapableEffect(effect) || failed) {
+                setVisibility(GONE);
+                return false;
+            }
+            setVisibility(VISIBLE);
+            update();
+            return !failed;
+        }
+
+        private void loadProvider() throws Exception {
+            for (String pkg : new String[]{PKG_AOD, "com.samsung.android.app.clockpack"}) {
+                Context candidate;
+                try {
+                    candidate = getContext().createPackageContext(pkg,
+                            Context.CONTEXT_INCLUDE_CODE | Context.CONTEXT_IGNORE_SECURITY);
+                } catch (android.content.pm.PackageManager.NameNotFoundException absent) { continue; }
+                NativeHandles h = handlesFor(candidate.getClassLoader());
+                if (h == null || (effect == DiyNowBarCard.EFFECT_AI_MESH_WARP
+                        ? !h.aiMeshReady() : !h.guidingReady())) continue;
+                // The provider's Application is not instantiated inside Studio.
+                providerContext = new ContextWrapper(candidate) {
+                    @Override public Context getApplicationContext() { return this; }
+                };
+                handles = h;
+                return;
+            }
+            throw new ClassNotFoundException("Native effect unavailable in installed providers");
+        }
+
+        private void update() {
+            if (updating || failed || !isNativeCapableEffect(effect)) return;
+            updating = true;
+            try {
+                if (handles == null) loadProvider();
+                NativeHandles h = handles;
+                if (effect == DiyNowBarCard.EFFECT_AI_MESH_WARP && ai == null) {
+                    ai = (View) h.aiClass.getConstructor(Context.class, android.util.AttributeSet.class)
+                            .newInstance(providerContext, null);
+                    initializeAiBorder(ai, h, radius / getResources().getDisplayMetrics().density);
+                    addView(ai, new FrameLayout.LayoutParams(-1, -1));
+                } else if (effect == DiyNowBarCard.EFFECT_GUIDING_LIGHT && guiding == null) {
+                    // Native renderers decode their textures through the host view's Context.
+                    guidingSurface = new FrameLayout(providerContext) {
+                        @Override protected void onDraw(Canvas canvas) {
+                            super.onDraw(canvas);
+                            canvas.drawColor(Color.TRANSPARENT);
+                        }
+                    };
+                    guidingSurface.setWillNotDraw(false);
+                    addView(guidingSurface, new FrameLayout.LayoutParams(-1, -1));
+                    Object nativeCard = h.guidingGetConfig.getDeclaringClass()
+                            .getConstructor(Context.class, android.util.AttributeSet.class)
+                            .newInstance(providerContext, null);
+                    Object config = h.guidingGetConfig.invoke(nativeCard);
+                    guiding = h.guidingCtor.newInstance(providerContext, guidingSurface, config);
+                }
+                boolean paletteChanged = !paletteApplied
+                        || primary != appliedPrimary || secondary != appliedSecondary;
+                if (paletteChanged) {
+                    if (ai != null) applyAiNudgeBrushes(ai, h, primary, secondary);
+                    else h.guidingSetColors.invoke(guiding, Arrays.asList(primary,
+                            blendColor(primary, secondary, 0.45f), secondary,
+                            blendColor(secondary, Color.WHITE, 0.25f)));
+                    paletteApplied = true;
+                    appliedPrimary = primary;
+                    appliedSecondary = secondary;
+                }
+                if (radius != appliedRadius) {
+                    if (ai != null && h.aiSetCornerRadius != null)
+                        h.aiSetCornerRadius.invoke(ai, radius / getResources().getDisplayMetrics().density);
+                    else if (guiding != null) h.guidingSetCornerRadius.invoke(guiding, radius);
+                    appliedRadius = radius;
+                    invalidateOutline();
+                }
+                if (guiding != null && getWidth() > 0 && getHeight() > 0
+                        && (appliedWidth != getWidth() || appliedHeight != getHeight())) {
+                    h.guidingSetSize.invoke(guiding, getWidth(), getHeight());
+                    appliedWidth = getWidth();
+                    appliedHeight = getHeight();
+                }
+                boolean visible = awake && isShown() && getWindowVisibility() == VISIBLE;
+                if (running != visible) {
+                    running = visible;
+                    if (ai != null) {
+                        ai.setVisibility(visible ? VISIBLE : INVISIBLE);
+                        (visible ? h.aiStart : h.aiPause).invoke(ai);
+                    } else if (visible) h.guidingShow.invoke(guiding, h.guidingShowAnim);
+                    else if (h.guidingHide != null && h.guidingHideAnim != null)
+                        h.guidingHide.invoke(guiding, h.guidingHideAnim);
+                }
+                setAlpha(awake ? 1f : 0f);
+            } catch (Exception | LinkageError error) {
+                android.util.Log.w(DressroomModule.TAG, "Native Studio effect preview unavailable", error);
+                release();
+                failed = true;
+                setVisibility(GONE);
+                if (unavailable != null) post(unavailable);
+            } finally {
+                updating = false;
+            }
+        }
+
+        private void release() {
+            boolean wasUpdating = updating;
+            updating = true;
+            try {
+                if (ai != null && handles != null) handles.aiPause.invoke(ai);
+                if (guiding != null && handles != null) handles.guidingRelease.invoke(guiding);
+            } catch (ReflectiveOperationException | RuntimeException ignored) {}
+            ai = null;
+            guidingSurface = null;
+            guiding = null;
+            running = paletteApplied = false;
+            appliedWidth = appliedHeight = -1;
+            appliedRadius = -1f;
+            removeAllViews();
+            updating = wasUpdating;
+        }
+
+        @Override protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+            super.onSizeChanged(w, h, oldw, oldh);
+            update();
+        }
+
+        @Override protected void onAttachedToWindow() {
+            super.onAttachedToWindow();
+            update();
+        }
+
+        @Override protected void onDetachedFromWindow() {
+            super.onDetachedFromWindow();
+            release();
+        }
+
+        @Override protected void onVisibilityChanged(View changedView, int visibility) {
+            super.onVisibilityChanged(changedView, visibility);
+            if (handles != null) update();
+        }
+
+        @Override protected void onWindowVisibilityChanged(int visibility) {
+            super.onWindowVisibilityChanged(visibility);
+            if (handles != null) update();
+        }
+    }
 
     static boolean isNativeCapableEffect(int effect) {
         return effect == DiyNowBarCard.EFFECT_AI_MESH_WARP
@@ -251,33 +438,7 @@ final class DiyNowBarNativeShaders {
             float radiusDp = radiusPx / Math.max(density, 1f);
 
             if (firstBind) {
-                // Exact Samsung uh5.NUDGE BORDER_TRAVEL ViewData preset: keeps the center hollowed
-                // out cleanly (centerMarginRatio 0.698 x 0.1, strength 0.845) while warping the rim.
-                Object nudgeViewData =
-                        h.aiViewDataCtor.newInstance(
-                                133.867f,
-                                36.0f,
-                                radiusDp,
-                                0.0f,
-                                0.698f,
-                                0.1f,
-                                0.845f,
-                                0.546f,
-                                0.05f,
-                                70.0f,
-                                10.0f,
-                                100.0f,
-                                200.0f,
-                                0.95f,
-                                5,
-                                0.03f,
-                                15.0f,
-                                h.aiModeBorderTravel,
-                                4000L,
-                                -1.0f,
-                                0.0f);
-                h.aiViewDataField.set(aiView, nudgeViewData);
-                if (h.aiSetFrameRate != null) h.aiSetFrameRate.invoke(aiView, 60L);
+                initializeAiBorder(aiView, h, radiusDp);
             } else {
                 h.aiSetMode.invoke(aiView, h.aiModeBorderTravel);
                 if (h.aiSetCornerRadius != null) h.aiSetCornerRadius.invoke(aiView, radiusDp);
@@ -294,6 +455,17 @@ final class DiyNowBarNativeShaders {
             DressroomModule.note("Native AIPresenceView MVC mesh sync failed", error);
             return false;
         }
+    }
+
+    private static void initializeAiBorder(View view, NativeHandles h, float radiusDp)
+            throws ReflectiveOperationException {
+        // Same Samsung NUDGE preset in Studio and on the lockscreen.
+        Object data = h.aiViewDataCtor.newInstance(
+                133.867f, 36f, radiusDp, 0f, 0.698f, 0.1f, 0.845f, 0.546f, 0.05f,
+                70f, 10f, 100f, 200f, 0.95f, 5, 0.03f, 15f,
+                h.aiModeBorderTravel, 4000L, -1f, 0f);
+        h.aiViewDataField.set(view, data);
+        if (h.aiSetFrameRate != null) h.aiSetFrameRate.invoke(view, 60L);
     }
 
     private static void applyAiNudgeBrushes(
