@@ -267,7 +267,7 @@ public final class LyricsView extends FrameLayout {
     }
 
     public void setLyrics(LyricsEntry entry) {
-        lyricLines.clear();
+        lyricLines = new ArrayList<>();
         lineViews.clear();
         linesContainer.removeAllViews();
         linesContainer.addView(plainLyricsView);

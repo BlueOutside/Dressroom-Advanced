@@ -9,6 +9,7 @@ import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.GradientDrawable;
 import android.media.MediaMetadata;
 import android.media.session.MediaController;
+import android.media.session.MediaSessionManager;
 import android.media.session.PlaybackState;
 import android.os.Handler;
 import android.os.Looper;
@@ -27,6 +28,7 @@ import dev.denver.dressroomadvanced.MediaClockVisibility;
 import dev.denver.dressroomadvanced.MediaFullscreenExtras;
 
 import java.lang.ref.WeakReference;
+import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
 
@@ -83,15 +85,37 @@ public final class LyricsController {
         }
     };
 
-    private static MediaController currentMediaController() {
+    private MediaController currentMediaController() {
+        return currentMediaController(context);
+    }
+
+    private static MediaController currentMediaController(Context context) {
         try {
             Class<?> trackerClass = Class.forName("dev.denver.dressroomadvanced.LiveMediaTracker");
             java.lang.reflect.Method method = trackerClass.getDeclaredMethod("activeController");
             method.setAccessible(true);
-            return (MediaController) method.invoke(null);
-        } catch (Exception ignored) {
-            return null;
+            MediaController ctrl = (MediaController) method.invoke(null);
+            if (ctrl != null) return ctrl;
+        } catch (Throwable ignored) {}
+
+        if (context != null) {
+            try {
+                MediaSessionManager mgr = context.getSystemService(MediaSessionManager.class);
+                if (mgr != null) {
+                    List<MediaController> list = mgr.getActiveSessions(null);
+                    if (list != null && !list.isEmpty()) {
+                        for (MediaController mc : list) {
+                            PlaybackState ps = mc.getPlaybackState();
+                            if (ps != null && ps.getState() == PlaybackState.STATE_PLAYING) {
+                                return mc;
+                            }
+                        }
+                        return list.get(0);
+                    }
+                }
+            } catch (Throwable ignored) {}
         }
+        return null;
     }
 
     public LyricsController(ViewGroup pageContainer, ViewGroup controlHost, View titleArtist, View albumArt) {
@@ -549,59 +573,64 @@ public final class LyricsController {
     }
 
     public void onTrackChanged() {
-        MediaController controller = currentMediaController();
-        if (controller == null) {
-            lyricsView.setLyrics(null);
-            currentTrackKey = "";
-            return;
-        }
-
-        MediaMetadata metadata = controller.getMetadata();
-        if (metadata == null) {
-            lyricsView.setLyrics(null);
-            currentTrackKey = "";
-            return;
-        }
-
-        String artist = firstNonEmpty(
-                metadata.getString(MediaMetadata.METADATA_KEY_ARTIST),
-                metadata.getString(MediaMetadata.METADATA_KEY_ALBUM_ARTIST),
-                metadata.getString(MediaMetadata.METADATA_KEY_DISPLAY_SUBTITLE));
-        String title = firstNonEmpty(
-                metadata.getString(MediaMetadata.METADATA_KEY_TITLE),
-                metadata.getString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE));
-        String album = metadata.getString(MediaMetadata.METADATA_KEY_ALBUM);
-        long durationMs = metadata.getLong(MediaMetadata.METADATA_KEY_DURATION);
-
-        String trackKey = artist + "|" + title;
-        android.util.Log.i("DressroomLyrics", "onTrackChanged: trackKey=" + trackKey);
-
-        Bitmap cover = null;
-        if (metadata != null) {
-            cover = metadata.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART);
-            if (cover == null) cover = metadata.getBitmap(MediaMetadata.METADATA_KEY_ART);
-        }
-        if (cover == null && albumArtRef.get() instanceof ImageView iv && iv.getDrawable() instanceof BitmapDrawable bd) {
-            cover = bd.getBitmap();
-        }
-        lyricsView.setTrackInfo(title, artist, cover);
-
-        if (trackKey.equals(currentTrackKey)) return;
-        currentTrackKey = trackKey;
-
-        // Reset lyrics view with loading state
-        lyricsView.setLyrics(null);
-
-        LyricsBridge.requestLyrics(context, artist, title, album, durationMs, entry -> {
-            android.util.Log.i("DressroomLyrics", "Lyrics received: entry=" + (entry != null ? entry.source() : "null"));
-            if (trackKey.equals(currentTrackKey)) {
-                lyricsView.setLyrics(entry);
-                if (isVisible) {
-                    PlaybackState state = controller.getPlaybackState();
-                    lyricsView.updatePlaybackPosition(calculatePosition(state));
-                }
+        try {
+            MediaController controller = currentMediaController();
+            if (controller == null) {
+                lyricsView.setLyrics(null);
+                currentTrackKey = "";
+                return;
             }
-        });
+
+            MediaMetadata metadata = controller.getMetadata();
+            if (metadata == null) {
+                lyricsView.setLyrics(null);
+                currentTrackKey = "";
+                return;
+            }
+
+            String artist = firstNonEmpty(
+                    metadata.getString(MediaMetadata.METADATA_KEY_ARTIST),
+                    metadata.getString(MediaMetadata.METADATA_KEY_ALBUM_ARTIST),
+                    metadata.getString(MediaMetadata.METADATA_KEY_DISPLAY_SUBTITLE));
+            String title = firstNonEmpty(
+                    metadata.getString(MediaMetadata.METADATA_KEY_TITLE),
+                    metadata.getString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE));
+            String album = metadata.getString(MediaMetadata.METADATA_KEY_ALBUM);
+            long durationMs = metadata.getLong(MediaMetadata.METADATA_KEY_DURATION);
+
+            String trackKey = artist + "|" + title;
+            android.util.Log.i("DressroomLyrics", "onTrackChanged: trackKey=" + trackKey);
+
+            Bitmap cover = null;
+            if (metadata != null) {
+                cover = metadata.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART);
+                if (cover == null) cover = metadata.getBitmap(MediaMetadata.METADATA_KEY_ART);
+            }
+            if (cover == null && albumArtRef.get() instanceof ImageView iv && iv.getDrawable() instanceof BitmapDrawable bd) {
+                cover = bd.getBitmap();
+            }
+            lyricsView.setTrackInfo(title, artist, cover);
+
+            if (trackKey.equals(currentTrackKey)) return;
+            currentTrackKey = trackKey;
+
+            // Reset lyrics view with loading state
+            lyricsView.setLyrics(null);
+
+            LyricsBridge.requestLyrics(context, artist, title, album, durationMs, entry -> {
+                android.util.Log.i("DressroomLyrics", "Lyrics received: entry=" + (entry != null ? entry.source() : "null"));
+                if (trackKey.equals(currentTrackKey)) {
+                    lyricsView.setLyrics(entry);
+                    if (isVisible) {
+                        MediaController ctrl = currentMediaController();
+                        PlaybackState state = ctrl != null ? ctrl.getPlaybackState() : null;
+                        lyricsView.updatePlaybackPosition(calculatePosition(state));
+                    }
+                }
+            });
+        } catch (Throwable t) {
+            android.util.Log.e("DressroomLyrics", "Error in onTrackChanged", t);
+        }
     }
 
     private void startTracking() {

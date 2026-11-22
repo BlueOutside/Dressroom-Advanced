@@ -80,7 +80,7 @@ public final class LrcParser {
         }
 
         Collections.sort(result);
-        return Collections.unmodifiableList(result);
+        return result;
     }
 
     /**
