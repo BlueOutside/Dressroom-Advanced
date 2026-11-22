@@ -91,7 +91,7 @@ public final class LyricsController {
                 lyricsView.updatePlaybackPosition(pos);
 
                 if (state != null && state.getState() == PlaybackState.STATE_PLAYING) {
-                    Main.HANDLER.postDelayed(this, 120L);
+                    Main.HANDLER.postDelayed(this, 25L);
                     return;
                 }
             }

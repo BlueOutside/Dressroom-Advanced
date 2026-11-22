@@ -5,13 +5,18 @@ import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
 import android.content.Context;
 import android.graphics.Bitmap;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.LinearGradient;
 import android.graphics.Outline;
+import android.graphics.Path;
 import android.graphics.RenderEffect;
 import android.graphics.Shader;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
+import android.text.Layout;
+import android.text.TextPaint;
 import android.text.TextUtils;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -59,7 +64,7 @@ public final class LyricsView extends FrameLayout {
     private final TextView attributionView;
 
     private List<LyricLine> lyricLines = new ArrayList<>();
-    private final List<TextView> lineViews = new ArrayList<>();
+    private final List<LyricLineView> lineViews = new ArrayList<>();
     private int activeLineIndex = -1;
     private boolean isSynced = false;
     private boolean autoScrollEnabled = true;
@@ -406,7 +411,7 @@ public final class LyricsView extends FrameLayout {
             int linePadding = dpToPx(9);
             for (int i = 0; i < lyricLines.size(); i++) {
                 LyricLine line = lyricLines.get(i);
-                TextView lineTv = new TextView(ctx);
+                LyricLineView lineTv = new LyricLineView(ctx);
                 lineTv.setText(line.text());
                 lineTv.setTextSize(TypedValue.COMPLEX_UNIT_SP, textSizeSp);
                 lineTv.setTypeface(getLyricsTypeface(ctx));
@@ -448,48 +453,79 @@ public final class LyricsView extends FrameLayout {
 
     /**
      * Updates active highlighted lyric line and triggers smooth scroll (Apple Music style).
+     * Continually advances the gradual white fill across the active line.
      */
     public void updatePlaybackPosition(long positionMs) {
         if (!isSynced || lyricLines.isEmpty() || lineViews.isEmpty()) return;
 
         int newIndex = LrcParser.findActiveLineIndex(lyricLines, positionMs);
-        if (newIndex == activeLineIndex) return;
 
-        int oldIndex = activeLineIndex;
-        activeLineIndex = newIndex;
+        // Handle line transition
+        if (newIndex != activeLineIndex) {
+            int oldIndex = activeLineIndex;
+            activeLineIndex = newIndex;
 
-        if (!autoScrollEnabled) {
-            return;
-        }
+            for (int i = 0; i < lineViews.size(); i++) {
+                LyricLineView v = lineViews.get(i);
+                if (i != newIndex) {
+                    v.setActive(false);
+                    v.setProgress(i < newIndex ? 1f : 0f);
+                }
+            }
 
-        // Highlight active line (unblurred, full alpha, subtle zoom) and defocus others (blurred, low alpha)
-        if (oldIndex >= 0 && oldIndex < lineViews.size()) {
-            TextView oldTv = lineViews.get(oldIndex);
-            oldTv.animate().alpha(0.38f).scaleX(1.0f).scaleY(1.0f).setDuration(220).start();
-            if (INACTIVE_BLUR_EFFECT != null) {
-                oldTv.setRenderEffect(INACTIVE_BLUR_EFFECT);
+            if (autoScrollEnabled) {
+                if (oldIndex >= 0 && oldIndex < lineViews.size()) {
+                    LyricLineView oldTv = lineViews.get(oldIndex);
+                    oldTv.animate().alpha(0.38f).scaleX(1.0f).scaleY(1.0f).setDuration(220).start();
+                    if (INACTIVE_BLUR_EFFECT != null) {
+                        oldTv.setRenderEffect(INACTIVE_BLUR_EFFECT);
+                    }
+                }
+
+                if (newIndex >= 0 && newIndex < lineViews.size()) {
+                    LyricLineView newTv = lineViews.get(newIndex);
+                    newTv.setActive(true);
+                    newTv.setPivotX(0f);
+                    newTv.setPivotY(newTv.getHeight() / 2f);
+                    newTv.animate().alpha(1.0f).scaleX(1.04f).scaleY(1.04f).setDuration(220).start();
+                    if (Build.VERSION.SDK_INT >= 31) {
+                        newTv.setRenderEffect(null);
+                    }
+
+                    // Auto-scroll so active line is positioned around 35% from the top (Apple Music style)
+                    long now = System.currentTimeMillis();
+                    if (!userInteracting && (now - lastUserScrollMs > 2500L)) {
+                        post(() -> {
+                            int viewTop = newTv.getTop();
+                            int scrollHeight = scrollView.getHeight();
+                            int targetY = viewTop - (int) (scrollHeight * 0.35f);
+                            scrollView.smoothScrollTo(0, Math.max(0, targetY));
+                        });
+                    }
+                }
             }
         }
 
-        if (newIndex >= 0 && newIndex < lineViews.size()) {
-            TextView newTv = lineViews.get(newIndex);
-            newTv.setPivotX(0f);
-            newTv.setPivotY(newTv.getHeight() / 2f);
-            newTv.animate().alpha(1.0f).scaleX(1.04f).scaleY(1.04f).setDuration(220).start();
-            if (Build.VERSION.SDK_INT >= 31) {
-                newTv.setRenderEffect(null);
+        // Continually update gradual white fill flow on active line
+        if (activeLineIndex >= 0 && activeLineIndex < lineViews.size() && activeLineIndex < lyricLines.size()) {
+            LyricLine currentLine = lyricLines.get(activeLineIndex);
+            long startMs = currentLine.timestampMs();
+            long nextStartMs = (activeLineIndex + 1 < lyricLines.size())
+                    ? lyricLines.get(activeLineIndex + 1).timestampMs()
+                    : startMs + 5000L;
+
+            long lineGap = nextStartMs - startMs;
+            long singingDuration;
+            if (lineGap > 5000L) {
+                int charCount = currentLine.text().length();
+                singingDuration = Math.min(lineGap - 500L, Math.max(2000L, charCount * 80L));
+            } else {
+                singingDuration = Math.max(800L, lineGap - 250L);
             }
 
-            // Auto-scroll so active line is positioned around 35% from the top (Apple Music style)
-            long now = System.currentTimeMillis();
-            if (!userInteracting && (now - lastUserScrollMs > 2500L)) {
-                post(() -> {
-                    int viewTop = newTv.getTop();
-                    int scrollHeight = scrollView.getHeight();
-                    int targetY = viewTop - (int) (scrollHeight * 0.35f);
-                    scrollView.smoothScrollTo(0, Math.max(0, targetY));
-                });
-            }
+            long elapsed = positionMs - startMs;
+            float progress = (float) elapsed / (float) Math.max(1L, singingDuration);
+            lineViews.get(activeLineIndex).setProgress(progress);
         }
     }
 
@@ -541,5 +577,152 @@ public final class LyricsView extends FrameLayout {
     private int dpToPx(int dp) {
         return (int) TypedValue.applyDimension(
                 TypedValue.COMPLEX_UNIT_DIP, dp, getResources().getDisplayMetrics());
+    }
+
+    /**
+     * Custom TextView rendering an Apple Music style gradual glowing white fill
+     * across words as each lyric line progresses.
+     */
+    public static class LyricLineView extends TextView {
+        private static final int COLOR_ACTIVE = 0xFFFFFFFF;
+        private static final int COLOR_INACTIVE = 0x60FFFFFF;
+
+        private float progress = 0f;
+        private boolean isActive = false;
+
+        public LyricLineView(Context context) {
+            super(context);
+        }
+
+        public void setActive(boolean active) {
+            if (this.isActive != active) {
+                this.isActive = active;
+                if (!active) {
+                    progress = 0f;
+                }
+                invalidate();
+            }
+        }
+
+        public void setProgress(float progress) {
+            float clamped = Math.max(0f, Math.min(1f, progress));
+            if (Math.abs(this.progress - clamped) < 0.003f) return;
+            this.progress = clamped;
+            if (isActive) {
+                invalidate();
+            }
+        }
+
+        @Override
+        protected void onDraw(Canvas canvas) {
+            TextPaint paint = getPaint();
+            int origColor = paint.getColor();
+            Shader origShader = paint.getShader();
+
+            try {
+                if (!isActive) {
+                    paint.setShader(null);
+                    paint.setColor(COLOR_ACTIVE);
+                    super.onDraw(canvas);
+                    return;
+                }
+
+                if (progress <= 0f) {
+                    paint.setShader(null);
+                    paint.setColor(COLOR_INACTIVE);
+                    super.onDraw(canvas);
+                    return;
+                }
+
+                if (progress >= 1f) {
+                    paint.setShader(null);
+                    paint.setColor(COLOR_ACTIVE);
+                    super.onDraw(canvas);
+                    return;
+                }
+
+                Layout layout = getLayout();
+                if (layout == null) {
+                    super.onDraw(canvas);
+                    return;
+                }
+
+                int lineCount = layout.getLineCount();
+                float totalWidth = getWidth();
+                if (totalWidth <= 0) {
+                    super.onDraw(canvas);
+                    return;
+                }
+
+                if (lineCount == 1) {
+                    float textWidth = layout.getLineWidth(0);
+                    float startX = layout.getLineLeft(0) + getCompoundPaddingLeft();
+                    float currX = startX + textWidth * progress;
+
+                    float ramp = dpToPx(24);
+                    float p1 = Math.max(0f, Math.min(1f, (currX - ramp) / totalWidth));
+                    float p2 = Math.max(0f, Math.min(1f, (currX + ramp * 0.4f) / totalWidth));
+                    if (p2 <= p1) p2 = Math.min(1f, p1 + 0.005f);
+
+                    LinearGradient shader = new LinearGradient(
+                            0, 0, totalWidth, 0,
+                            new int[]{COLOR_ACTIVE, COLOR_ACTIVE, COLOR_INACTIVE, COLOR_INACTIVE},
+                            new float[]{0f, p1, p2, 1f},
+                            Shader.TileMode.CLAMP);
+                    paint.setShader(shader);
+                    super.onDraw(canvas);
+                    paint.setShader(null);
+                    return;
+                }
+
+                // Multi-line lyric wipe
+                // 1. Draw inactive base text
+                paint.setShader(null);
+                paint.setColor(COLOR_INACTIVE);
+                super.onDraw(canvas);
+
+                // 2. Draw active text clipped to sung portion
+                int totalChars = getText().length();
+                if (totalChars == 0) return;
+
+                float charPos = progress * totalChars;
+                int activeChar = Math.min(totalChars - 1, (int) charPos);
+                int currentLine = layout.getLineForOffset(activeChar);
+
+                paint.setColor(COLOR_ACTIVE);
+                int saveCount = canvas.save();
+
+                Path clipPath = new Path();
+                for (int i = 0; i < lineCount; i++) {
+                    int lineTop = layout.getLineTop(i) + getCompoundPaddingTop();
+                    int lineBottom = layout.getLineBottom(i) + getCompoundPaddingTop();
+                    float lineLeft = layout.getLineLeft(i) + getCompoundPaddingLeft();
+                    float lineRight = layout.getLineRight(i) + getCompoundPaddingLeft();
+
+                    if (i < currentLine) {
+                        clipPath.addRect(0, lineTop, totalWidth, lineBottom, Path.Direction.CW);
+                    } else if (i == currentLine) {
+                        int lineStart = layout.getLineStart(i);
+                        int lineEnd = layout.getLineEnd(i);
+                        float lineFrac = (charPos - lineStart) / Math.max(1f, (float)(lineEnd - lineStart));
+                        lineFrac = Math.max(0f, Math.min(1f, lineFrac));
+                        float currX = lineLeft + (lineRight - lineLeft) * lineFrac;
+                        clipPath.addRect(0, lineTop, currX, lineBottom, Path.Direction.CW);
+                    }
+                }
+                canvas.clipPath(clipPath);
+                super.onDraw(canvas);
+                canvas.restoreToCount(saveCount);
+
+            } finally {
+                paint.setColor(origColor);
+                paint.setShader(origShader);
+            }
+        }
+
+        private float dpToPx(float dp) {
+            return TypedValue.applyDimension(
+                    TypedValue.COMPLEX_UNIT_DIP, dp, getResources().getDisplayMetrics());
+        }
     }
 }
