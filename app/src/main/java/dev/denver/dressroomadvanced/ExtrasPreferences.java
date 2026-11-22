@@ -42,6 +42,14 @@ final class ExtrasPreferences {
         b.putInt(
                 "lyricsTextSize",
                 Math.max(16, Math.min(36, input == null ? 28 : input.getInt("lyricsTextSize", 28))));
+        b.putInt(
+                LiveCoverController.SOURCE,
+                LiveCoverController.clampSource(
+                        input == null
+                                ? LiveCoverController.SOURCE_SPOTIFY_FIRST
+                                : input.getInt(
+                                        LiveCoverController.SOURCE,
+                                        LiveCoverController.SOURCE_SPOTIFY_FIRST)));
         b.putString("title", text(input == null ? null : input.getString("title"), 80));
         b.putString("message", text(input == null ? null : input.getString("message"), 180));
         BlurAppearanceSettings.clean(input, b);
@@ -107,6 +115,9 @@ final class ExtrasPreferences {
             for (String flag : DEFAULT_TRUE_FLAGS) json.put(flag, b.getBoolean(flag, true));
             json.put("stackCards", b.getInt("stackCards", 3));
             json.put("lyricsTextSize", b.getInt("lyricsTextSize", 28));
+            json.put(
+                    LiveCoverController.SOURCE,
+                    b.getInt(LiveCoverController.SOURCE, LiveCoverController.SOURCE_SPOTIFY_FIRST));
             json.put("title", b.getString("title"));
             json.put("message", b.getString("message"));
             BlurAppearanceSettings.write(b, json);
@@ -123,6 +134,9 @@ final class ExtrasPreferences {
         for (String flag : DEFAULT_TRUE_FLAGS) b.putBoolean(flag, json.optBoolean(flag, true));
         b.putInt("stackCards", json.optInt("stackCards", 3));
         b.putInt("lyricsTextSize", json.optInt("lyricsTextSize", 28));
+        b.putInt(
+                LiveCoverController.SOURCE,
+                json.optInt(LiveCoverController.SOURCE, LiveCoverController.SOURCE_SPOTIFY_FIRST));
         b.putString("title", json.optString("title"));
         b.putString("message", json.optString("message"));
         BlurAppearanceSettings.read(json, b);

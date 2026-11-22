@@ -1451,7 +1451,12 @@ final class ClockInlineSeconds {
         }
     }
 
-    private record SavedClip(ViewGroup group, boolean clipChildren, boolean clipToPadding) {}
+    private record SavedClip(
+            ViewGroup group,
+            boolean clipChildren,
+            boolean clipToPadding,
+            boolean clipToOutline,
+            Rect clipBounds) {}
 
     private static final class Session {
         final View page;
@@ -1561,7 +1566,7 @@ final class ClockInlineSeconds {
             this.maxSigmaY = 3.2f * density;
             this.padX = Math.round(30f * density);
             this.padY = Math.round(10f * density);
-            this.edgeMarginPx = 16f * density;
+            this.edgeMarginPx = 10f * density;
             this.maxSlidePx = 26f * density;
             this.verticalGapPx = 6f * density;
 
@@ -1656,7 +1661,7 @@ final class ClockInlineSeconds {
             if (fresh == null) return;
             target = fresh;
             if (host.getParent() == null) {
-                relaxAncestorClipping(target.stage, page);
+                relaxAncestorClipping(target.stage, clock.getRootView());
                 captureBaseline();
                 target.stage.addView(
                         host,
@@ -1906,9 +1911,10 @@ final class ClockInlineSeconds {
             if (plan == null || ghostActive || progress <= 0f) return;
             target.timeGroup.setPivotX(0f);
             target.timeGroup.setPivotY(0f);
-            float s = ClockSecondsLayout.scaleAt(plan, progress);
-            target.timeGroup.setScaleX(baseScaleX * s);
-            target.timeGroup.setScaleY(baseScaleY * s);
+            float sx = ClockSecondsLayout.scaleAt(plan, progress);
+            float sy = ClockSecondsLayout.scaleYAt(plan, progress);
+            target.timeGroup.setScaleX(baseScaleX * sx);
+            target.timeGroup.setScaleY(baseScaleY * sy);
             target.timeGroup.setTranslationX(
                     ClockSecondsLayout.timeGroupTx(
                             plan, progress, target.timeGroup.getLeft(), baseTx));
@@ -2155,10 +2161,18 @@ final class ClockInlineSeconds {
             Set<ViewGroup> seen = Collections.newSetFromMap(new WeakHashMap<>());
             View current = start;
             while (current instanceof ViewGroup group && seen.add(group)) {
+                Rect bounds = group.getClipBounds();
                 savedClips.add(
-                        new SavedClip(group, group.getClipChildren(), group.getClipToPadding()));
+                        new SavedClip(
+                                group,
+                                group.getClipChildren(),
+                                group.getClipToPadding(),
+                                group.getClipToOutline(),
+                                bounds == null ? null : new Rect(bounds)));
                 group.setClipChildren(false);
                 group.setClipToPadding(false);
+                if (group.getClipToOutline()) group.setClipToOutline(false);
+                if (bounds != null) group.setClipBounds(null);
                 if (current == stopInclusive) break;
                 current = current.getParent() instanceof View pv ? pv : null;
             }
@@ -2168,6 +2182,8 @@ final class ClockInlineSeconds {
             for (SavedClip saved : savedClips) {
                 saved.group.setClipChildren(saved.clipChildren);
                 saved.group.setClipToPadding(saved.clipToPadding);
+                saved.group.setClipToOutline(saved.clipToOutline);
+                saved.group.setClipBounds(saved.clipBounds);
             }
             savedClips.clear();
         }
@@ -2204,7 +2220,7 @@ final class ClockInlineSeconds {
             }
 
             ghostActive = true;
-            relaxAncestorClipping(pageGroup, pageGroup);
+            relaxAncestorClipping(pageGroup, pageGroup.getRootView());
             host.setScaleX(1f);
             host.setScaleY(1f);
             host.setTranslationX(0f);
@@ -2695,15 +2711,6 @@ final class ClockInlineSeconds {
             lastPlanGravity = gravity;
             lastPlanDateAbove = dateAbove;
 
-            float clipLeft = Float.NEGATIVE_INFINITY;
-            float clipRight = Float.POSITIVE_INFINITY;
-            Rect visible = new Rect();
-            if (target.stage.getGlobalVisibleRect(visible) && visible.width() > 0) {
-                float inset = Math.min(2f * clock.getResources().getDisplayMetrics().density,
-                        visible.width() / 4f);
-                clipLeft = visible.left + inset;
-                clipRight = visible.right - inset;
-            }
             plan =
                     ClockSecondsLayout.computePlan(
                             hmStage.left,
@@ -2720,9 +2727,7 @@ final class ClockInlineSeconds {
                             edgeMarginPx,
                             gravity,
                             dateAbove,
-                            maxSlidePx,
-                            clipLeft,
-                            clipRight);
+                            maxSlidePx);
         }
 
         private static RectF unscaledBoundsInStage(View child, ViewGroup stage) {
@@ -2781,9 +2786,10 @@ final class ClockInlineSeconds {
             host.setPivotX(0f);
             host.setPivotY(0f);
 
-            float s = ClockSecondsLayout.scaleAt(plan, progress);
-            target.timeGroup.setScaleX(baseScaleX * s);
-            target.timeGroup.setScaleY(baseScaleY * s);
+            float sx = ClockSecondsLayout.scaleAt(plan, progress);
+            float sy = ClockSecondsLayout.scaleYAt(plan, progress);
+            target.timeGroup.setScaleX(baseScaleX * sx);
+            target.timeGroup.setScaleY(baseScaleY * sy);
             target.timeGroup.setTranslationX(
                     ClockSecondsLayout.timeGroupTx(
                             plan, progress, target.timeGroup.getLeft(), baseTx));
@@ -2791,8 +2797,8 @@ final class ClockInlineSeconds {
                     ClockSecondsLayout.timeGroupTy(
                             plan, progress, target.timeGroup.getTop(), baseTy));
 
-            host.setScaleX(s);
-            host.setScaleY(s);
+            host.setScaleX(sx);
+            host.setScaleY(sy);
             host.setTranslationX(ClockSecondsLayout.hostTx(plan, progress));
             host.setTranslationY(ClockSecondsLayout.hostTy(plan, progress));
 

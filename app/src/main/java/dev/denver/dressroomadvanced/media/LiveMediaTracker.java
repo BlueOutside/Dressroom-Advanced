@@ -22,6 +22,8 @@ import java.util.concurrent.CopyOnWriteArraySet;
  * {@code MediaDataLoaderResult} notifications. Uses only public Android SDK APIs.
  */
 final class LiveMediaTracker {
+    static final String SPOTIFY_CANVAS_URI_KEY = "com.spotify.music.extra.CANVAS_URI";
+
     private static final Handler main = new Handler(Looper.getMainLooper());
     private static final Set<Runnable> listeners = new CopyOnWriteArraySet<>();
 
@@ -70,9 +72,22 @@ final class LiveMediaTracker {
             String album,
             String packageName,
             String artworkUri) {
+        onLoaderMetadata(context, artist, song, album, packageName, artworkUri, "", "");
+    }
+
+    static void onLoaderMetadata(
+            Context context,
+            String artist,
+            String song,
+            String album,
+            String packageName,
+            String artworkUri,
+            String mediaId,
+            String canvasUri) {
         if (context != null) ensureStarted(context);
         AnimatedCoverProvider.TrackQuery candidate =
-                new AnimatedCoverProvider.TrackQuery(artist, song, album, packageName, artworkUri, 1080);
+                new AnimatedCoverProvider.TrackQuery(
+                        artist, song, album, packageName, artworkUri, 1080, mediaId, canvasUri);
         if (candidate.isValid()) {
             loaderSnapshot = candidate;
             main.post(() -> refreshSessions(context != null ? context : appContext.get()));
@@ -104,7 +119,9 @@ final class LiveMediaTracker {
                 current.album(),
                 current.packageName(),
                 current.artworkUri(),
-                maxWidthPx);
+                maxWidthPx,
+                current.mediaId(),
+                current.canvasUri());
         sizedBase = current;
         sizedQuery = resized;
         return resized;
@@ -242,8 +259,12 @@ final class LiveMediaTracker {
                 md.getString(MediaMetadata.METADATA_KEY_ALBUM_ART_URI),
                 md.getString(MediaMetadata.METADATA_KEY_ART_URI),
                 md.getString(MediaMetadata.METADATA_KEY_DISPLAY_ICON_URI));
+        String mediaId = firstNonEmpty(
+                md.getString(MediaMetadata.METADATA_KEY_MEDIA_ID),
+                md.getString(MediaMetadata.METADATA_KEY_MEDIA_URI));
+        String canvasUri = firstNonEmpty(md.getString(SPOTIFY_CANVAS_URI_KEY));
         return new AnimatedCoverProvider.TrackQuery(
-                artist, title, album, controller.getPackageName(), artUri, 1080);
+                artist, title, album, controller.getPackageName(), artUri, 1080, mediaId, canvasUri);
     }
 
     static String packageForToken(Context context, MediaSession.Token token) {
@@ -265,7 +286,7 @@ final class LiveMediaTracker {
 
     private static void publish(AnimatedCoverProvider.TrackQuery next) {
         AnimatedCoverProvider.TrackQuery prev = latestQuery;
-        if (sameIdentity(prev, next)) return;
+        if (samePublishedState(prev, next)) return;
         latestQuery = next;
         Runnable notify =
                 () -> {
@@ -279,6 +300,13 @@ final class LiveMediaTracker {
                 };
         if (Looper.myLooper() == Looper.getMainLooper()) notify.run();
         else main.post(notify);
+    }
+
+    private static boolean samePublishedState(
+            AnimatedCoverProvider.TrackQuery a, AnimatedCoverProvider.TrackQuery b) {
+        if (!sameTrack(a, b)) return false;
+        if (a == null || b == null) return true;
+        return a.mediaId().equals(b.mediaId()) && a.canvasUri().equals(b.canvasUri());
     }
 
     private static boolean sameIdentity(

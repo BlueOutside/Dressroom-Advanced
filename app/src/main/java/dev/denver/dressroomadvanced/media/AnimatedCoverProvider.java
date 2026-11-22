@@ -22,7 +22,19 @@ interface AnimatedCoverProvider {
             String album,
             String packageName,
             String artworkUri,
-            int maxWidthPx) {
+            int maxWidthPx,
+            String mediaId,
+            String canvasUri) {
+        TrackQuery(
+                String artist,
+                String song,
+                String album,
+                String packageName,
+                String artworkUri,
+                int maxWidthPx) {
+            this(artist, song, album, packageName, artworkUri, maxWidthPx, "", "");
+        }
+
         public TrackQuery {
             artist = sanitize(artist);
             song = sanitize(song);
@@ -30,6 +42,8 @@ interface AnimatedCoverProvider {
             packageName = sanitize(packageName);
             artworkUri = sanitize(artworkUri);
             maxWidthPx = maxWidthPx > 0 ? maxWidthPx : 1080;
+            mediaId = sanitize(mediaId);
+            canvasUri = sanitize(canvasUri);
         }
 
         boolean isValid() {

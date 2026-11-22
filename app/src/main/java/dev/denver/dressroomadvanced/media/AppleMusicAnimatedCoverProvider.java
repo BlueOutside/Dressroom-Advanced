@@ -58,8 +58,10 @@ final class AppleMusicAnimatedCoverProvider implements AnimatedCoverProvider {
             TrackQuery query, boolean allowNetwork, AnimatedCoverCache cache) {
         if (query == null || !query.isValid() || cache == null) return null;
 
-        String trackKey = query.normalizedTrackKey();
-        String albumKey = query.normalizedAlbumKey();
+        String rawTrackKey = query.normalizedTrackKey();
+        String rawAlbumKey = query.normalizedAlbumKey();
+        String trackKey = PROVIDER_ID + "|" + rawTrackKey;
+        String albumKey = rawAlbumKey.isEmpty() ? "" : PROVIDER_ID + "|" + rawAlbumKey;
 
         AnimatedCoverAsset cached = checkCachedAliases(cache, trackKey, albumKey);
         if (cached != null) return cached;

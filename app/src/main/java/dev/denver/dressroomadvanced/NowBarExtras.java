@@ -4,13 +4,10 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.graphics.Color;
 import android.os.BatteryManager;
-import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.View;
-import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import java.io.IOException;
@@ -26,15 +23,12 @@ import java.util.WeakHashMap;
 import java.util.function.Predicate;
 
 final class NowBarExtras {
-    private static final String KEY = "dressroom_advanced_text";
     private static final ThreadLocal<Boolean> finishing = ThreadLocal.withInitial(() -> false);
     private static final Map<Object, WeakReference<View>> held =
             Collections.synchronizedMap(new WeakHashMap<>());
     private static WeakReference<Object> wrapper = new WeakReference<>(null);
     private static Context context;
     private static ClassLoader loader;
-    private static volatile Object textItem;
-    private static String textSignature = "";
     private static boolean installed;
 
     private static final class Main {
@@ -89,8 +83,7 @@ final class NowBarExtras {
                                                     wrapper =
                                                             new WeakReference<>(
                                                                     chain.getThisObject());
-                                                    textSignature = "";
-                                                    textItem = null;
+                                                    DiyNowBarPublisher.resetHost();
                                                     if (chain.getArg(1) instanceof Context c)
                                                         bind(c);
                                                     Main.HANDLER.post(NowBarExtras::updateText);
@@ -366,8 +359,7 @@ final class NowBarExtras {
                                         chain -> {
                                             Object result = chain.proceed();
                                             wrapper = new WeakReference<>(chain.getThisObject());
-                                            textSignature = "";
-                                            textItem = null;
+                                            DiyNowBarPublisher.resetHost();
                                             if (chain.getArg(1) instanceof Context c) bind(c);
                                             Main.HANDLER.post(NowBarExtras::updateText);
                                             return result;
@@ -556,80 +548,18 @@ final class NowBarExtras {
         held.clear();
     }
 
+    static List<Object> customItems() {
+        return DiyNowBarPublisher.activeItems();
+    }
+
     static Object customMessage() {
-        return textItem;
+        List<Object> items = DiyNowBarPublisher.activeItems();
+        return items.isEmpty() ? null : items.get(0);
     }
 
     private static void updateText() {
         Object host = wrapper.get();
         if (context == null || host == null) return;
-        Bundle b = RuntimeExtras.get(context);
-        try {
-            if (!b.getBoolean("textCard")) {
-                if (textItem != null) Reflect.call(host, "removeItem", textItem);
-                textItem = null;
-                textSignature = "";
-                return;
-            }
-            String title = b.getString("title", "");
-            if (title.isBlank()) title = "My Now Bar";
-            String message = b.getString("message", "");
-            String signature = title + "\u0000" + message;
-            if (signature.equals(textSignature)) return;
-            Class<?> item =
-                    Class.forName(
-                            "com.android.systemui.plugins.keyguardstatusview.NowBarItem",
-                            false,
-                            loader);
-            Object card = item.getConstructor().newInstance();
-            Reflect.call(card, "setNowBarKey", KEY);
-            Reflect.call(card, "setNowBarPackage", "com.android.systemui");
-            Reflect.call(card, "setNowBarViewStyle", 6);
-            Reflect.call(card, "setUserId", android.os.Process.myUid() / 100000);
-            Reflect.call(card, "setPrimaryInfo", title);
-            Reflect.call(card, "setSecondaryInfo", message);
-            Reflect.call(card, "setContentViewForNormalCard", textView(title, message, false));
-            Reflect.call(card, "setContentViewForExpandCard", textView(title, message, true));
-            Bundle extra = new Bundle();
-            extra.putInt("nowbar_key_screen_type", 3);
-            Reflect.call(card, "setExtraData", extra);
-            Object previous = textItem;
-            textItem = card;
-            try {
-                Reflect.call(host, "updateItem", card);
-            } catch (ReflectiveOperationException | RuntimeException error) {
-                textItem = previous;
-                throw error;
-            }
-            textSignature = signature;
-        } catch (Exception e) {
-            android.util.Log.w(DressroomModule.TAG, "Custom Now Bar unavailable", e);
-        }
-    }
-
-    private static View textView(String title, String message, boolean expanded) {
-        LinearLayout rows = new LinearLayout(context);
-        rows.setOrientation(LinearLayout.VERTICAL);
-        rows.setGravity(android.view.Gravity.CENTER_VERTICAL);
-        int p = Math.round(16 * context.getResources().getDisplayMetrics().density);
-        rows.setPadding(p, p / 2, p, p / 2);
-        TextView heading = new TextView(context);
-        heading.setText(title);
-        heading.setTextSize(15);
-        heading.setTextColor(Color.WHITE);
-        heading.setMaxLines(expanded ? 3 : 1);
-        heading.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        rows.addView(heading);
-        if (!message.isEmpty()) {
-            TextView body = new TextView(context);
-            body.setText(message);
-            body.setTextSize(12);
-            body.setTextColor(0xffdddddd);
-            body.setMaxLines(expanded ? 5 : 1);
-            body.setEllipsize(android.text.TextUtils.TruncateAt.END);
-            rows.addView(body);
-        }
-        rows.setContentDescription(title + " " + message);
-        return rows;
+        DiyNowBarPublisher.sync(host, context, loader);
     }
 }
