@@ -60,8 +60,8 @@ public final class FontPickerActivity extends Activity {
                         imported.putString(
                                 "error",
                                 error.getMessage() == null
-                                        ? "Could not load this font"
-                                        : error.getMessage());
+                                        ? L10n.t("Could not load this font")
+                                        : L10n.t(error.getMessage()));
                     }
                     FontFiles.complete(getApplicationContext(), token, imported);
                     active.remove(token);
@@ -83,7 +83,7 @@ public final class FontPickerActivity extends Activity {
 
     private void finishWithError(String message) {
         Bundle result = new Bundle();
-        result.putString("error", message);
+        result.putString("error", L10n.t(message));
         FontFiles.complete(this, token, result);
         finish();
     }

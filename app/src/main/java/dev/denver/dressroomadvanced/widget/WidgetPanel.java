@@ -300,7 +300,7 @@ final class WidgetPanel {
                         "",
                         (next, value) -> next.putInt("rows", value),
                         true);
-                note("Grid capacity: " + b.getInt("columns") + " × " + b.getInt("rows") + ".");
+                note(L10n.t("Grid capacity: ") + b.getInt("columns") + " × " + b.getInt("rows") + ".");
             }
         } else note("Custom grid is unavailable for this editor/provider combination.");
         slider(
@@ -423,22 +423,23 @@ final class WidgetPanel {
         try {
             checkScreen();
             new android.app.AlertDialog.Builder(context)
-                    .setTitle("Wipe all widgets?")
+                    .setTitle(L10n.t("Wipe all widgets?"))
                     .setMessage(
-                            "Removes all lockscreen widgets, clears orphaned widget hosts, and"
-                                + " resets widget layout adjustments immediately.")
-                    .setNegativeButton("Cancel", null)
+                            L10n.t(
+                                    "Removes all lockscreen widgets, clears orphaned widget hosts,"
+                                        + " and resets widget layout adjustments immediately."))
+                    .setNegativeButton(L10n.t("Cancel"), null)
                     .setPositiveButton(
-                            "Wipe",
+                            L10n.t("Wipe"),
                             (dialog, which) -> {
                                 try {
                                     checkScreen();
                                     editor.wipeWidgets(context);
                                     render();
-                                    setStatus("Widgets wiped.");
+                                    setStatus(L10n.t("Widgets wiped."));
                                     android.widget.Toast.makeText(
                                                     context,
-                                                    "All lockscreen widgets wiped.",
+                                                    L10n.t("All lockscreen widgets wiped."),
                                                     android.widget.Toast.LENGTH_SHORT)
                                             .show();
                                 } catch (Exception e) {
@@ -545,7 +546,7 @@ final class WidgetPanel {
     private void blurSection(Bundle b, String title, String key) throws Exception {
         PanelRows.heading(label(title));
         boolean available = BlurAppearance.available(context, key);
-        toggle("Customize " + title.toLowerCase(java.util.Locale.ROOT) + " blur",
+        toggle(L10n.t("Customize " + title.toLowerCase(java.util.Locale.ROOT) + " blur"),
                 b.getBoolean(key + "Custom"),
                 next -> next.putBoolean(key + "Custom", !b.getBoolean(key + "Custom")), false);
         if (!available) {
@@ -617,13 +618,13 @@ final class WidgetPanel {
         PanelRows.heading(label(caption));
         android.widget.EditText input = new android.widget.EditText(context);
         input.setText(value);
-        input.setHint(caption);
+        input.setHint(L10n.t(caption));
         input.setSingleLine(true);
         input.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
         input.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_DONE);
         input.setFilters(
                 new android.text.InputFilter[] {new android.text.InputFilter.LengthFilter(limit)});
-        input.setContentDescription(caption);
+        input.setContentDescription(L10n.t(caption));
         add(input);
         input.addTextChangedListener(
                 new android.text.TextWatcher() {
@@ -678,7 +679,7 @@ final class WidgetPanel {
     private void toggle(String name, boolean checked, Edit edit, boolean structural)
             throws Exception {
         CompoundButton toggle = (CompoundButton) nativeView(EditorBinding.Row.TOGGLE);
-        toggle.setText(name);
+        toggle.setText(L10n.t(name));
         toggle.setChecked(checked);
         add(toggle);
         toggle.setOnCheckedChangeListener((v, value) -> change(edit, structural, true));
@@ -702,13 +703,15 @@ final class WidgetPanel {
         parent.addView(group, new LinearLayout.LayoutParams(-1, -2));
         TextView heading = label(name);
         PanelRows.heading(heading);
+        String[] labels = new String[entries.length];
+        for (int i = 0; i < entries.length; i++) labels[i] = L10n.t(entries[i]);
         Spinner spinner = new Spinner(context);
         ArrayAdapter<String> adapter =
-                new ArrayAdapter<>(context, android.R.layout.simple_spinner_item, entries);
+                new ArrayAdapter<>(context, android.R.layout.simple_spinner_item, labels);
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         spinner.setAdapter(adapter);
         spinner.setSelection(selected, false);
-        spinner.setContentDescription(name);
+        spinner.setContentDescription(L10n.t(name));
         spinner.setMinimumHeight(dp(48));
         spinner.setEnabled(enabled);
         add(spinner);
@@ -740,11 +743,11 @@ final class WidgetPanel {
         group = new LinearLayout(context);
         group.setOrientation(LinearLayout.VERTICAL);
         parent.addView(group, new LinearLayout.LayoutParams(-1, -2));
-        TextView caption = label(name + "   " + current + suffix);
+        TextView caption = label(L10n.t(name) + "   " + current + suffix);
         View slider = nativeView(EditorBinding.Row.SLIDER);
         Reflect.call(slider, "setMax", max - min);
         Reflect.call(slider, "setProgress", Math.max(0, Math.min(max - min, current - min)));
-        slider.setContentDescription(name);
+        slider.setContentDescription(L10n.t(name));
         add(slider);
         PanelRows.slider(group, caption, slider);
         group = parent;
@@ -768,7 +771,7 @@ final class WidgetPanel {
                             if (m.getName().equals("onProgressChanged")
                                     && Boolean.TRUE.equals(args[2])) {
                                 pending[0] = min + ((Number) args[1]).intValue();
-                                caption.setText(name + "   " + pending[0] + suffix);
+                                caption.setText(L10n.t(name) + "   " + pending[0] + suffix);
                                 if (name.equals("Widget scale")) {
                                     try {
                                         editor.previewScale(pending[0] / 100f);
@@ -832,7 +835,7 @@ final class WidgetPanel {
 
     private TextView label(String value) {
         TextView label = (TextView) nativeView(EditorBinding.Row.LABEL);
-        label.setText(value);
+        label.setText(L10n.t(value));
         PanelRows.text(label, false);
         add(label);
         return label;
@@ -889,7 +892,7 @@ final class WidgetPanel {
 
     private void setStatus(String message) {
         if (status == null) return;
-        status.setText(message);
+        status.setText(L10n.t(message));
         status.setVisibility(message == null || message.isBlank() ? View.GONE : View.VISIBLE);
     }
 

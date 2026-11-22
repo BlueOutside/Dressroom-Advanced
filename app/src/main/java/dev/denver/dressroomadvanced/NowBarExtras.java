@@ -582,7 +582,7 @@ final class NowBarExtras {
         int p = Math.round(16 * context.getResources().getDisplayMetrics().density);
         rows.setPadding(p, p / 2, p, p / 2);
         TextView heading = new TextView(context);
-        heading.setText(title);
+        heading.setText(L10n.t(title));
         heading.setTextSize(15);
         heading.setTextColor(Color.WHITE);
         heading.setMaxLines(expanded ? 3 : 1);
@@ -590,14 +590,14 @@ final class NowBarExtras {
         rows.addView(heading);
         if (!message.isEmpty()) {
             TextView body = new TextView(context);
-            body.setText(message);
+            body.setText(L10n.t(message));
             body.setTextSize(12);
             body.setTextColor(0xffdddddd);
             body.setMaxLines(expanded ? 5 : 1);
             body.setEllipsize(android.text.TextUtils.TruncateAt.END);
             rows.addView(body);
         }
-        rows.setContentDescription(title + " " + message);
+        rows.setContentDescription(L10n.t(title) + " " + L10n.t(message));
         return rows;
     }
 }

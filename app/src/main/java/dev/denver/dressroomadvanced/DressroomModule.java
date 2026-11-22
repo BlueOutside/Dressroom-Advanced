@@ -649,8 +649,8 @@ public final class DressroomModule extends XposedModule {
             android.widget.Toast.makeText(
                             context,
                             error.getMessage() == null
-                                    ? "Could not prepare settings. Try Apply again."
-                                    : error.getMessage(),
+                                    ? L10n.t("Could not prepare settings. Try Apply again.")
+                                    : L10n.t(error.getMessage()),
                             android.widget.Toast.LENGTH_LONG)
                     .show();
     }

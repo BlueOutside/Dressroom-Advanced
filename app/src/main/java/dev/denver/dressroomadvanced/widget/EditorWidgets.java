@@ -805,8 +805,10 @@ final class EditorWidgets {
                                                 || !module.widgetEngine.fits(grid(), next)) {
                                             android.widget.Toast.makeText(
                                                             context(),
-                                                            "These widgets need a larger grid for"
-                                                                    + " this arrangement.",
+                                                            L10n.t(
+                                                                    "These widgets need a larger"
+                                                                        + " grid for this"
+                                                                        + " arrangement."),
                                                             android.widget.Toast.LENGTH_LONG)
                                                     .show();
                                             return false;

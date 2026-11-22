@@ -139,6 +139,8 @@ final class PanelRows {
     }
 
     static void actionText(TextView view, String title, String summary) {
+        title = L10n.t(title);
+        summary = L10n.t(summary);
         if (summary == null || summary.isBlank()) {
             view.setText(title);
             return;

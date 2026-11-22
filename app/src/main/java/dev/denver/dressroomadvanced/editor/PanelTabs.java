@@ -20,7 +20,7 @@ final class PanelTabs {
         tabs.subTabs(strip);
         Reflect.call(strip, "setTabMode", 1);
         for (int i = 0; i < names.length; i++) {
-            tabs.add(strip, names[i], i == selected);
+            tabs.add(strip, L10n.t(names[i]), i == selected);
         }
         tabs.listen(
                 strip,

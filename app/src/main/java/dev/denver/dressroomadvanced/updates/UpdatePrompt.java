@@ -74,15 +74,15 @@ final class UpdatePrompt {
         }
         AlertDialog dialog =
                 new AlertDialog.Builder(host)
-                        .setTitle("Dressroom Advanced update")
+                        .setTitle(L10n.t("Dressroom Advanced update"))
                         .setMessage(
                                 update.getString("version")
-                                        + " is available. Installed: "
+                                        + L10n.t(" is available. Installed: ")
                                         + update.getString("installed")
-                                        + ". Download and install it?")
-                        .setNegativeButton("Cancel", null)
+                                        + L10n.t(". Download and install it?"))
+                        .setNegativeButton(L10n.t("Cancel"), null)
                         .setPositiveButton(
-                                "Update",
+                                L10n.t("Update"),
                                 (ignored, which) -> {
                                     Intent intent =
                                             new Intent()
@@ -96,7 +96,7 @@ final class UpdatePrompt {
                                     } catch (RuntimeException error) {
                                         android.widget.Toast.makeText(
                                                         host,
-                                                        "Could not open the updater",
+                                                        L10n.t("Could not open the updater"),
                                                         android.widget.Toast.LENGTH_LONG)
                                                 .show();
                                     }

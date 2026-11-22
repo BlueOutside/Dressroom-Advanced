@@ -54,10 +54,10 @@ public final class UpdateActivity extends Activity {
         content.addView(percent);
         dialog =
                 new AlertDialog.Builder(this)
-                        .setTitle("Downloading update")
+                        .setTitle(L10n.t("Downloading update"))
                         .setView(content)
                         .setNegativeButton(
-                                "Cancel",
+                                L10n.t("Cancel"),
                                 (d, which) -> {
                                     cancelled = true;
                                     finish();
@@ -165,17 +165,18 @@ public final class UpdateActivity extends Activity {
     }
 
     private void error(String message) {
+        message = L10n.t(message);
         waiting = false;
         if (cancelled || isFinishing() || isDestroyed()) return;
         if (dialog != null) dialog.dismiss();
         dialog =
                 new AlertDialog.Builder(this)
-                        .setTitle("Update failed")
+                        .setTitle(L10n.t("Update failed"))
                         .setMessage(
                                 message == null
-                                        ? "Could not download the update. Please try again later."
+                                        ? L10n.t("Could not download the update. Please try again later.")
                                         : message)
-                        .setPositiveButton("OK", (d, which) -> finish())
+                        .setPositiveButton(L10n.t("OK"), (d, which) -> finish())
                         .setOnCancelListener(d -> finish())
                         .create();
         dialog.setCanceledOnTouchOutside(false);

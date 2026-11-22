@@ -914,7 +914,7 @@ final class NativeClockPanel {
             final int segment = index;
             View control =
                     slider(
-                            "Segment " + (index + 1),
+                            L10n.t("Segment ") + (index + 1),
                             0,
                             100,
                             progress[index],
@@ -1523,14 +1523,14 @@ final class NativeClockPanel {
                     line, PanelRows.divider(context, Math.max(1, drawable.getIntrinsicHeight())));
         }
         TextView header = (TextView) nativeView(EditorBinding.Row.LABEL);
-        header.setText(name);
+        header.setText(L10n.t(name));
         PanelRows.heading(header);
         addNativeRow(header);
     }
 
     private TextView label(String text, int size, boolean bold) {
         TextView view = (TextView) nativeView(EditorBinding.Row.LABEL);
-        view.setText(text);
+        view.setText(L10n.t(text));
         PanelRows.text(view, size <= 13);
         addNativeRow(view);
         return view;
@@ -1539,7 +1539,7 @@ final class NativeClockPanel {
     private CompoundButton toggle(String name, boolean value, boolean enabled, ToggleEdit edit)
             throws Exception {
         CompoundButton control = (CompoundButton) nativeView(EditorBinding.Row.TOGGLE);
-        control.setText(name);
+        control.setText(L10n.t(name));
         control.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
         control.setChecked(value);
         control.setEnabled(enabled);
@@ -1691,7 +1691,7 @@ final class NativeClockPanel {
         parent.addView(currentGroup, new LinearLayout.LayoutParams(-1, -2));
         TextView caption =
                 label(
-                        name
+                        L10n.t(name)
                                 + "   "
                                 + (precision > 0 ? axisValue(current) : format(current, percent)),
                         15,
@@ -1705,7 +1705,7 @@ final class NativeClockPanel {
         Reflect.call(slider, "setMax", steps);
         int initial = max > min ? Math.round((current - min) * steps / (max - min)) : 0;
         Reflect.call(slider, "setProgress", Math.max(0, Math.min(steps, initial)));
-        slider.setContentDescription(name);
+        slider.setContentDescription(L10n.t(name));
         Class<?> listener =
                 Class.forName(
                         "androidx.appcompat.widget.SeslSeekBar$OnSeekBarChangeListener",
@@ -1722,7 +1722,7 @@ final class NativeClockPanel {
                                 float value =
                                         min + ((Number) args[1]).floatValue() * (max - min) / steps;
                                 caption.setText(
-                                        name
+                                        L10n.t(name)
                                                 + "   "
                                                 + (precision > 0
                                                         ? axisValue(value)
@@ -1907,7 +1907,7 @@ final class NativeClockPanel {
 
     private void setStatus(String message) {
         if (status == null) return;
-        status.setText(message);
+        status.setText(L10n.t(message));
         status.setVisibility(message == null || message.isBlank() ? View.GONE : View.VISIBLE);
     }
 
@@ -1919,8 +1919,10 @@ final class NativeClockPanel {
         }
         if (status != null)
             setStatus(
-                    "Could not update: "
-                            + (e.getMessage() == null ? "select Advanced again" : e.getMessage()));
+                    L10n.t("Could not update: ")
+                            + (e.getMessage() == null
+                                    ? L10n.t("select Advanced again")
+                                    : e.getMessage()));
     }
 
     private int dp(int value) {
