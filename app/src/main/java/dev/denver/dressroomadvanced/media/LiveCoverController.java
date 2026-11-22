@@ -120,6 +120,8 @@ final class LiveCoverController implements LiveCoverPlayer.FrameListener {
     private Bitmap ambientFrame;
     private Bitmap wakeAmbientArt;
     private AnimatedCoverProvider.AnimatedCoverAsset ambientDecodeAsset;
+    private long ambientDecodeGeneration;
+    private boolean ambientCaptureAttempted;
     private String ambientTrackKey = "";
     private Bitmap lastNativeArtwork;
     private boolean ambientArtworkIsLive;
@@ -137,6 +139,10 @@ final class LiveCoverController implements LiveCoverPlayer.FrameListener {
     private Bitmap contrastBuffer;
     private long lastContrastSampleUptimeMs;
     private boolean contrastSampleRequested;
+    private boolean screenOffBroadcast;
+    private final Runnable powerChanged = () -> {
+        if (attached) wakefulnessChanged(screenOffBroadcast || refreshPowerRestriction());
+    };
 
     private final DisplayManager.DisplayListener displayListener = new DisplayManager.DisplayListener() {
         @Override public void onDisplayAdded(int id) {}
@@ -156,8 +162,10 @@ final class LiveCoverController implements LiveCoverPlayer.FrameListener {
             new BroadcastReceiver() {
                 @Override
                 public void onReceive(Context ctx, Intent intent) {
-                    wakefulnessChanged(Intent.ACTION_SCREEN_OFF.equals(intent.getAction())
-                            || refreshPowerRestriction());
+                    // Finish broadcast delivery before touching surfaces or notifying blur hosts.
+                    screenOffBroadcast = Intent.ACTION_SCREEN_OFF.equals(intent.getAction());
+                    main.removeCallbacks(powerChanged);
+                    main.post(powerChanged);
                 }
             };
 
@@ -235,6 +243,7 @@ final class LiveCoverController implements LiveCoverPlayer.FrameListener {
     void onDetached() {
         if (!attached) return;
         attached = false;
+        main.removeCallbacks(powerChanged);
         MediaCoverWakefulness.remove(this);
         if (displays != null) displays.unregisterDisplayListener(displayListener);
         LiveMediaTracker.removeListener(trackChangedListener);
@@ -382,6 +391,8 @@ final class LiveCoverController implements LiveCoverPlayer.FrameListener {
     }
 
     void releaseAmbient() {
+        ambientDecodeGeneration++;
+        ambientCaptureAttempted = false;
         ambientFrame = lastNativeArtwork = null;
         ambientDecodeAsset = null;
         ambientTrackKey = "";
@@ -454,6 +465,8 @@ final class LiveCoverController implements LiveCoverPlayer.FrameListener {
         boolean dozing = isDozing();
         if (interactive() && !dozing
                 && (wasVisible || !MediaCoverWakefulness.sleeping && !MediaCoverWakefulness.panelDozing)) {
+            ambientDecodeGeneration++;
+            ambientCaptureAttempted = false;
             ambientFrame = null;
             ambientDecodeAsset = null;
             ambientTrackKey = "";
@@ -529,25 +542,27 @@ final class LiveCoverController implements LiveCoverPlayer.FrameListener {
     }
 
     private void captureAmbientFrame() {
-        if (!activeWanted || ambientFrame != null || ambientDecodeAsset != null) return;
+        if (!activeWanted || ambientCaptureAttempted || ambientFrame != null
+                || ambientDecodeAsset != null) return;
         ambientTrackSwitched = false;
         wakeAmbientArt = null;
         ambientTrackKey = activeRequestKey;
-        // Capture once at full preview resolution before pausing; fall back to off-thread decode.
-        Bitmap frame = captureTextureFrame(SNAPSHOT_MAX_SIDE);
-        if (frame != null) {
-            showFrozenFrame(frame);
-            ambientFrame = frame;
-            ambientArtworkIsLive = true;
-        }
         AnimatedCoverProvider.AnimatedCoverAsset asset = activeAsset;
         pausedForPower = true;
+        // The worker records the paused position before decoding the full-resolution still.
+        // TextureView.getBitmap() here can synchronously wait on HWUI during screen-off.
         player.pauseAndHide();
-        if (frame != null || asset == null || !asset.isPlayableLocalFile()) return;
+        if (asset == null || !asset.isPlayableLocalFile()) return;
+        ambientCaptureAttempted = true;
+        long generation = ++ambientDecodeGeneration;
         ambientDecodeAsset = asset;
         player.readPausedFrame(asset.videoFile(), decoded -> {
-            if (!attached || ambientDecodeAsset != asset) return;
-            showAmbientVideoFrame(decoded);
+            if (!attached || generation != ambientDecodeGeneration || ambientDecodeAsset != asset) {
+                if (decoded != null) decoded.recycle();
+                return;
+            }
+            ambientDecodeAsset = null;
+            if (decoded != null) showAmbientVideoFrame(decoded);
         });
     }
 
@@ -563,6 +578,11 @@ final class LiveCoverController implements LiveCoverPlayer.FrameListener {
 
     private void freezeFrame() {
         if (pausedForPower) return;
+        if (nativeDozing || MediaCoverWakefulness.sleeping || MediaCoverWakefulness.panelDozing
+                || isDozing() || !interactive()) {
+            captureAmbientFrame();
+            return;
+        }
         pausedForPower = true;
         if (frozenFrame == null && activeWanted) {
             Bitmap frame = captureFrame(SNAPSHOT_MAX_SIDE);
@@ -964,6 +984,8 @@ final class LiveCoverController implements LiveCoverPlayer.FrameListener {
         int sourceMode = currentSourceMode();
         String key = trackRequestKey(query, sourceMode);
         if (key.equals(ambientTrackKey)) return;
+        long generation = ++ambientDecodeGeneration;
+        ambientCaptureAttempted = true;
         ambientTrackKey = key;
         ambientDecodeAsset = null;
         ambientAwaitingArtwork = true;
@@ -988,7 +1010,8 @@ final class LiveCoverController implements LiveCoverPlayer.FrameListener {
         invalidateCover();
         if (!animated) return;
         requestCover(query, sourceMode).whenComplete((asset, error) -> main.post(() -> {
-            if (!attached || !key.equals(ambientTrackKey) || (interactive() && !isDozing())) return;
+            if (!attached || generation != ambientDecodeGeneration
+                    || !key.equals(ambientTrackKey) || (interactive() && !isDozing())) return;
             if (asset == null) {
                 if (ambientAwaitingArtwork && artwork != null) {
                     ambientFrame = artwork;
@@ -1000,8 +1023,13 @@ final class LiveCoverController implements LiveCoverPlayer.FrameListener {
             }
             ambientDecodeAsset = asset;
             player.readOpeningFrame(asset, frame -> {
-                if (attached && key.equals(ambientTrackKey) && ambientDecodeAsset == asset)
-                    showAmbientVideoFrame(frame);
+                if (!attached || generation != ambientDecodeGeneration
+                        || !key.equals(ambientTrackKey) || ambientDecodeAsset != asset) {
+                    if (frame != null) frame.recycle();
+                    return;
+                }
+                ambientDecodeAsset = null;
+                if (frame != null) showAmbientVideoFrame(frame);
             });
         }));
     }

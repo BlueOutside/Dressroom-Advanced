@@ -2212,43 +2212,43 @@
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/media/LiveCoverController.java",
-      "line": 691,
+      "line": 711,
       "kind": "class",
       "target": "android.graphics.TextureLayer"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/media/LiveCoverController.java",
-      "line": 692,
+      "line": 712,
       "kind": "class",
       "target": "android.graphics.RecordingCanvas"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/media/LiveCoverController.java",
-      "line": 693,
+      "line": 713,
       "kind": "declared-method",
       "target": "getTextureLayer"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/media/LiveCoverController.java",
-      "line": 696,
+      "line": 716,
       "kind": "declared-method",
       "target": "drawTextureLayer"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/media/LiveCoverController.java",
-      "line": 1199,
+      "line": 1227,
       "kind": "class",
       "target": "com.samsung.android.graphics.RenderEffectImageFilter"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/media/LiveCoverController.java",
-      "line": 1201,
+      "line": 1229,
       "kind": "public-method",
       "target": "setBlurRadius"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/media/LiveCoverController.java",
-      "line": 1203,
+      "line": 1231,
       "kind": "public-method",
       "target": "build"
     },

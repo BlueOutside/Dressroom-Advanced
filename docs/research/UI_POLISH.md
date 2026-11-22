@@ -1,5 +1,34 @@
 # Lockscreen UI polish on One UI 8.5 and 9.0
 
+## Live cover screen-off ANR, 2026-11-22
+
+A reported SystemUI ANR names LiveCoverController's SCREEN_OFF receiver. The
+summary shows heavy CPU load but has no main-thread stack, so the exact blocked
+operation is unconfirmed. The receiver previously ran the sleep transition
+inline, including a full-resolution TextureView.getBitmap readback. That can
+wait synchronously for HWUI/GPU work during the doze transition.
+
+Power broadcasts now enqueue a coalesced update and return. Sleep/doze stills
+use the existing codec worker: pause records the playback position before the
+full-resolution frame is decoded from the local video. The doze freeze path
+uses the same asynchronous route. Native artwork can cover the short wait.
+Ordinary awake cover transitions and sampling are unchanged.
+
+Decode completions report failure as well as success, clear pending ownership,
+and reject results from an old sleep cycle, track or detached host. A failed
+sleep capture is not retried on every draw; a later wake/sleep or track change
+can try again. No provider-specific or obfuscated binding is introduced.
+
+The signed 2.0.6-screen-off-fix APK (version code 20006014) builds; all 29 JVM
+suites, repository/layout checks and the regenerated inventory pass. Compiled
+receiver bytecode confirms that onReceive only updates the pending state and
+queues the handler task, with no playback or frame capture inline. The reporter's
+full ANR main-thread stack and an affected-device sleep/wake check remain needed
+to confirm the ANR is resolved; the summary alone cannot establish that.
+The supplied LogFox crash-com-android-systemui-22_11-12-58-46_848 export contains
+only the same ActivityManager summary plus app/device metadata, with no thread
+stacks. Its app metadata reports SystemUI 17 / SDK 37.
+
 ## Lyrics timing and layout, 2026-11-22
 
 Inspected Apple Music's `PlayerLyricsViewFragment` through JADX MCP, renamed its

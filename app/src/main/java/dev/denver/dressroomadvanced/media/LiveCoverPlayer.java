@@ -192,17 +192,19 @@ final class LiveCoverPlayer implements TextureView.SurfaceTextureListener {
     private void readStill(File file, int width, int height, LongSupplier position,
             int option, Consumer<Bitmap> ready) {
         worker().post(() -> {
+            Bitmap frame = null;
             try (MediaMetadataRetriever retriever = new MediaMetadataRetriever()) {
                 retriever.setDataSource(file.getAbsolutePath());
                 float scale = Math.min(1f, 1440f / Math.max(width, height));
-                Bitmap frame = width > 0 && height > 0
+                frame = width > 0 && height > 0
                         ? retriever.getScaledFrameAtTime(position.getAsLong(), option,
                                 Math.max(1, Math.round(width * scale)), Math.max(1, Math.round(height * scale)))
                         : retriever.getFrameAtTime(position.getAsLong(), option);
-                if (frame != null) main.post(() -> ready.accept(frame));
             } catch (IOException | RuntimeException error) {
                 DressroomModule.note("Live artwork doze frame unavailable", error);
             }
+            Bitmap result = frame;
+            main.post(() -> ready.accept(result));
         });
     }
 
