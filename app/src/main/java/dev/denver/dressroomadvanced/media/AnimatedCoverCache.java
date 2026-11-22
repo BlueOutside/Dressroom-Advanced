@@ -108,7 +108,7 @@ final class AnimatedCoverCache {
             File aliasFile = new File(cacheDir, aliasHash + ".alias");
             if (!aliasFile.isFile()) return null;
             try {
-                String targetAssetKey = Files.readString(aliasFile.toPath(), StandardCharsets.UTF_8).trim();
+                String targetAssetKey = new String(Files.readAllBytes(aliasFile.toPath()), StandardCharsets.UTF_8).trim();
                 if (targetAssetKey.isEmpty()) return null;
                 AnimatedCoverProvider.AnimatedCoverAsset asset = getByAssetKey(targetAssetKey);
                 if (asset == null) {
@@ -132,7 +132,7 @@ final class AnimatedCoverCache {
             if (!cacheDir.isDirectory() && !cacheDir.mkdirs()) return;
             File aliasFile = new File(cacheDir, aliasHash + ".alias");
             try {
-                Files.writeString(aliasFile.toPath(), assetKey, StandardCharsets.UTF_8);
+                Files.write(aliasFile.toPath(), assetKey.getBytes(StandardCharsets.UTF_8));
                 touchQuietly(aliasFile, clockMs.getAsLong());
             } catch (IOException ignored) {
             }
@@ -175,7 +175,7 @@ final class AnimatedCoverCache {
                 touchQuietly(finalMp4, now);
                 String metaText =
                         encodeMetadata(providerId, assetKey, streamUrl, width, height, tallPortrait, now);
-                Files.writeString(metaFile.toPath(), metaText, StandardCharsets.UTF_8);
+                Files.write(metaFile.toPath(), metaText.getBytes(StandardCharsets.UTF_8));
                 touchQuietly(metaFile, now);
                 evictIfOverBudgetLocked(finalMp4);
                 return new AnimatedCoverProvider.AnimatedCoverAsset(

@@ -11,10 +11,13 @@ import android.graphics.Canvas;
 import android.graphics.Outline;
 import android.graphics.Paint;
 import android.graphics.RectF;
+import android.graphics.RenderEffect;
+import android.graphics.Shader;
 import android.hardware.display.DisplayManager;
 import android.net.ConnectivityManager;
 import android.net.Network;
 import android.net.NetworkCapabilities;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.PowerManager;
@@ -1152,6 +1155,47 @@ final class LiveCoverController implements LiveCoverPlayer.FrameListener {
         return null;
     }
 
+    private boolean lyricsBlurActive = false;
+
+    void setLyricsBlur(boolean active) {
+        if (this.lyricsBlurActive != active) {
+            this.lyricsBlurActive = active;
+            main.post(this::updateRealtimeBlur);
+        }
+    }
+
+    private void updateRealtimeBlur() {
+        if (Build.VERSION.SDK_INT < 31) return;
+        if (surfaceHost == null) return;
+        if (lyricsBlurActive) {
+            int w = surfaceHost.getWidth() > 0 ? surfaceHost.getWidth() : layoutWidth;
+            int h = surfaceHost.getHeight() > 0 ? surfaceHost.getHeight() : layoutHeight;
+            if (w <= 0 || h <= 0) {
+                var dm = surfaceHost.getResources().getDisplayMetrics();
+                w = dm.widthPixels;
+                h = dm.heightPixels;
+            }
+            RenderEffect effect = createRealtimeBlur(120f, w, h);
+            surfaceHost.setRenderEffect(effect);
+        } else {
+            surfaceHost.setRenderEffect(null);
+        }
+    }
+
+    private static RenderEffect createRealtimeBlur(float radius, int width, int height) {
+        if (Build.VERSION.SDK_INT < 31) return null;
+        try {
+            Class<?> type = Class.forName("com.samsung.android.graphics.RenderEffectImageFilter");
+            Object samsung = type.getConstructor().newInstance();
+            Method setRadius = type.getMethod("setBlurRadius", float.class);
+            setRadius.invoke(samsung, radius);
+            Method build = type.getMethod("build", int.class, int.class);
+            RenderEffect effect = (RenderEffect) build.invoke(samsung, Math.max(1, width), Math.max(1, height));
+            if (effect != null) return effect;
+        } catch (Throwable ignored) {}
+        return RenderEffect.createBlurEffect(radius, radius, Shader.TileMode.CLAMP);
+    }
+
     private void applyGeometry(int l, int t, int w, int h, float cornerRadius) {
         boolean radiusChanged = Math.abs(outlineCornerRadius - cornerRadius) > 0.5f;
         if (radiusChanged) {
@@ -1181,6 +1225,9 @@ final class LiveCoverController implements LiveCoverPlayer.FrameListener {
                     View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY),
                     View.MeasureSpec.makeMeasureSpec(h, View.MeasureSpec.EXACTLY));
             surfaceHost.layout(l, t, l + w, t + h);
+        }
+        if (lyricsBlurActive) {
+            updateRealtimeBlur();
         }
     }
 

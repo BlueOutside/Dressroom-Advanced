@@ -564,6 +564,30 @@ final class WidgetPanel {
         extraToggle(b, "Hide clock in expanded player", MediaClockVisibility.KEY);
         if (!editor.earlyClockEditor())
             extraToggle(b, "Fade widgets when opening the player", MediaWidgetFade.KEY);
+        boolean lyricsEnabled = b.getBoolean("lockscreenLyrics", true);
+        toggle(
+                "Lockscreen lyrics",
+                lyricsEnabled,
+                next -> next.putBoolean("lockscreenLyrics", !lyricsEnabled),
+                false);
+        note("Displays synced or plain lyrics in the expanded media player.");
+        if (lyricsEnabled) {
+            boolean syncedHighlight = b.getBoolean("lyricsSyncedHighlight", true);
+            toggle(
+                    "Synced lyrics auto-scroll",
+                    syncedHighlight,
+                    next -> next.putBoolean("lyricsSyncedHighlight", !syncedHighlight),
+                    false);
+            slider(
+                    "Lyrics text size",
+                    18,
+                    36,
+                    b.getInt("lyricsTextSize", 28),
+                    " sp",
+                    (next, value) -> next.putInt("lyricsTextSize", value),
+                    false);
+            renderLyricsCacheSection();
+        }
         if (editor.stackAvailable()) {
             slider(
                     "Visible cards",
@@ -640,6 +664,47 @@ final class WidgetPanel {
         group = content;
         status = label("");
         status.setVisibility(View.GONE);
+    }
+
+    private void renderLyricsCacheSection() {
+        int count = 0;
+        String formattedSize = "0 B";
+        try {
+            Bundle info = context.getContentResolver()
+                    .call(SettingsProvider.URI, "getLyricsCacheInfo", null, null);
+            if (info != null) {
+                count = info.getInt("count", 0);
+                formattedSize = info.getString("formattedSize", "0 B");
+            }
+        } catch (Exception ignored) {}
+
+        TextView clearBtn = label("Clear lyrics cache");
+        PanelRows.action(clearBtn, "Clear lyrics cache", "Cached: " + count + " tracks (" + formattedSize + ")");
+        final String sizeForDialog = formattedSize;
+        clearBtn.setOnClickListener(v -> {
+            try {
+                checkScreen();
+                new android.app.AlertDialog.Builder(context)
+                        .setTitle("Clear lyrics cache?")
+                        .setMessage("Delete all saved offline lyrics (" + sizeForDialog + ")?")
+                        .setNegativeButton("Cancel", null)
+                        .setPositiveButton("Clear", (dialog, which) -> {
+                            try {
+                                checkScreen();
+                                context.getContentResolver()
+                                        .call(SettingsProvider.URI, "clearLyricsCache", null, null);
+                                render();
+                                setStatus("Lyrics cache cleared.");
+                                android.widget.Toast.makeText(context, "Lyrics cache cleared", android.widget.Toast.LENGTH_SHORT).show();
+                            } catch (Exception e) {
+                                error(e);
+                            }
+                        })
+                        .show();
+            } catch (Exception e) {
+                error(e);
+            }
+        });
     }
 
     private String diyNowBarSummary() {

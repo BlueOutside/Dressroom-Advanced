@@ -15,6 +15,11 @@ $buildRoot=[IO.Path]::GetFullPath($BuildDir)
 if(-not $SkipBuild){& (Join-Path $project 'build-local.ps1') -Sdk $Sdk -BuildDir $buildRoot}
 $moduleJar=Join-Path $buildRoot 'module.jar'
 if(-not(Test-Path -LiteralPath $moduleJar)){throw 'Build the module first or omit -SkipBuild'}
+$jsonJar=Join-Path $buildRoot 'test-libs/org.json-20240303.jar'
+if(-not(Test-Path -LiteralPath $jsonJar)){
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $jsonJar) | Out-Null
+    Invoke-WebRequest -Uri 'https://repo.maven.apache.org/maven2/org/json/json/20240303/json-20240303.jar' -OutFile $jsonJar
+}
 $suites=Get-Content (Join-Path $project 'tests/suites.json') -Raw | ConvertFrom-Json
 $names=@($suites.$Suite)
 $sources=@(foreach($name in $names){
@@ -27,11 +32,11 @@ $apiJar=Join-Path $buildRoot 'api/classes.jar'
 $testRoot=Join-Path $buildRoot "tests/$Suite"
 $classes=Join-Path $testRoot 'classes'
 New-Item -ItemType Directory -Force -Path $classes | Out-Null
-Invoke-ProjectTool 'javac' (@('--release','17','-encoding','UTF-8','-classpath',"$androidJar;$moduleJar;$apiJar",'-d',$classes)+$sources)
+Invoke-ProjectTool 'javac' (@('--release','17','-encoding','UTF-8','-classpath',"$jsonJar;$androidJar;$moduleJar;$apiJar",'-d',$classes)+$sources)
 $results=[Collections.Generic.List[string]]::new()
 if($Suite -eq 'Jvm'){
     foreach($name in $names){
-        $output=@(Invoke-ProjectTool 'java' @('-classpath',"$classes;$moduleJar;$androidJar", "dev.denver.dressroomadvanced.$name"))
+        $output=@(Invoke-ProjectTool 'java' @('-classpath',"$classes;$jsonJar;$moduleJar;$androidJar", "dev.denver.dressroomadvanced.$name"))
         foreach($line in $output){$results.Add("$line");Write-Output $line}
     }
 }else{
