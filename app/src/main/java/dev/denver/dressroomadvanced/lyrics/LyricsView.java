@@ -107,7 +107,7 @@ public final class LyricsView extends FrameLayout {
         headerTitleView = new TextView(context);
         headerTitleView.setTextColor(Color.WHITE);
         headerTitleView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17);
-        headerTitleView.setTypeface(Typeface.DEFAULT_BOLD);
+        headerTitleView.setTypeface(getLyricsTypeface(context));
         headerTitleView.setSingleLine(true);
         headerTitleView.setEllipsize(TextUtils.TruncateAt.END);
         headerTitleView.setShadowLayer(4f, 0f, 2f, Color.argb(160, 0, 0, 0));
@@ -206,7 +206,7 @@ public final class LyricsView extends FrameLayout {
         plainLyricsView = new TextView(context);
         plainLyricsView.setTextColor(Color.WHITE);
         plainLyricsView.setTextSize(TypedValue.COMPLEX_UNIT_SP, textSizeSp);
-        plainLyricsView.setTypeface(getLyricsTypeface());
+        plainLyricsView.setTypeface(getLyricsTypeface(context));
         plainLyricsView.setShadowLayer(8f, 0f, 3f, Color.argb(160, 0, 0, 0));
         plainLyricsView.setLineSpacing(dpToPx(8), 1.25f);
         plainLyricsView.setGravity(Gravity.START);
@@ -300,7 +300,7 @@ public final class LyricsView extends FrameLayout {
                 TextView lineTv = new TextView(ctx);
                 lineTv.setText(line.text());
                 lineTv.setTextSize(TypedValue.COMPLEX_UNIT_SP, textSizeSp);
-                lineTv.setTypeface(getLyricsTypeface());
+                lineTv.setTypeface(getLyricsTypeface(ctx));
                 lineTv.setTextColor(Color.WHITE);
                 lineTv.setShadowLayer(8f, 0f, 3f, Color.argb(160, 0, 0, 0));
                 lineTv.setAlpha(0.38f);
@@ -371,12 +371,44 @@ public final class LyricsView extends FrameLayout {
         }
     }
 
-    private static Typeface getLyricsTypeface() {
-        if (android.os.Build.VERSION.SDK_INT >= 28) {
-            return Typeface.create(Typeface.SANS_SERIF, 800, false);
-        } else {
-            return Typeface.create("sans-serif", Typeface.BOLD);
+    private static Typeface cachedSfProHeavy;
+
+    private static Typeface getLyricsTypeface(Context context) {
+        if (cachedSfProHeavy != null) return cachedSfProHeavy;
+
+        if (context != null) {
+            try {
+                Context modCtx = context.createPackageContext(
+                        "dev.denver.dressroomadvanced",
+                        Context.CONTEXT_IGNORE_SECURITY);
+                cachedSfProHeavy = Typeface.createFromAsset(
+                        modCtx.getAssets(),
+                        "fonts/SF-Pro-Display-Heavy.otf");
+                if (cachedSfProHeavy != null) {
+                    android.util.Log.i("DressroomLyrics", "Loaded SF Pro Display Heavy font from module assets");
+                    return cachedSfProHeavy;
+                }
+            } catch (Throwable t) {
+                android.util.Log.w("DressroomLyrics", "Could not load SF Pro from module context: " + t.getMessage());
+            }
+
+            try {
+                cachedSfProHeavy = Typeface.createFromAsset(
+                        context.getAssets(),
+                        "fonts/SF-Pro-Display-Heavy.otf");
+                if (cachedSfProHeavy != null) {
+                    android.util.Log.i("DressroomLyrics", "Loaded SF Pro Display Heavy font from local context");
+                    return cachedSfProHeavy;
+                }
+            } catch (Throwable ignored) {}
         }
+
+        if (android.os.Build.VERSION.SDK_INT >= 28) {
+            cachedSfProHeavy = Typeface.create(Typeface.SANS_SERIF, 800, false);
+        } else {
+            cachedSfProHeavy = Typeface.create("sans-serif", Typeface.BOLD);
+        }
+        return cachedSfProHeavy;
     }
 
     @Override
