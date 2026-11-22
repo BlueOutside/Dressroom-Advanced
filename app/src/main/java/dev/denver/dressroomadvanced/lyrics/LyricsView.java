@@ -585,7 +585,7 @@ public final class LyricsView extends FrameLayout {
      */
     public static class LyricLineView extends TextView {
         private static final int COLOR_ACTIVE = 0xFFFFFFFF;
-        private static final int COLOR_INACTIVE = 0x60FFFFFF;
+        private static final int COLOR_INACTIVE = 0x55FFFFFF;
 
         private float progress = 0f;
         private boolean isActive = false;
@@ -606,7 +606,7 @@ public final class LyricsView extends FrameLayout {
 
         public void setProgress(float progress) {
             float clamped = Math.max(0f, Math.min(1f, progress));
-            if (Math.abs(this.progress - clamped) < 0.003f) return;
+            if (this.progress == clamped) return;
             this.progress = clamped;
             if (isActive) {
                 invalidate();
@@ -615,104 +615,95 @@ public final class LyricsView extends FrameLayout {
 
         @Override
         protected void onDraw(Canvas canvas) {
+            if (!isActive) {
+                super.onDraw(canvas);
+                return;
+            }
+
+            Layout layout = getLayout();
+            if (layout == null) {
+                super.onDraw(canvas);
+                return;
+            }
+
             TextPaint paint = getPaint();
             int origColor = paint.getColor();
             Shader origShader = paint.getShader();
 
+            int padLeft = getCompoundPaddingLeft();
+            int padTop = getCompoundPaddingTop();
+
             try {
-                if (!isActive) {
-                    paint.setShader(null);
-                    paint.setColor(COLOR_ACTIVE);
-                    super.onDraw(canvas);
-                    return;
-                }
+                // 1. Draw base unsung text in dim translucent white
+                canvas.save();
+                canvas.translate(padLeft, padTop);
+                paint.setShader(null);
+                paint.setColor(COLOR_INACTIVE);
+                layout.draw(canvas);
+                canvas.restore();
 
                 if (progress <= 0f) {
-                    paint.setShader(null);
-                    paint.setColor(COLOR_INACTIVE);
-                    super.onDraw(canvas);
                     return;
                 }
 
                 if (progress >= 1f) {
+                    // Fully sung line: solid bright white
+                    canvas.save();
+                    canvas.translate(padLeft, padTop);
                     paint.setShader(null);
                     paint.setColor(COLOR_ACTIVE);
-                    super.onDraw(canvas);
+                    layout.draw(canvas);
+                    canvas.restore();
                     return;
                 }
 
-                Layout layout = getLayout();
-                if (layout == null) {
-                    super.onDraw(canvas);
-                    return;
-                }
-
-                int lineCount = layout.getLineCount();
-                float totalWidth = getWidth();
-                if (totalWidth <= 0) {
-                    super.onDraw(canvas);
-                    return;
-                }
-
-                if (lineCount == 1) {
-                    float textWidth = layout.getLineWidth(0);
-                    float startX = layout.getLineLeft(0) + getCompoundPaddingLeft();
-                    float currX = startX + textWidth * progress;
-
-                    float ramp = dpToPx(24);
-                    float p1 = Math.max(0f, Math.min(1f, (currX - ramp) / totalWidth));
-                    float p2 = Math.max(0f, Math.min(1f, (currX + ramp * 0.4f) / totalWidth));
-                    if (p2 <= p1) p2 = Math.min(1f, p1 + 0.005f);
-
-                    LinearGradient shader = new LinearGradient(
-                            0, 0, totalWidth, 0,
-                            new int[]{COLOR_ACTIVE, COLOR_ACTIVE, COLOR_INACTIVE, COLOR_INACTIVE},
-                            new float[]{0f, p1, p2, 1f},
-                            Shader.TileMode.CLAMP);
-                    paint.setShader(shader);
-                    super.onDraw(canvas);
-                    paint.setShader(null);
-                    return;
-                }
-
-                // Multi-line lyric wipe
-                // 1. Draw inactive base text
-                paint.setShader(null);
-                paint.setColor(COLOR_INACTIVE);
-                super.onDraw(canvas);
-
-                // 2. Draw active text clipped to sung portion
                 int totalChars = getText().length();
                 if (totalChars == 0) return;
 
+                int lineCount = layout.getLineCount();
                 float charPos = progress * totalChars;
-                int activeChar = Math.min(totalChars - 1, (int) charPos);
-                int currentLine = layout.getLineForOffset(activeChar);
+                int activeChar = Math.min(totalChars - 1, Math.max(0, (int) charPos));
+                int activeLine = layout.getLineForOffset(activeChar);
 
-                paint.setColor(COLOR_ACTIVE);
-                int saveCount = canvas.save();
-
-                Path clipPath = new Path();
-                for (int i = 0; i < lineCount; i++) {
-                    int lineTop = layout.getLineTop(i) + getCompoundPaddingTop();
-                    int lineBottom = layout.getLineBottom(i) + getCompoundPaddingTop();
-                    float lineLeft = layout.getLineLeft(i) + getCompoundPaddingLeft();
-                    float lineRight = layout.getLineRight(i) + getCompoundPaddingLeft();
-
-                    if (i < currentLine) {
-                        clipPath.addRect(0, lineTop, totalWidth, lineBottom, Path.Direction.CW);
-                    } else if (i == currentLine) {
-                        int lineStart = layout.getLineStart(i);
-                        int lineEnd = layout.getLineEnd(i);
-                        float lineFrac = (charPos - lineStart) / Math.max(1f, (float)(lineEnd - lineStart));
-                        lineFrac = Math.max(0f, Math.min(1f, lineFrac));
-                        float currX = lineLeft + (lineRight - lineLeft) * lineFrac;
-                        clipPath.addRect(0, lineTop, currX, lineBottom, Path.Direction.CW);
-                    }
+                // 2a. Any lines before activeLine are fully sung -> draw full bright white
+                if (activeLine > 0) {
+                    canvas.save();
+                    canvas.translate(padLeft, padTop);
+                    canvas.clipRect(-dpToPx(10), layout.getLineTop(0), getWidth(), layout.getLineBottom(activeLine - 1));
+                    paint.setShader(null);
+                    paint.setColor(COLOR_ACTIVE);
+                    layout.draw(canvas);
+                    canvas.restore();
                 }
-                canvas.clipPath(clipPath);
-                super.onDraw(canvas);
-                canvas.restoreToCount(saveCount);
+
+                // 2b. The active line being sung -> smooth flowing white fill
+                int lineStart = layout.getLineStart(activeLine);
+                int lineEnd = layout.getLineEnd(activeLine);
+                float lineFrac = (charPos - lineStart) / Math.max(1f, (float) (lineEnd - lineStart));
+                lineFrac = Math.max(0f, Math.min(1f, lineFrac));
+
+                float lineLeft = layout.getLineLeft(activeLine);
+                float lineRight = layout.getLineRight(activeLine);
+                float currX = lineLeft + (lineRight - lineLeft) * lineFrac;
+
+                float ramp = dpToPx(18);
+                float x0 = currX - ramp;
+                float x1 = currX + ramp;
+                if (x1 <= x0) x1 = x0 + 1f;
+
+                LinearGradient shader = new LinearGradient(
+                        x0, 0, x1, 0,
+                        new int[]{COLOR_ACTIVE, 0x00FFFFFF},
+                        new float[]{0f, 1f},
+                        Shader.TileMode.CLAMP);
+
+                canvas.save();
+                canvas.translate(padLeft, padTop);
+                canvas.clipRect(-dpToPx(10), layout.getLineTop(activeLine), x1, layout.getLineBottom(activeLine));
+                paint.setColor(COLOR_ACTIVE);
+                paint.setShader(shader);
+                layout.draw(canvas);
+                canvas.restore();
 
             } finally {
                 paint.setColor(origColor);
