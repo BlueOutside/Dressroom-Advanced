@@ -1,39 +1,66 @@
 package dev.denver.dressroomadvanced;
 
+import android.content.Context;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.LinearLayout;
+import android.widget.TextView;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.function.IntConsumer;
 
 final class PanelTabs {
+    private final LinearLayout strip;
     private final Map<View, Integer> groups = new LinkedHashMap<>();
     private int selected;
     private final int pageCount;
 
-    PanelTabs(View strip, ClassLoader loader, String[] names, int initial, IntConsumer changed)
-            throws ReflectiveOperationException {
+    PanelTabs(
+            Context context,
+            String[] names,
+            int initial,
+            int horizontalInsetPx,
+            IntConsumer changed) {
         pageCount = names.length;
         selected = Math.max(0, Math.min(names.length - 1, initial));
-        NativeTabs tabs = NativeTabs.of(strip);
-        tabs.subTabs(strip);
-        Reflect.call(strip, "setTabMode", 1);
+        strip = new LinearLayout(context);
+        strip.setOrientation(LinearLayout.HORIZONTAL);
+        strip.setClipChildren(false);
+        strip.setClipToPadding(false);
+        LinearLayout.LayoutParams stripLayout = new LinearLayout.LayoutParams(-1, -2);
+        stripLayout.setMarginStart(horizontalInsetPx);
+        stripLayout.setMarginEnd(horizontalInsetPx);
+        stripLayout.topMargin = PanelRows.dp(context, 10);
+        stripLayout.bottomMargin = PanelRows.dp(context, 6);
+        strip.setLayoutParams(stripLayout);
+
+        TextView[] buttons = new TextView[names.length];
         for (int i = 0; i < names.length; i++) {
-            tabs.add(strip, names[i], i == selected);
+            final int index = i;
+            TextView button = new TextView(context);
+            button.setText(names[i]);
+            LinearLayout.LayoutParams buttonLayout =
+                    new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+            if (i > 0) buttonLayout.setMarginStart(PanelRows.dp(context, 8));
+            strip.addView(button, buttonLayout);
+            PanelRows.tabButton(button, i == selected);
+            buttons[i] = button;
+            button.setOnClickListener(
+                    v -> {
+                        if (selected == index) return;
+                        selected = index;
+                        for (int j = 0; j < buttons.length; j++) {
+                            PanelRows.tabButton(buttons[j], j == selected);
+                        }
+                        update();
+                        changed.accept(selected);
+                    });
         }
-        tabs.listen(
-                strip,
-                NativeClockPanel.proxy(
-                        tabs.listener,
-                        (method, args) -> {
-                            if (method.getName().equals("onTabSelected")) {
-                                selected = tabs.position(args[0]);
-                                update();
-                                changed.accept(selected);
-                            }
-                            return null;
-                        }));
+    }
+
+    View strip() {
+        return strip;
     }
 
     void clear() {

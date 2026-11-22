@@ -6,7 +6,7 @@
     "Constructors, method signatures, enum values and behavioral contracts",
     "Resource names matched by traversal rather than getIdentifier literals"
   ],
-  "sourceFiles": 218,
+  "sourceFiles": 221,
   "entries": [
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/DressroomModule.java",
@@ -64,31 +64,31 @@
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/DressroomModule.java",
-      "line": 1695,
+      "line": 1700,
       "kind": "class",
       "target": "com.samsung.android.lockscreen.editor.item.domain.entity.item.clock.ClockStretchData"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/DressroomModule.java",
-      "line": 1699,
+      "line": 1704,
       "kind": "declared-method",
       "target": "setFontHeight"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/DressroomModule.java",
-      "line": 1783,
+      "line": 1788,
       "kind": "class",
       "target": "com.samsung.android.lockscreen.editor.item.domain.entity.item.clock.ClockData"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/DressroomModule.java",
-      "line": 1810,
+      "line": 1815,
       "kind": "class",
       "target": "com.samsung.android.clockpack.plugins.clock.ClockView"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/DressroomModule.java",
-      "line": 1813,
+      "line": 1818,
       "kind": "class",
       "target": "com.samsung.android.clockpack.plugins.clock.extension.ClockBlurExtension"
     },
@@ -646,55 +646,55 @@
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/NativeClockPanel.java",
-      "line": 1091,
+      "line": 1097,
       "kind": "class",
       "target": "com.samsung.android.clockpack.plugins.clock.extension."
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/NativeClockPanel.java",
-      "line": 1128,
+      "line": 1134,
       "kind": "class",
       "target": "kotlin.jvm.functions.Function1"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/NativeClockPanel.java",
-      "line": 1418,
+      "line": 1424,
       "kind": "class",
       "target": "com.samsung.android.clockpack.plugins.clock.ShadowStyle"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/NativeClockPanel.java",
-      "line": 1453,
+      "line": 1459,
       "kind": "class",
       "target": "com.samsung.android.lockscreen.editor.item.domain.entity.item.clock.ClockDataKt"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/NativeClockPanel.java",
-      "line": 1456,
+      "line": 1462,
       "kind": "declared-method",
       "target": "deepCopy"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/NativeClockPanel.java",
-      "line": 1791,
+      "line": 1797,
       "kind": "class",
       "target": "androidx.appcompat.widget.SeslSeekBar$OnSeekBarChangeListener"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/NativeClockPanel.java",
-      "line": 1896,
+      "line": 1898,
       "kind": "class",
       "target": "androidx.picker3.app.SeslColorPickerDialog$OnColorSetListener"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/NativeClockPanel.java",
-      "line": 1917,
+      "line": 1919,
       "kind": "class",
       "target": "androidx.picker3.app.SeslColorPickerDialog"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/NativeClockPanel.java",
-      "line": 1926,
+      "line": 1928,
       "kind": "class",
       "target": "androidx.picker3.widget.SeslColorPicker$OnColorChangedListener"
     },
@@ -2079,6 +2079,42 @@
       "target": "p"
     },
     {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/editor/NativeTabs.java",
+      "line": 110,
+      "kind": "resource",
+      "target": "clock_panel_unselected_tab_text_color"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/editor/NativeTabs.java",
+      "line": 115,
+      "kind": "resource",
+      "target": "clock_panel_selected_tab_text_color"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/editor/NativeTabs.java",
+      "line": 120,
+      "kind": "resource",
+      "target": "clock_panel_selected_tab_background_color"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/editor/PanelRows.java",
+      "line": 204,
+      "kind": "class",
+      "target": "androidx.appcompat.graphics.drawable.SeslRecoilDrawable"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/editor/PanelRows.java",
+      "line": 228,
+      "kind": "resource",
+      "target": "sesl_recoil_card_selector"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/editor/PanelRows.java",
+      "line": 229,
+      "kind": "resource",
+      "target": "sesl_recoil_button_selector"
+    },
+    {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/media/ArtworkBlurFilter.java",
       "line": 38,
       "kind": "class",
@@ -2143,6 +2179,30 @@
       "line": 17,
       "kind": "class",
       "target": "com.airbnb.lottie.value.LottieValueCallback"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/media/LiveCoverController.java",
+      "line": 678,
+      "kind": "class",
+      "target": "android.graphics.TextureLayer"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/media/LiveCoverController.java",
+      "line": 679,
+      "kind": "class",
+      "target": "android.graphics.RecordingCanvas"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/media/LiveCoverController.java",
+      "line": 680,
+      "kind": "declared-method",
+      "target": "getTextureLayer"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/media/LiveCoverController.java",
+      "line": 683,
+      "kind": "declared-method",
+      "target": "drawTextureLayer"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/media/MediaArtworkRefresh.java",
@@ -2254,13 +2314,13 @@
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/media/MediaClockContrast.java",
-      "line": 1338,
+      "line": 1346,
       "kind": "declared-method",
       "target": "onDraw"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/media/MediaClockContrast.java",
-      "line": 1386,
+      "line": 1394,
       "kind": "declared-method",
       "target": "setTextColor"
     },
@@ -2290,25 +2350,25 @@
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/media/MediaFullscreenExtras.java",
-      "line": 1734,
+      "line": 1759,
       "kind": "class",
       "target": "com.samsung.android.uniform.nowbar.MediaMaskingFrameLayout"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/media/MediaFullscreenExtras.java",
-      "line": 1740,
+      "line": 1765,
       "kind": "declared-method",
       "target": "setAnimationProgress"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/media/MediaFullscreenExtras.java",
-      "line": 1741,
+      "line": 1766,
       "kind": "declared-method",
       "target": "setRandomOffset"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/media/MediaFullscreenExtras.java",
-      "line": 1743,
+      "line": 1768,
       "kind": "declared-method",
       "target": "start"
     },
@@ -2341,6 +2401,156 @@
       "line": 136,
       "kind": "declared-method",
       "target": "dispatchTouchEvent"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/media/MediaStatusBarContrast.java",
+      "line": 205,
+      "kind": "class",
+      "target": "com.android.systemui.statusbar.phone.KeyguardStatusBarWallpaperHelper"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/media/MediaStatusBarContrast.java",
+      "line": 210,
+      "kind": "class",
+      "target": "com.android.systemui.statusbar.phone.KeyguardStatusBarView"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/media/MediaStatusBarContrast.java",
+      "line": 215,
+      "kind": "class",
+      "target": "com.android.systemui.statusbar.phone.KeyguardStatusBarWallpaperListener"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/media/MediaStatusBarContrast.java",
+      "line": 220,
+      "kind": "declared-field",
+      "target": "mKeyguardStatusBarWallpaperHelper"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/media/MediaStatusBarContrast.java",
+      "line": 222,
+      "kind": "declared-field",
+      "target": "fontColorFromWallPaper"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/media/MediaStatusBarContrast.java",
+      "line": 224,
+      "kind": "declared-field",
+      "target": "fontColorType"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/media/MediaStatusBarContrast.java",
+      "line": 226,
+      "kind": "declared-field",
+      "target": "intensity"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/media/MediaStatusBarContrast.java",
+      "line": 228,
+      "kind": "declared-field",
+      "target": "listener"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/media/MediaStatusBarContrast.java",
+      "line": 230,
+      "kind": "declared-method",
+      "target": "updateIconsAndTextColors"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/media/MediaStatusBarContrast.java",
+      "line": 232,
+      "kind": "declared-method",
+      "target": "onWallpaperUpdated"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/media/MediaStatusBarContrast.java",
+      "line": 298,
+      "kind": "class",
+      "target": "com.android.systemui.battery.BatteryMeterView"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/media/MediaStatusBarContrast.java",
+      "line": 299,
+      "kind": "declared-field",
+      "target": "mIsOnAodBattery"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/media/MediaStatusBarContrast.java",
+      "line": 301,
+      "kind": "declared-field",
+      "target": "mBatteryIconView"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/media/MediaStatusBarContrast.java",
+      "line": 303,
+      "kind": "declared-field",
+      "target": "mDarkIntensity"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/media/MediaStatusBarContrast.java",
+      "line": 305,
+      "kind": "declared-field",
+      "target": "mDarkTint"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/media/MediaStatusBarContrast.java",
+      "line": 308,
+      "kind": "declared-method",
+      "target": "onDarkChanged"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/media/MediaStatusBarContrast.java",
+      "line": 315,
+      "kind": "class",
+      "target": "com.android.systemui.facewidget.plugin.PluginFaceWidgetManager"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/media/MediaStatusBarContrast.java",
+      "line": 319,
+      "kind": "declared-method",
+      "target": "createBatteryMeterView"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/media/MediaStatusBarContrast.java",
+      "line": 398,
+      "kind": "class",
+      "target": "com.samsung.android.uniform.widget.notification.NotificationIconsOnlyContainer"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/media/MediaStatusBarContrast.java",
+      "line": 403,
+      "kind": "declared-method",
+      "target": "setChildProperty"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/media/MediaStatusBarContrast.java",
+      "line": 405,
+      "kind": "declared-method",
+      "target": "getIconColor"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/media/MediaStatusBarContrast.java",
+      "line": 407,
+      "kind": "declared-method",
+      "target": "getWallpaperColorType"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/media/MediaStatusBarContrast.java",
+      "line": 409,
+      "kind": "declared-method",
+      "target": "setWallpaperColorType"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/media/MediaStatusBarContrast.java",
+      "line": 411,
+      "kind": "declared-method",
+      "target": "setDozing"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/media/MediaStatusBarContrast.java",
+      "line": 1290,
+      "kind": "resource",
+      "target": "keyguard_header"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/media/MediaWallpaperBlur.java",
@@ -2500,67 +2710,67 @@
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/media/OneUi85FullscreenArt.java",
-      "line": 116,
+      "line": 121,
       "kind": "class",
       "target": "com.android.systemui.facewidget.plugin.PluginFaceWidgetManager"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/media/OneUi85FullscreenArt.java",
-      "line": 1124,
+      "line": 1146,
       "kind": "resource",
       "target": "now_bar_music_page_controller_radius"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/media/OneUi85FullscreenArt.java",
-      "line": 1126,
+      "line": 1148,
       "kind": "resource",
       "target": "now_bar_music_page_controller_radius"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/media/OneUi85FullscreenArt.java",
-      "line": 1128,
+      "line": 1150,
       "kind": "resource",
       "target": "now_bar_music_page_controller_radius"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/media/OneUi85FullscreenArt.java",
-      "line": 1139,
+      "line": 1161,
       "kind": "class",
       "target": "android.view.SemBlurInfo"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/media/OneUi85FullscreenArt.java",
-      "line": 1140,
+      "line": 1162,
       "kind": "class",
       "target": "android.view.SemBlurInfo$Builder"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/media/OneUi85FullscreenArt.java",
-      "line": 1142,
+      "line": 1164,
       "kind": "public-method",
       "target": "setRadius"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/media/OneUi85FullscreenArt.java",
-      "line": 1143,
+      "line": 1165,
       "kind": "public-method",
       "target": "setBackgroundCornerRadius"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/media/OneUi85FullscreenArt.java",
-      "line": 1145,
+      "line": 1167,
       "kind": "public-method",
       "target": "setBackgroundColor"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/media/OneUi85FullscreenArt.java",
-      "line": 1147,
+      "line": 1169,
       "kind": "public-method",
       "target": "semSetBlurInfo"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/media/OneUi85FullscreenArt.java",
-      "line": 1148,
+      "line": 1170,
       "kind": "public-method",
       "target": "build"
     },
@@ -2890,19 +3100,19 @@
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/widget/WidgetPanel.java",
-      "line": 911,
+      "line": 919,
       "kind": "class",
       "target": "androidx.appcompat.widget.SeslSeekBar$OnSeekBarChangeListener"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/widget/WidgetPanel.java",
-      "line": 976,
+      "line": 984,
       "kind": "resource",
       "target": "clock_panel_item_divider"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/widget/WidgetPanel.java",
-      "line": 1017,
+      "line": 1025,
       "kind": "resource",
       "target": "clock_panel_layout"
     },

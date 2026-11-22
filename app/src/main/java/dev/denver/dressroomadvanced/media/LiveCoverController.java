@@ -27,6 +27,7 @@ import android.view.ViewOutlineProvider;
 import android.widget.FrameLayout;
 
 import java.io.File;
+import java.lang.reflect.Method;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
@@ -44,7 +45,14 @@ final class LiveCoverController implements LiveCoverPlayer.FrameListener {
     private static final String CACHE_DIR_NAME = "dressroom_live_covers";
     static final long BLUR_FRAME_INTERVAL_MS = 120L;
     static final int BLUR_FRAME_MAX_SIDE = 240;
+    static final long CONTRAST_SAMPLE_INTERVAL_MS = 250L;
+    static final int CONTRAST_SAMPLE_MAX_SIDE = 64;
     static final int SNAPSHOT_MAX_SIDE = 1440;
+
+    private static boolean gpuLayerChecked;
+    private static Method getTextureLayerMethod;
+    private static Method drawTextureLayerMethod;
+    private static Class<?> recordingCanvasClass;
 
     private static final List<AnimatedCoverProvider> PROVIDERS =
             List.of(new AppleMusicAnimatedCoverProvider());
@@ -74,6 +82,7 @@ final class LiveCoverController implements LiveCoverPlayer.FrameListener {
     private final Runnable trackChangedListener = this::onActiveTrackChanged;
     private final RectF frameCrop = new RectF();
     private final RectF sampleCrop = new RectF();
+    private final RectF contrastBounds = new RectF();
     private final RectF ambientBounds = new RectF();
     private final ValueAnimator fadeToStatic = ValueAnimator.ofFloat(1f, 0f);
 
@@ -113,6 +122,10 @@ final class LiveCoverController implements LiveCoverPlayer.FrameListener {
     private final Runnable artworkTimeout = this::revealStaticArtwork;
     private long lastBlurSampleUptimeMs;
     private boolean blurSampleRequested;
+    private Bitmap contrastSample;
+    private Bitmap contrastBuffer;
+    private long lastContrastSampleUptimeMs;
+    private boolean contrastSampleRequested;
 
     private final DisplayManager.DisplayListener displayListener = new DisplayManager.DisplayListener() {
         @Override public void onDisplayAdded(int id) {}
@@ -348,8 +361,11 @@ final class LiveCoverController implements LiveCoverPlayer.FrameListener {
             surfaceHost.setVisibility(View.INVISIBLE);
         }
         lastVideoFrame = frameBuffer = null;
+        contrastSample = contrastBuffer = null;
         lastBlurSampleUptimeMs = 0L;
+        lastContrastSampleUptimeMs = 0L;
         blurSampleRequested = false;
+        contrastSampleRequested = false;
     }
 
     void releaseAmbient() {
@@ -374,6 +390,16 @@ final class LiveCoverController implements LiveCoverPlayer.FrameListener {
 
     boolean isVideoVisible() {
         return activeWanted && (frozenFrame != null || player.isVideoVisible());
+    }
+
+    boolean coversBlurSource() {
+        return activeWanted
+                && !closingLive
+                && frozenFrame == null
+                && player.isVideoVisible()
+                && player.revealMix() >= 0.995f
+                && (canUseGpuBlurLayer()
+                        || (lastVideoFrame != null && !lastVideoFrame.isRecycled()));
     }
 
     void holdVideoRevealDuringPoster(boolean posterMoving) {
@@ -600,16 +626,26 @@ final class LiveCoverController implements LiveCoverPlayer.FrameListener {
         if (onBlurFrameDue != null) onBlurFrameDue.run();
     }
 
+    int ambientDimColor() {
+        return ambientArtworkIsLive ? 0x30000000 : 0x60000000;
+    }
+
     void prepareAmbientClock(ViewGroup root, View cover) {
         ambientBounds.set(0, 0, cover.getWidth(), cover.getHeight());
         MediaClockContrast.apply(root, ambientFrame, ambientBounds, cover);
+        try {
+            MediaStatusBarContrast.applyAmbient(
+                    root, ambientFrame, ambientBounds, ambientDimColor());
+        } catch (RuntimeException error) {
+            MediaStatusBarContrast.clear(root);
+        }
     }
 
     boolean drawAmbient(Canvas canvas, ViewGroup root, View cover) {
         Bitmap frame = ambientFrame;
         if (!ambientVisible || frame == null || frame.isRecycled()) return false;
         ambientBounds.set(0, 0, cover.getWidth(), cover.getHeight());
-        int dim = ambientArtworkIsLive ? 0x30000000 : 0x60000000;
+        int dim = ambientDimColor();
         NativeArtworkReveal.bitmap(canvas, frame, ambientBounds, 1f, 1f, ambientPaint, frameCrop);
         canvas.drawColor(dim);
         if (root != null && canvas.isHardwareAccelerated() && !ambientBounds.isEmpty()) {
@@ -635,7 +671,75 @@ final class LiveCoverController implements LiveCoverPlayer.FrameListener {
         if (surfaceHost.getVisibility() != View.INVISIBLE) surfaceHost.setVisibility(View.INVISIBLE);
     }
 
-    void drawBlurFrames(
+    private static synchronized boolean resolveGpuLayerBridge() {
+        if (!gpuLayerChecked) {
+            gpuLayerChecked = true;
+            try {
+                Class<?> textureLayerClass = Class.forName("android.graphics.TextureLayer");
+                Class<?> recordingCanvas = Class.forName("android.graphics.RecordingCanvas");
+                Method getter = TextureView.class.getDeclaredMethod("getTextureLayer");
+                getter.setAccessible(true);
+                Method drawer =
+                        recordingCanvas.getDeclaredMethod("drawTextureLayer", textureLayerClass);
+                drawer.setAccessible(true);
+                recordingCanvasClass = recordingCanvas;
+                getTextureLayerMethod = getter;
+                drawTextureLayerMethod = drawer;
+            } catch (ReflectiveOperationException | RuntimeException | LinkageError unavailable) {
+                recordingCanvasClass = null;
+                getTextureLayerMethod = null;
+                drawTextureLayerMethod = null;
+                DressroomModule.note("Live cover GPU blur bridge unavailable", unavailable);
+            }
+        }
+        return getTextureLayerMethod != null
+                && drawTextureLayerMethod != null
+                && recordingCanvasClass != null;
+    }
+
+    private boolean canUseGpuBlurLayer() {
+        return resolveGpuLayerBridge()
+                && textureView.isAvailable()
+                && textureView.getWidth() > 0
+                && textureView.getHeight() > 0;
+    }
+
+    private boolean drawGpuVideoFrame(Canvas canvas, RectF drawBounds, float revealMix) {
+        if (!canUseGpuBlurLayer()
+                || drawBounds == null
+                || drawBounds.isEmpty()
+                || !recordingCanvasClass.isInstance(canvas)) {
+            return false;
+        }
+        int viewW = textureView.getWidth();
+        int viewH = textureView.getHeight();
+        if (viewW <= 0 || viewH <= 0) return false;
+        Object layer;
+        try {
+            layer = getTextureLayerMethod.invoke(textureView);
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError unavailable) {
+            return false;
+        }
+        if (layer == null) return false;
+        int save = canvas.save();
+        try {
+            if (revealMix < 0.995f) {
+                int alpha = Math.max(0, Math.min(255, Math.round(revealMix * 255f)));
+                if (alpha <= 0) return true;
+                canvas.saveLayerAlpha(drawBounds, alpha);
+            }
+            canvas.translate(drawBounds.left, drawBounds.top);
+            canvas.scale(drawBounds.width() / viewW, drawBounds.height() / viewH);
+            drawTextureLayerMethod.invoke(canvas, layer);
+            return true;
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError unavailable) {
+            return false;
+        } finally {
+            canvas.restoreToCount(save);
+        }
+    }
+
+    boolean drawBlurFrames(
             android.graphics.Canvas canvas,
             ViewGroup root,
             android.graphics.RectF drawBounds,
@@ -643,7 +747,7 @@ final class LiveCoverController implements LiveCoverPlayer.FrameListener {
             android.graphics.Paint paint) {
         if (closingLive && closingFrame != null) {
             NativeArtworkReveal.bitmap(canvas, closingFrame, drawBounds, 1f, 1f, paint, frameCrop);
-            return;
+            return true;
         }
         if (frozenFrame != null) {
             int alpha = paint.getAlpha();
@@ -654,31 +758,94 @@ final class LiveCoverController implements LiveCoverPlayer.FrameListener {
                 paint.setAlpha(alpha);
             }
         }
-        if (!player.isVideoVisible()) return;
+        if (!player.isVideoVisible()) return frozenFrame != null && frozenMix >= 0.995f;
+        float revealMix = player.revealMix();
+        if (drawGpuVideoFrame(canvas, drawBounds, revealMix)) {
+            return true;
+        }
         Bitmap sample = lastVideoFrame;
-        if (sample == null || sample.isRecycled()) return;
+        if (sample == null || sample.isRecycled()) return false;
         int alpha = paint.getAlpha();
-        paint.setAlpha(Math.round(alpha * player.revealMix()));
+        paint.setAlpha(Math.round(alpha * revealMix));
         try {
             NativeArtworkReveal.bitmap(canvas, sample, drawBounds, 1f, 1f, paint, frameCrop);
-            if (root != null
-                    && player.revealMix() > .5f
-                    && sampleBounds != null
-                    && !sampleBounds.isEmpty()) {
-                float scale = Math.max(
-                        sampleBounds.width() / sample.getWidth(),
-                        sampleBounds.height() / sample.getHeight());
-                float width = sample.getWidth() * scale;
-                float height = sample.getHeight() * scale;
-                sampleCrop.set(
-                        sampleBounds.centerX() - width * .5f,
-                        sampleBounds.centerY() - height * .5f,
-                        sampleBounds.centerX() + width * .5f,
-                        sampleBounds.centerY() + height * .5f);
-                MediaClockContrast.sampleVideo(root, sample, sampleCrop);
+            if (revealMix > .5f) {
+                dispatchContrastSample(root, sample, sampleBounds);
             }
+            return true;
         } finally {
             paint.setAlpha(alpha);
+        }
+    }
+
+    private void dispatchContrastSample(ViewGroup root, Bitmap sample, RectF sampleBounds) {
+        if (root == null
+                || sample == null
+                || sample.isRecycled()
+                || sampleBounds == null
+                || sampleBounds.isEmpty()) {
+            return;
+        }
+        float scale =
+                Math.max(
+                        sampleBounds.width() / sample.getWidth(),
+                        sampleBounds.height() / sample.getHeight());
+        float width = sample.getWidth() * scale;
+        float height = sample.getHeight() * scale;
+        sampleCrop.set(
+                sampleBounds.centerX() - width * .5f,
+                sampleBounds.centerY() - height * .5f,
+                sampleBounds.centerX() + width * .5f,
+                sampleBounds.centerY() + height * .5f);
+        MediaClockContrast.sampleVideo(root, sample, sampleCrop);
+        MediaStatusBarContrast.sampleVideo(root, sample, sampleCrop);
+    }
+
+    private boolean shouldSampleContrastFrame(long nowMs) {
+        return !contrastSampleRequested
+                && (lastContrastSampleUptimeMs == 0L
+                        || nowMs - lastContrastSampleUptimeMs >= CONTRAST_SAMPLE_INTERVAL_MS);
+    }
+
+    private void readContrastFrame() {
+        if (closingLive
+                || !player.isVideoVisible()
+                || player.revealMix() <= 0.5f
+                || !textureView.isAvailable()) {
+            return;
+        }
+        int width = player.videoWidth(), height = player.videoHeight();
+        if (width <= 0 || height <= 0) return;
+        float scale = Math.min(1f, CONTRAST_SAMPLE_MAX_SIDE / (float) Math.max(width, height));
+        int targetW = Math.max(1, Math.round(width * scale));
+        int targetH = Math.max(1, Math.round(height * scale));
+        if (contrastBuffer == null
+                || contrastBuffer == contrastSample
+                || contrastBuffer == frozenFrame
+                || contrastBuffer == closingFrame
+                || contrastBuffer == lastVideoFrame
+                || contrastBuffer.isRecycled()
+                || contrastBuffer.getWidth() != targetW
+                || contrastBuffer.getHeight() != targetH) {
+            contrastBuffer = Bitmap.createBitmap(targetW, targetH, Bitmap.Config.ARGB_8888);
+        }
+        try {
+            contrastBuffer.eraseColor(0);
+            Bitmap frame = textureView.getBitmap(contrastBuffer);
+            if (!hasPixels(frame)) return;
+            contrastBuffer = contrastSample;
+            contrastSample = frame;
+            ViewGroup root = surfaceHost.getRootView() instanceof ViewGroup vg ? vg : null;
+            if (root != null && layoutWidth > 0 && layoutHeight > 0) {
+                contrastBounds.set(
+                        layoutLeft,
+                        layoutTop,
+                        layoutLeft + layoutWidth,
+                        layoutTop + layoutHeight);
+                dispatchContrastSample(root, frame, contrastBounds);
+            }
+        } catch (RuntimeException unavailable) {
+            // Keep the last good sample if the surface is being torn down.
         }
     }
 
@@ -713,6 +880,7 @@ final class LiveCoverController implements LiveCoverPlayer.FrameListener {
         main.removeCallbacks(artworkTimeout);
         fadeToStatic.cancel();
         lastBlurSampleUptimeMs = 0L;
+        lastContrastSampleUptimeMs = 0L;
         if (onBlurFrameDue != null) onBlurFrameDue.run();
     }
 
@@ -721,6 +889,21 @@ final class LiveCoverController implements LiveCoverPlayer.FrameListener {
         if (onBlurFrameDue == null || !activeWanted || closingLive) return;
         if (player.revealMix() >= 1f) clearFrozenFrame();
         long now = SystemClock.uptimeMillis();
+        if (canUseGpuBlurLayer()) {
+            onBlurFrameDue.run();
+            if (player.revealMix() > 0.5f && shouldSampleContrastFrame(now)) {
+                lastContrastSampleUptimeMs = now;
+                contrastSampleRequested = true;
+                main.post(
+                        () -> {
+                            contrastSampleRequested = false;
+                            if (activeWanted && !closingLive && !isDozing() && interactive()) {
+                                readContrastFrame();
+                            }
+                        });
+            }
+            return;
+        }
         if (shouldSampleBlurFrame(now, lastBlurSampleUptimeMs, false, blurSampleRequested)) {
             lastBlurSampleUptimeMs = now;
             blurSampleRequested = true;
@@ -772,6 +955,8 @@ final class LiveCoverController implements LiveCoverPlayer.FrameListener {
         clearFrozenFrame();
         closingFrame = null;
         lastVideoFrame = null;
+        contrastSample = null;
+        lastContrastSampleUptimeMs = 0L;
         activeRequestKey = "";
         activeAsset = null;
         resolving = false;
@@ -809,6 +994,8 @@ final class LiveCoverController implements LiveCoverPlayer.FrameListener {
         Bitmap outgoing = captureFrame(SNAPSHOT_MAX_SIDE);
         if (outgoing != null) showFrozenFrame(outgoing);
         lastVideoFrame = null;
+        contrastSample = null;
+        lastContrastSampleUptimeMs = 0L;
         activeRequestKey = "";
         activeAsset = null;
         resolving = false;
@@ -829,6 +1016,8 @@ final class LiveCoverController implements LiveCoverPlayer.FrameListener {
         Bitmap outgoing = captureFrame(SNAPSHOT_MAX_SIDE);
         if (outgoing != null) showFrozenFrame(outgoing);
         lastVideoFrame = null;
+        contrastSample = null;
+        lastContrastSampleUptimeMs = 0L;
         player.pauseAndHide();
         main.removeCallbacks(artworkTimeout);
         fadeToStatic.cancel();

@@ -1572,6 +1572,11 @@ public final class DressroomModule extends XposedModule {
                             BuiltInWallpaperMotion.install(this, classes);
                             UnlockBlur.install(this, classes);
                             DozeBlurRegions.install(this, classes);
+                            try {
+                                MediaStatusBarContrast.install(this, classes);
+                            } catch (ReflectiveOperationException | LinkageError error) {
+                                report("Artwork status bar contrast unavailable", error);
+                            }
                             new android.os.Handler(android.os.Looper.getMainLooper())
                                     .post(
                                             () ->

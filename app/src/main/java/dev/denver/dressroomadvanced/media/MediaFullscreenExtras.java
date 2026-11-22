@@ -526,9 +526,13 @@ final class MediaFullscreenExtras {
                     new LiveCoverController(
                             root.getContext(),
                             () -> {
-                                liveBlurDirty = true;
-                                overlayLayer.invalidate();
-                                if (returnLayer.getVisibility() == VISIBLE) returnLayer.invalidate();
+                                if (!liveBlurDirty) {
+                                    liveBlurDirty = true;
+                                    overlayLayer.invalidate();
+                                }
+                                if (returnLayer.getVisibility() == VISIBLE) {
+                                    returnLayer.invalidate();
+                                }
                             });
             songFade = new ArtworkCrossfade(this, () -> {
                 blurDirty = true;
@@ -596,6 +600,7 @@ final class MediaFullscreenExtras {
             if (parent != null) {
                 if (immediateContrast) MediaClockContrast.clearImmediate(parent);
                 else MediaClockContrast.clear(parent);
+                MediaStatusBarContrast.clear(parent);
                 WidgetMediaOcclusion.publish(parent, null);
                 if (immediateContrast) parent.invalidate();
             }
@@ -737,6 +742,7 @@ final class MediaFullscreenExtras {
                     wakeHoldUntilMs = 0L;
                     restore();
                     MediaClockContrast.clear(parent);
+                    MediaStatusBarContrast.clear(parent);
                     WidgetMediaOcclusion.publish(parent, null);
                     showing = false;
                     bitmap = null;
@@ -906,14 +912,20 @@ final class MediaFullscreenExtras {
                 hiddenDirty = false;
             }
             if (contentChanged) MediaClockContrast.prefetch(image);
-            try {
-                if (best.closing || best.small.get() != null || p < .50f) {
-                    if (MediaClockContrast.isActive(parent)) MediaClockContrast.clear(parent);
-                } else {
+            if (best.closing || best.small.get() != null || p < .50f) {
+                if (MediaClockContrast.isActive(parent)) MediaClockContrast.clear(parent);
+                if (MediaStatusBarContrast.isActive(parent)) MediaStatusBarContrast.clear(parent);
+            } else {
+                try {
                     MediaClockContrast.apply(parent, image, next, overlayLayer);
+                } catch (RuntimeException error) {
+                    MediaClockContrast.clear(parent);
                 }
-            } catch (RuntimeException error) {
-                MediaClockContrast.clear(parent);
+                try {
+                    MediaStatusBarContrast.apply(parent, image, next);
+                } catch (RuntimeException error) {
+                    MediaStatusBarContrast.clear(parent);
+                }
             }
             View controls = best.controls.get();
             View controlHost = best.controlHost.get();
@@ -1438,8 +1450,12 @@ final class MediaFullscreenExtras {
                             || artworkBlur.needsRecording(getWidth(), getHeight())) {
                         Canvas record = artworkBlur.beginRecording(getWidth(), getHeight());
                         RectF blurRect = artworkBlur.sourceBounds();
-                        drawBlurPixels(record, blurRect);
-                        liveCover.drawBlurFrames(record, parent, blurRect, destination, paint);
+                        boolean skipStatic = liveCover.coversBlurSource();
+                        if (!skipStatic) drawBlurPixels(record, blurRect);
+                        boolean drewLive =
+                                liveCover.drawBlurFrames(
+                                        record, parent, blurRect, destination, paint);
+                        if (skipStatic && !drewLive) drawBlurPixels(record, blurRect);
                         artworkBlur.endRecording();
                         blurDirty = false;
                         liveBlurDirty = false;
@@ -1497,7 +1513,11 @@ final class MediaFullscreenExtras {
                                 topBandOpacity,
                                 outline);
                     }
+                } else {
+                    liveBlurDirty = false;
                 }
+            } else {
+                liveBlurDirty = false;
             }
         }
     }
@@ -1557,6 +1577,11 @@ final class MediaFullscreenExtras {
             MediaClockContrast.install(owner, loader);
         } catch (ReflectiveOperationException | LinkageError error) {
             owner.report("Artwork clock contrast unavailable", error);
+        }
+        try {
+            MediaStatusBarContrast.installPlugin(owner, loader);
+        } catch (ReflectiveOperationException | java.io.IOException | LinkageError error) {
+            owner.report("Notification icon artwork contrast unavailable", error);
         }
         RuntimeExtras.listen(
                 () -> {

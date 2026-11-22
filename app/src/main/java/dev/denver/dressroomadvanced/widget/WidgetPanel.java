@@ -44,9 +44,14 @@ final class WidgetPanel {
 
     private View buildTabs() throws Exception {
         View tabs = nativeView(EditorBinding.Row.TABS);
+        LinearLayout.LayoutParams layout = new LinearLayout.LayoutParams(-1, dp(52));
+        layout.setMarginStart(dp(24));
+        layout.setMarginEnd(dp(24));
+        tabs.setLayoutParams(layout);
         NativeTabs nativeTabs = NativeTabs.of(tabs);
         nativeTabs.add(tabs, "Widgets", true);
         nativeTabs.add(tabs, "Extras", false);
+        nativeTabs.applyClockStyle(context, tabs, true);
         Class<?> listener = nativeTabs.listener;
         Object events =
                 Proxy.newProxyInstance(
@@ -78,7 +83,7 @@ final class WidgetPanel {
         LinearLayout panel = new LinearLayout(context);
         panel.setOrientation(LinearLayout.VERTICAL);
         extrasSelected = !widgetsAvailable;
-        if (widgetsAvailable) panel.addView(buildTabs(), new LinearLayout.LayoutParams(-1, -2));
+        if (widgetsAvailable) panel.addView(buildTabs());
         android.widget.ScrollView scroll = new android.widget.ScrollView(context);
         scroll.addView(content);
         panel.addView(scroll, new LinearLayout.LayoutParams(-1, -2));
@@ -101,7 +106,7 @@ final class WidgetPanel {
         if (earlyShow != null) {
             LinearLayout panel = new LinearLayout(context);
             panel.setOrientation(LinearLayout.VERTICAL);
-            panel.addView(tabs, new LinearLayout.LayoutParams(-1, -2));
+            panel.addView(tabs);
             panel.addView(content, new LinearLayout.LayoutParams(-1, -2));
             earlyShow.invoke(ui, panel, null, null, dp(376), dp(376), null, false, null);
             return;
@@ -263,20 +268,19 @@ final class WidgetPanel {
             content.requestLayout();
             return;
         }
-        View pageStrip = nativeView(EditorBinding.Row.TABS);
-        content.addView(pageStrip);
         pages =
                 new PanelTabs(
-                        pageStrip,
-                        loader,
+                        context,
                         !editor.scaleAvailable()
                                 ? new String[] {"Position", "Effects"}
                                 : new String[] {"Layout", "Position", "Effects"},
                         widgetPage,
+                        dp(16),
                         page -> {
                             widgetPage = page;
                             content.requestLayout();
                         });
+        content.addView(pages.strip());
         if (editor.scaleAvailable()) renderWidgetSizing(b);
         renderWidgetPlacement(b);
     }
@@ -511,10 +515,14 @@ final class WidgetPanel {
     }
 
     private void renderExtras(Bundle b) throws Exception {
-        View strip = nativeView(EditorBinding.Row.TABS);
-        content.addView(strip);
-        PanelTabs extraPages = new PanelTabs(strip, loader,
-                new String[] {"General", "Blur"}, extrasPage, page -> extrasPage = page);
+        PanelTabs extraPages =
+                new PanelTabs(
+                        context,
+                        new String[] {"General", "Blur"},
+                        extrasPage,
+                        dp(16),
+                        page -> extrasPage = page);
+        content.addView(extraPages.strip());
         group = extraPages.group(content, 0);
         if (ScreenIdentity.value(b) != 0)
             label(ScreenIdentity.value(b) == ScreenIdentity.SUB

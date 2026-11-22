@@ -23,6 +23,8 @@ import java.util.UUID;
 final class UpdateRepository {
     static final String PACKAGE = "dev.denver.dressroomadvanced";
     static final String PREF_PRERELEASE = "prerelease_channel";
+    static final String PREF_PENDING_RELAUNCH_UNTIL = "pending_relaunch_until";
+    static final long RELAUNCH_WINDOW_MS = 5 * 60_000L;
     private static final String REPO = "https://github.com/BlueOutside/Dressroom-Advanced/";
     private static final String API =
             "https://api.github.com/repos/BlueOutside/Dressroom-Advanced/releases/latest";
@@ -102,6 +104,53 @@ final class UpdateRepository {
             bestPrerelease = null;
         }
         return new UpdateSelection<>(bestStable, bestPrerelease);
+    }
+
+    static boolean shouldRelaunchAfterInstall(long pendingUntilMs, long nowMs) {
+        return pendingUntilMs > 0 && nowMs > 0 && nowMs <= pendingUntilMs;
+    }
+
+    static void markPendingRelaunch(Context context) {
+        long deadline = System.currentTimeMillis() + RELAUNCH_WINDOW_MS;
+        context.getSharedPreferences("updates", 0)
+                .edit()
+                .putLong(PREF_PENDING_RELAUNCH_UNTIL, deadline)
+                .commit();
+    }
+
+    static void clearPendingRelaunch(Context context) {
+        context.getSharedPreferences("updates", 0)
+                .edit()
+                .remove(PREF_PENDING_RELAUNCH_UNTIL)
+                .commit();
+    }
+
+    static boolean consumePendingRelaunch(Context context) {
+        SharedPreferences prefs = context.getSharedPreferences("updates", 0);
+        long until = prefs.getLong(PREF_PENDING_RELAUNCH_UNTIL, 0L);
+        if (until != 0L) {
+            prefs.edit().remove(PREF_PENDING_RELAUNCH_UNTIL).commit();
+        }
+        return shouldRelaunchAfterInstall(until, System.currentTimeMillis());
+    }
+
+    static long installedVersionCode(Context context) {
+        try {
+            PackageInfo info = context.getPackageManager().getPackageInfo(PACKAGE, 0);
+            return info.getLongVersionCode();
+        } catch (PackageManager.NameNotFoundException | RuntimeException ignored) {
+            return -1L;
+        }
+    }
+
+    static long archiveVersionCode(Context context, File apk) {
+        if (apk == null || !apk.isFile()) return -1L;
+        try {
+            PackageInfo archive = context.getPackageManager().getPackageArchiveInfo(apk.getAbsolutePath(), 0);
+            return archive == null ? -1L : archive.getLongVersionCode();
+        } catch (RuntimeException ignored) {
+            return -1L;
+        }
     }
 
     private static String installedVersionName(Context context) {

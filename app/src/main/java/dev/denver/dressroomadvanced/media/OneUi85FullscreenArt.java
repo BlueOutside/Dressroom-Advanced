@@ -60,6 +60,11 @@ final class OneUi85FullscreenArt {
         } catch (ReflectiveOperationException | LinkageError error) {
             module.report("8.5 artwork clock appearance unavailable", error);
         }
+        try {
+            MediaStatusBarContrast.installPlugin(module, loader);
+        } catch (ReflectiveOperationException | java.io.IOException | LinkageError error) {
+            module.report("8.5 notification icon artwork contrast unavailable", error);
+        }
         try (HookTransaction hooks = new HookTransaction()) {
             hooks.add(
                     module.hook(binding.constructor)
@@ -405,8 +410,10 @@ final class OneUi85FullscreenArt {
                     new LiveCoverController(
                             root.getContext(),
                             () -> {
-                                liveBlurDirty = true;
-                                blurOverlay.invalidate();
+                                if (!liveBlurDirty) {
+                                    liveBlurDirty = true;
+                                    blurOverlay.invalidate();
+                                }
                             });
             songFade = new ArtworkCrossfade(this, () -> {
                 blurDirty = true;
@@ -444,7 +451,10 @@ final class OneUi85FullscreenArt {
             liveCover.onDetached();
             artworkBlur.detach();
             ViewGroup parent = root.get();
-            if (parent != null) MediaClockContrast.clear(parent);
+            if (parent != null) {
+                MediaClockContrast.clear(parent);
+                MediaStatusBarContrast.clear(parent);
+            }
             clearBanner();
             clearFade();
             nativeExpanded = false;
@@ -527,6 +537,7 @@ final class OneUi85FullscreenArt {
                 liveCover.update(enabled, false, true, 0f, 0f, getWidth(), getHeight(),
                         0f, nativeAlpha);
                 MediaClockContrast.clear(parent);
+                MediaStatusBarContrast.clear(parent);
                 paletteBounds.set(0, 0, parent.getWidth(), parent.getHeight());
                 if (updateTopBand(parent, paletteBounds, nativeAlpha, true)) {
                     blurOverlay.invalidate();
@@ -646,6 +657,11 @@ final class OneUi85FullscreenArt {
                 MediaClockContrast.apply(parent, bitmap, paletteBounds, blurOverlay);
             } catch (RuntimeException error) {
                 MediaClockContrast.clear(parent);
+            }
+            try {
+                MediaStatusBarContrast.apply(parent, bitmap, paletteBounds);
+            } catch (RuntimeException error) {
+                MediaStatusBarContrast.clear(parent);
             }
             if (updateTopBand(parent, paletteBounds, alpha, !nativeExpanded)) {
                 blurOverlay.invalidate();
@@ -772,6 +788,7 @@ final class OneUi85FullscreenArt {
             if (parent != null) {
                 if (immediateContrast) MediaClockContrast.clearImmediate(parent);
                 else MediaClockContrast.clear(parent);
+                MediaStatusBarContrast.clear(parent);
             }
             restore();
             current = null;
@@ -1055,8 +1072,11 @@ final class OneUi85FullscreenArt {
                 if (needRecord) {
                     Canvas record = artworkBlur.beginRecording(getWidth(), getHeight());
                     RectF blurRect = artworkBlur.sourceBounds();
-                    drawBlurCover(record, blurRect, paint);
-                    liveCover.drawBlurFrames(record, parent, blurRect, bounds, paint);
+                    boolean skipStatic = liveCover.coversBlurSource();
+                    if (!skipStatic) drawBlurCover(record, blurRect, paint);
+                    boolean drewLive =
+                            liveCover.drawBlurFrames(record, parent, blurRect, bounds, paint);
+                    if (skipStatic && !drewLive) drawBlurCover(record, blurRect, paint);
                     artworkBlur.endRecording();
                     blurDirty = false;
                     liveBlurDirty = false;
@@ -1079,6 +1099,8 @@ final class OneUi85FullscreenArt {
                             topBandOpacity * coverAlpha,
                             null);
                 }
+            } else {
+                liveBlurDirty = false;
             }
         }
 

@@ -1187,6 +1187,206 @@ public final class MediaContractsTest {
         check(
                 MediaFullscreenExtras.topBandOpacity(1f, false, false, false) == 1f,
                 "Settled top blur must be full opacity when clock is enabled");
+
+        check(
+                ArtworkBlurFilter.topCropHeight(256, 70f, 20) == 96,
+                "Expected quantized top blur crop height 96, got "
+                        + ArtworkBlurFilter.topCropHeight(256, 70f, 20));
+        check(
+                ArtworkBlurFilter.topCropHeight(256, 250f, 20) == 256,
+                "Top blur crop height must clamp to cacheHeight");
+        check(
+                ArtworkBlurFilter.topCropHeight(256, 0f, 20) == 0,
+                "Inactive top blur band must yield 0 crop height");
+        check(
+                ArtworkBlurFilter.topCropHeight(0, 50f, 20) == 0,
+                "Empty blur cache must yield 0 crop height");
+
+        check(
+                !MediaStatusBarContrast.shouldUseDarkIcons(0.26, null),
+                "Static status bar icons stay light at threshold boundary");
+        check(
+                MediaStatusBarContrast.shouldUseDarkIcons(0.27, null),
+                "Static status bar icons flip dark above bright threshold");
+        check(
+                !MediaStatusBarContrast.shouldUseDarkIcons(0.0, null),
+                "Black cover must keep light status bar icons");
+        check(
+                MediaStatusBarContrast.shouldUseDarkIcons(1.0, null),
+                "White cover must use dark status bar icons");
+        check(
+                !MediaStatusBarContrast.shouldUseDarkIcons(Double.NaN, null),
+                "Non-finite luma without prior state must keep light icons");
+        check(
+                !MediaStatusBarContrast.shouldUseDarkIcons(0.29, Boolean.FALSE),
+                "Light status bar icons on video stay light below hysteresis dark threshold");
+        check(
+                MediaStatusBarContrast.shouldUseDarkIcons(0.31, Boolean.FALSE),
+                "Light status bar icons on video flip dark above hysteresis threshold");
+        check(
+                MediaStatusBarContrast.shouldUseDarkIcons(0.20, Boolean.TRUE),
+                "Dark status bar icons on video stay dark inside hysteresis band");
+        check(
+                MediaStatusBarContrast.shouldUseDarkIcons(0.18, Boolean.TRUE),
+                "Dark status bar icons on video stay dark at lower hysteresis boundary");
+        check(
+                !MediaStatusBarContrast.shouldUseDarkIcons(0.17, Boolean.TRUE),
+                "Dark status bar icons on video flip light below hysteresis floor");
+        check(
+                MediaStatusBarContrast.shouldUseDarkIcons(Double.NaN, Boolean.TRUE),
+                "Non-finite luma must preserve prior dark status bar state");
+
+        double expectedStaticAmbient = Math.pow((255 - 0x60) / 255.0, 2.2);
+        double expectedLiveAmbient = Math.pow((255 - 0x30) / 255.0, 2.2);
+        check(
+                Math.abs(
+                                MediaStatusBarContrast.effectiveAmbientLuminance(1.0, 0x60000000)
+                                        - expectedStaticAmbient)
+                        < 0.001,
+                "Static ambient dim luminance mismatch");
+        check(
+                Math.abs(
+                                MediaStatusBarContrast.effectiveAmbientLuminance(1.0, 0x30000000)
+                                        - expectedLiveAmbient)
+                        < 0.001,
+                "Live ambient dim luminance mismatch");
+        check(
+                MediaStatusBarContrast.effectiveAmbientLuminance(0.5, 0x00000000) == 0.5,
+                "Zero-alpha dim must preserve raw luminance");
+        check(
+                MediaStatusBarContrast.effectiveAmbientLuminance(1.0, 0xff000000) == 0.0,
+                "Opaque dim must yield zero ambient luminance");
+        check(
+                Double.isNaN(
+                        MediaStatusBarContrast.effectiveAmbientLuminance(Double.NaN, 0x60000000)),
+                "Non-finite luminance must stay NaN through ambient dim");
+
+        check(
+                MediaStatusBarContrast.shouldUseDarkIconsAmbient(1.0, 0x60000000, null),
+                "White static ambient cover must invert dark icons");
+        check(
+                MediaStatusBarContrast.shouldUseDarkIconsAmbient(1.0, 0x30000000, null),
+                "White live ambient cover must invert dark icons");
+        check(
+                !MediaStatusBarContrast.shouldUseDarkIconsAmbient(0.1, 0x60000000, null),
+                "Dark ambient cover must keep light icons");
+        check(
+                !MediaStatusBarContrast.shouldUseDarkIconsAmbient(0.35, 0x60000000, null),
+                "Mid-tone cover darkened by static ambient dim must keep light icons");
+        check(
+                MediaStatusBarContrast.shouldUseDarkIconsAmbient(0.60, 0x60000000, null),
+                "Bright cover still above ambient threshold after dim must invert dark icons");
+        check(
+                MediaStatusBarContrast.shouldUseDarkIconsAmbient(
+                        Double.NaN, 0x60000000, Boolean.TRUE),
+                "Non-finite ambient luma must preserve prior dark state");
+        check(
+                !MediaStatusBarContrast.shouldUseDarkIconsAmbient(
+                        Double.NaN, 0x60000000, Boolean.FALSE),
+                "Non-finite ambient luma must preserve prior light state");
+
+        check(
+                MediaStatusBarContrast.nioColorFor(true, false)
+                        == MediaStatusBarContrast.DARK_STATUS_COLOR,
+                "Dark awake NIO color mismatch");
+        check(
+                MediaStatusBarContrast.nioColorFor(true, true)
+                        == MediaStatusBarContrast.DARK_STATUS_COLOR,
+                "Dark ambient NIO color mismatch");
+        check(
+                MediaStatusBarContrast.nioColorFor(false, false)
+                        == MediaStatusBarContrast.LIGHT_STATUS_COLOR,
+                "Light awake NIO color mismatch");
+        check(
+                MediaStatusBarContrast.nioColorFor(false, true)
+                        == MediaStatusBarContrast.AOD_LIGHT_STATUS_COLOR,
+                "Light ambient NIO color mismatch");
+
+        String nioOwner = "Lcom/samsung/android/uniform/widget/notification/NotificationIconsOnlyContainer;";
+        check(
+                MediaStatusBarContrast.isNioUpdateIconColorBody(
+                        syntheticBody(
+                                nioOwner,
+                                "e",
+                                List.of("I"),
+                                "V",
+                                0,
+                                Map.of(MediaStatusBarContrast.NIO_UPDATE_ICON_COLOR_ANCHOR, 19),
+                                List.of(),
+                                List.of())),
+                "Valid NIO updateIconColor body rejected");
+        check(
+                !MediaStatusBarContrast.isNioUpdateIconColorBody(
+                        syntheticBody(
+                                nioOwner,
+                                "e",
+                                List.of("I"),
+                                "V",
+                                Modifier.STATIC,
+                                Map.of(MediaStatusBarContrast.NIO_UPDATE_ICON_COLOR_ANCHOR, 19),
+                                List.of(),
+                                List.of())),
+                "Static NIO updateIconColor body must be rejected");
+        check(
+                !MediaStatusBarContrast.isNioUpdateIconColorBody(
+                        syntheticBody(
+                                nioOwner,
+                                "e",
+                                List.of(),
+                                "V",
+                                0,
+                                Map.of(MediaStatusBarContrast.NIO_UPDATE_ICON_COLOR_ANCHOR, 19),
+                                List.of(),
+                                List.of())),
+                "Wrong-arity NIO updateIconColor body must be rejected");
+        check(
+                !MediaStatusBarContrast.isNioUpdateIconColorBody(
+                        syntheticBody(
+                                nioOwner,
+                                "e",
+                                List.of("I"),
+                                "I",
+                                0,
+                                Map.of(MediaStatusBarContrast.NIO_UPDATE_ICON_COLOR_ANCHOR, 19),
+                                List.of(),
+                                List.of())),
+                "Non-void NIO updateIconColor body must be rejected");
+        check(
+                !MediaStatusBarContrast.isNioUpdateIconColorBody(
+                        syntheticBody(
+                                nioOwner,
+                                "setIconColor",
+                                List.of("I"),
+                                "V",
+                                0,
+                                Map.of(),
+                                List.of(),
+                                List.of())),
+                "Unanchored NIO (I)V body must be rejected");
+
+        check(
+                MediaStatusBarContrast.aodBatteryDarkIntensity(true) == 1.0f,
+                "Dark AOD battery intensity must be 1.0f");
+        check(
+                MediaStatusBarContrast.aodBatteryDarkIntensity(false) == 0.0f,
+                "Light AOD battery intensity must be 0.0f");
+        check(
+                MediaStatusBarContrast.aodDndColorFor(true)
+                        == MediaStatusBarContrast.DARK_STATUS_COLOR,
+                "Dark AOD DND icon color mismatch");
+        check(
+                MediaStatusBarContrast.aodDndColorFor(false)
+                        == MediaStatusBarContrast.AOD_DND_LIGHT_COLOR,
+                "Light AOD DND icon color mismatch");
+        check(
+                MediaStatusBarContrast.isAodBatteryTag("PluginFaceWidgetManager"),
+                "AOD battery tag must match PluginFaceWidgetManager");
+        check(
+                !MediaStatusBarContrast.isAodBatteryTag("KeyguardStatusBarView"),
+                "Non-AOD battery tag must be rejected");
+        check(
+                !MediaStatusBarContrast.isAodBatteryTag(null),
+                "Null battery tag must be rejected");
     }
 
     public static void main(String[] args) throws Exception {

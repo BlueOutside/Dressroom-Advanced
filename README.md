@@ -8,16 +8,16 @@ Give your lockscreen the renaissance it deserves!
 ## Features
 
 - Clock size, position, manual stretching, shadows and blur.
-- Separate blur radius, saturation and tint controls for the clock, widgets and Now Bar, where native blur is available.
+- Separate blur radius, saturation and tint controls for the clock, widgetss and Now Bar, where native blur is available.
 - Keep live blur during swipe-to-unlock on One UI 9 (experimental).
 - Import TTF, OTF and TTC fonts. Adjust the axes the font provides, including weight, width, optical size, italic and custom axes.
-- Hide the date while keeping weather visible.
+- Hide the date while keeping weather visible (crazy ikr).
 - Wallpaper depth with Samsung Object Capture, automatic subject detection and crop/zoom tracking.*
-- Widget scaling, custom grids, free placement and independent depth controls.
+- Widget scaling, custom grids, free placement, click action disabling, and independent depth controls.
 - Separate portrait and landscape layouts on supported large screens.
 - Independent clock, widget and Extras settings for cover and inner screens on supported One UI 9 foldables.
 - Keep the charging Now Bar card visible, add a custom text card, and show up to eight cards in the stack.
-- Fullscreen album artwork in the expanded media player, with adaptive clock contrast and blurred aura.
+- Fullscreen album artwork in the expanded media player, with adaptive clock contrast, live blur, live artworks, etc.
 
 Imported fonts use their own variable axes. Samsung's dynamic per-digit stretching remains limited to its supported native fonts.
 
@@ -29,9 +29,9 @@ Imported fonts use their own variable axes. Samsung's dynamic per-digit stretchi
 | 9.0, foldable | AOD + Dressroom | Experimental; tested on SM-F971B, cover and inner screens |
 | 9.0 | Clock Style + Dressroom | Supported for clock, fonts, depth, widgets and Now Bar stack (ClockPack 8.9.65.92); clock blur and foldable profiles require AOD |
 | 8.5 | Clock Style + Dressroom | Tested on SM-P613 with a custom ROM |
-| 8.5 | AOD + Dressroom | Experimental; widget issues remain on some app versions |
-| 8.0 | AOD or Clock Style + Dressroom | Experimental clock and depth port. See [tested APKs](docs/compatibility/ONE_UI_8_0.md). |
-| 7.0 | Any combination | Unsupported (Support coming after 8.0 support update) |
+| 8.5 | AOD + Dressroom | Supported |
+| 8.0 | AOD or Clock Style + Dressroom | Experimental. See [tested APKs](docs/compatibility/ONE_UI_8_0.md). |
+| 7.0 | Any combination | Unsupported (Support coming later) |
 
 Requires Android 16 or 17 and an LSPosed-compatible framework with API 102 support. Features also depend on the installed Dressroom and clock-provider versions.
 
@@ -49,9 +49,9 @@ See [foldable support](docs/compatibility/ONE_UI_9_FOLDABLES.md) and [device val
 4. Tap the clock for **Advanced**, or use the bottom-bar **Advanced** button for **Widgets** and **Extras**.
 5. Tap Apply/Done to save. Closing without applying discards the editor draft.
 
-Reboot after module updates too, so all scoped processes load the new version.
+Reboot after module updates too, so all scoped processes load the new version. If Dressroom Advanced has root access, in-app updates install silently and relaunch scoped processes automatically.
 
-Opening the editor checks for a newer GitHub release. (Checks are cached for 15 minutes.) Enable **Pre-release updates** under **Advanced -> Extras -> Updates**, or install a `dev` build from the `dev` branch, to also check pre-release builds and choose between stable and pre-release updates when both are newer.
+Opening the editor checks for a newer GitHub release. (Checks are cached for 15 minutes if you wanna know for auto checks.) Enable **Pre-release updates** under **Advanced -> Extras -> Updates**, or install a `dev` build from the `dev` branch, to also check pre-release builds and choose between stable and pre-release updates when both are newer.
 
 For depth tracking during full-screen AOD wallpaper animations, also enable the Samsung live wallpaper scope (`com.samsung.android.wallpaper.live`). If its renderer is not supported or scoped, depth keeps its saved mapping.
 
@@ -59,8 +59,6 @@ For a font file, open **Clock → Advanced → Layout → Typography → Choose 
 
 ## Known issues
 
-- Some editor panels still need spacing and layout fixes.
-- Media transitions and the fullscreen song-change effect still need visual polish.
 - Subject detection can miss fine details or fail to initialize on some devices, including reported MediaTek setups. Animated, video and gyro wallpapers are not supported for depth.
 - Dressroom's main preview can differ from the actual editor and lockscreen.
 

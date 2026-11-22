@@ -16,7 +16,12 @@
         <activity android:name=".UpdateActivity" android:exported="true"
             android:excludeFromRecents="true" android:launchMode="singleTask"
             android:configChanges="orientation|screenSize|keyboardHidden|uiMode"
-            android:theme="@android:style/Theme.DeviceDefault.Dialog.Alert"/>
+            android:theme="@style/Theme.UpdaterHost"/>
+        <receiver android:name=".UpdateInstalledReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
+            </intent-filter>
+        </receiver>
         <provider android:name=".UpdateFileProvider" android:authorities="dev.denver.dressroomadvanced.updates"
             android:exported="false" android:grantUriPermissions="true"/>
         <provider android:name=".SettingsProvider" android:authorities="dev.denver.dressroomadvanced.settings" android:exported="true"/>
