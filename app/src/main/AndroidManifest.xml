@@ -7,12 +7,38 @@
         <package android:name="com.samsung.android.app.aodservice"/>
         <package android:name="com.samsung.android.app.clockpack"/>
         <package android:name="com.android.systemui"/>
+        <intent>
+            <action android:name="android.intent.action.MAIN"/>
+            <category android:name="android.intent.category.LAUNCHER"/>
+        </intent>
     </queries>
     <application android:label="Dressroom Advanced" android:description="@string/module_description"
         android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher"
         android:allowBackup="false" android:supportsRtl="true">
+        <meta-data android:name="com.samsung.android.app.aodservice.NOWBAR_SETTING_TITLE"
+            android:resource="@string/diy_nowbar_setting_title"/>
+        <meta-data android:name="com.samsung.android.app.aodservice.NOWBAR_SETTING_ICON"
+            android:resource="@mipmap/ic_launcher"/>
         <activity android:name=".FontPickerActivity" android:exported="true"
             android:excludeFromRecents="true" android:theme="@android:style/Theme.DeviceDefault.NoActionBar"/>
+        <activity android:name=".NowBarStudioActivity" android:exported="true"
+            android:label="DIY Now Bar"
+            android:launchMode="singleTop"
+            android:windowSoftInputMode="adjustResize"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode"
+            android:theme="@style/Theme.NowBarStudio">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="de.robv.android.xposed.category.MODULE_SETTINGS"/>
+            </intent-filter>
+        </activity>
+        <activity android:name=".DiyFullscreenCardActivity" android:exported="true"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTop"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode"
+            android:theme="@style/Theme.NowBarFullscreen"/>
         <activity android:name=".UpdateActivity" android:exported="true"
             android:excludeFromRecents="true" android:launchMode="singleTask"
             android:configChanges="orientation|screenSize|keyboardHidden|uiMode"

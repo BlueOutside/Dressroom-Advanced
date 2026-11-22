@@ -51,6 +51,23 @@ public final class SettingsProvider extends ContentProvider {
         return true;
     }
 
+    private void checkDiyMutator() {
+        if (Binder.getCallingUid() == android.os.Process.myUid()) return;
+        String[] packages =
+                getContext().getPackageManager().getPackagesForUid(Binder.getCallingUid());
+        if (packages != null) {
+            for (String name : packages) {
+                if ("com.android.systemui".equals(name)
+                        || "com.samsung.android.app.aodservice".equals(name)
+                        || "com.samsung.android.app.clockpack".equals(name)
+                        || "com.samsung.android.app.dressroom".equals(name)) {
+                    return;
+                }
+            }
+        }
+        throw new SecurityException("Unsupported DIY Now Bar mutator");
+    }
+
     private void checkCaller(boolean write) {
         if (Binder.getCallingUid() == android.os.Process.myUid()) return;
         String[] packages =
@@ -104,6 +121,24 @@ public final class SettingsProvider extends ContentProvider {
             return "beginFontPick".equals(method)
                     ? FontFiles.begin(getContext())
                     : FontFiles.result(getContext(), argument);
+        }
+        if (DiyNowBarStore.METHOD_READ.equals(method)
+                || DiyNowBarStore.METHOD_READ_STACK_ORDER.equals(method)
+                || DiyNowBarStore.METHOD_READ_LIVE_STACK.equals(method)
+                || DiyNowBarStore.METHOD_READ_LABS.equals(method)) {
+            checkCaller(false);
+            return DiyNowBarStore.handleProviderCall(getContext(), method, extras);
+        }
+        if (DiyNowBarStore.METHOD_COMMIT.equals(method)
+                || DiyNowBarStore.METHOD_COMMIT_STACK_ORDER.equals(method)
+                || DiyNowBarStore.METHOD_COMMIT_LABS.equals(method)) {
+            checkCaller(true);
+            return DiyNowBarStore.handleProviderCall(getContext(), method, extras);
+        }
+        if (DiyNowBarStore.METHOD_MUTATE.equals(method)
+                || DiyNowBarStore.METHOD_REPORT_LIVE_STACK.equals(method)) {
+            checkDiyMutator();
+            return DiyNowBarStore.handleProviderCall(getContext(), method, extras);
         }
         boolean write =
                 "commit".equals(method)
@@ -361,6 +396,15 @@ public final class SettingsProvider extends ContentProvider {
                         android.os.ParcelFileDescriptor.MODE_READ_ONLY);
             } catch (IllegalArgumentException error) {
                 throw new java.io.FileNotFoundException("Invalid font path");
+            }
+        }
+        if (segments.size() == 2 && segments.get(0).equals("nowbar-icons") && !write) {
+            try {
+                return android.os.ParcelFileDescriptor.open(
+                        DiyNowBarStore.iconFile(getContext(), segments.get(1)),
+                        android.os.ParcelFileDescriptor.MODE_READ_ONLY);
+            } catch (IllegalArgumentException error) {
+                throw new java.io.FileNotFoundException("Invalid Now Bar icon path");
             }
         }
         if (segments.size() != 2

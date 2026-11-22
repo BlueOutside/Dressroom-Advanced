@@ -574,16 +574,25 @@ final class WidgetPanel {
                     (next, value) -> next.putInt("stackCards", value),
                     false);
         }
-        PanelRows.heading(label("Custom message"));
-        toggle(
-                "Show message",
-                b.getBoolean("textCard"),
-                next -> next.putBoolean("textCard", !b.getBoolean("textCard")),
-                false);
-        if (b.getBoolean("textCard")) {
-            text("Title", "title", b.getString("title"), 80);
-            text("Message", "message", b.getString("message"), 180);
-        }
+        PanelRows.heading(label("DIY Now Bar"));
+        TextView manageDiy = label("Manage DIY cards");
+        String diySummary = diyNowBarSummary();
+        PanelRows.action(manageDiy, "Manage DIY cards", diySummary);
+        manageDiy.setOnClickListener(
+                v -> {
+                    try {
+                        android.content.Intent studio =
+                                new android.content.Intent()
+                                        .setClassName(
+                                                "dev.denver.dressroomadvanced",
+                                                "dev.denver.dressroomadvanced.NowBarStudioActivity")
+                                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+                        context.startActivity(studio);
+                    } catch (RuntimeException error) {
+                        error(error);
+                    }
+                });
+        note("Create custom cards, live timers, goals, stats, launchers, and checklists with animated shaders.");
         PanelRows.heading(label("Clock"));
         boolean inlineSec = b.getBoolean(ClockInlineSeconds.KEY, true);
         toggle(
@@ -631,6 +640,14 @@ final class WidgetPanel {
         group = content;
         status = label("");
         status.setVisibility(View.GONE);
+    }
+
+    private String diyNowBarSummary() {
+        java.util.List<DiyNowBarCard> saved = DiyNowBarStore.read(context);
+        if (saved.isEmpty()) return "Tap to create custom Now Bar cards";
+        int active = 0;
+        for (DiyNowBarCard c : saved) if (c.enabled) active++;
+        return active + " active / " + saved.size() + " saved";
     }
 
     private void renderUpdatesSection() {

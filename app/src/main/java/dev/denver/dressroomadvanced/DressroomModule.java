@@ -1559,8 +1559,12 @@ public final class DressroomModule extends XposedModule {
                     || processName.startsWith("com.samsung.android.app.clockpack:"))) return;
             DexSignatures.cachedRun(
                     () -> {
-                        if ("com.samsung.android.app.aodservice".equals(param.getPackageName()))
+                        if ("com.samsung.android.app.aodservice".equals(param.getPackageName())) {
                             OneUi9FoldProfiles.install(this, param.getClassLoader());
+                            DiyNowBarEffects.installLabsSettingsHooks(this, param.getClassLoader());
+                        } else if ("com.samsung.android.app.clockpack".equals(param.getPackageName())) {
+                            DiyNowBarEffects.installLabsSettingsHooks(this, param.getClassLoader());
+                        }
                         if (runtimeHooks == null) {
                             runtimeHooks = new RuntimeClockHooks(this);
                         }

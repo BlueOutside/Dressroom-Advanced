@@ -39,23 +39,31 @@ final class OneUi80NowBarText {
         return module.hook(filter).setId("dressroom-advanced.80-now-bar-custom-message")
                 .intercept(chain -> {
                     Object result = chain.proceed();
-                    Object message = NowBarExtras.customMessage();
-                    if (message == null
+                    List<Object> diyItems = NowBarExtras.customItems();
+                    if (diyItems.isEmpty()
                             || !(chain.getArg(0) instanceof List<?> cards)
-                            || !(result instanceof CopyOnWriteArrayList<?> visible)
-                            || visible.contains(message)) return result;
-                    int position = 0;
-                    for (Object card : cards) {
-                        if (card == message) {
-                            // The explicit message is our own view. Keep Samsung's
-                            // filtered result for every actual notification.
-                            var restored = new CopyOnWriteArrayList<Object>(visible);
-                            restored.add(Math.min(position, restored.size()), message);
-                            return restored;
-                        }
-                        if (visible.contains(card)) position++;
+                            || !(result instanceof CopyOnWriteArrayList<?> visible)) {
+                        return result;
                     }
-                    return result;
+                    CopyOnWriteArrayList<Object> restored = null;
+                    for (Object diy : diyItems) {
+                        if (diy == null || visible.contains(diy)) continue;
+                        int position = 0;
+                        boolean inSource = false;
+                        for (Object card : cards) {
+                            if (card == diy) {
+                                inSource = true;
+                                break;
+                            }
+                            if (visible.contains(card)) position++;
+                        }
+                        if (!inSource) continue;
+                        if (restored == null) restored = new CopyOnWriteArrayList<>(visible);
+                        if (!restored.contains(diy)) {
+                            restored.add(Math.min(position, restored.size()), diy);
+                        }
+                    }
+                    return restored != null ? restored : result;
                 });
     }
 }
