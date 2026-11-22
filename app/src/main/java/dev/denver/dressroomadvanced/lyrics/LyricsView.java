@@ -208,9 +208,9 @@ public final class LyricsView extends FrameLayout {
         plainLyricsView.setTextSize(TypedValue.COMPLEX_UNIT_SP, textSizeSp);
         plainLyricsView.setTypeface(getLyricsTypeface(context));
         plainLyricsView.setShadowLayer(8f, 0f, 3f, Color.argb(160, 0, 0, 0));
-        plainLyricsView.setLineSpacing(dpToPx(8), 1.25f);
+        plainLyricsView.setLineSpacing(dpToPx(4), 1.12f);
         plainLyricsView.setGravity(Gravity.START);
-        plainLyricsView.setPadding(0, dpToPx(16), 0, dpToPx(16));
+        plainLyricsView.setPadding(0, dpToPx(8), 0, dpToPx(8));
         plainLyricsView.setVisibility(GONE);
 
         linesContainer.addView(plainLyricsView, new LinearLayout.LayoutParams(
@@ -294,7 +294,7 @@ public final class LyricsView extends FrameLayout {
             attributionView.setText(src);
 
             Context ctx = getContext();
-            int linePadding = dpToPx(16);
+            int linePadding = dpToPx(6);
             for (int i = 0; i < lyricLines.size(); i++) {
                 LyricLine line = lyricLines.get(i);
                 TextView lineTv = new TextView(ctx);
@@ -304,7 +304,7 @@ public final class LyricsView extends FrameLayout {
                 lineTv.setTextColor(Color.WHITE);
                 lineTv.setShadowLayer(8f, 0f, 3f, Color.argb(160, 0, 0, 0));
                 lineTv.setAlpha(0.38f);
-                lineTv.setLineSpacing(dpToPx(6), 1.18f);
+                lineTv.setLineSpacing(dpToPx(2), 1.06f);
                 lineTv.setGravity(Gravity.START);
                 lineTv.setPadding(dpToPx(4), linePadding, dpToPx(4), linePadding);
 
