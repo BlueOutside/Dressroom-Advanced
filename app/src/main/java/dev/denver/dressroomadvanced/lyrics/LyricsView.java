@@ -128,7 +128,6 @@ public final class LyricsView extends FrameLayout {
         headerTitleView = new TextView(context);
         headerTitleView.setTextColor(Color.WHITE);
         headerTitleView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17);
-        headerTitleView.setTypeface(getLyricsTypeface(context));
         headerTitleView.setLetterSpacing(-0.01f);
         headerTitleView.setSingleLine(true);
         headerTitleView.setEllipsize(TextUtils.TruncateAt.END);
@@ -226,7 +225,6 @@ public final class LyricsView extends FrameLayout {
         plainLyricsView = new TextView(context);
         plainLyricsView.setTextColor(Color.WHITE);
         plainLyricsView.setTextSize(TypedValue.COMPLEX_UNIT_SP, textSizeSp);
-        plainLyricsView.setTypeface(getLyricsTypeface(context));
         plainLyricsView.setLetterSpacing(-0.02f);
         plainLyricsView.setLineSpacing(dpToPx(4), 1.12f);
         plainLyricsView.setGravity(Gravity.START);
@@ -244,7 +242,6 @@ public final class LyricsView extends FrameLayout {
         attributionView = new TextView(context);
         attributionView.setTextColor(Color.argb(120, 255, 255, 255));
         attributionView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
-        attributionView.setTypeface(getLyricsTypeface(context));
         attributionView.setGravity(Gravity.START);
         attributionView.setPadding(dpToPx(4), dpToPx(28), dpToPx(4), dpToPx(16));
     }
@@ -414,7 +411,6 @@ public final class LyricsView extends FrameLayout {
                 LyricLineView lineTv = new LyricLineView(ctx);
                 lineTv.setText(line.text());
                 lineTv.setTextSize(TypedValue.COMPLEX_UNIT_SP, textSizeSp);
-                lineTv.setTypeface(getLyricsTypeface(ctx));
                 lineTv.setTextColor(Color.WHITE);
                 lineTv.setLetterSpacing(-0.025f);
                 lineTv.setAlpha(0.38f);
@@ -527,46 +523,6 @@ public final class LyricsView extends FrameLayout {
             float progress = (float) elapsed / (float) Math.max(1L, singingDuration);
             lineViews.get(activeLineIndex).setProgress(progress);
         }
-    }
-
-    private static Typeface cachedSfProHeavy;
-
-    private static Typeface getLyricsTypeface(Context context) {
-        if (cachedSfProHeavy != null) return cachedSfProHeavy;
-
-        if (context != null) {
-            try {
-                Context modCtx = context.createPackageContext(
-                        "dev.denver.dressroomadvanced",
-                        Context.CONTEXT_IGNORE_SECURITY);
-                cachedSfProHeavy = Typeface.createFromAsset(
-                        modCtx.getAssets(),
-                        "fonts/SF-Pro-Display-Heavy.otf");
-                if (cachedSfProHeavy != null) {
-                    android.util.Log.i("DressroomLyrics", "Loaded SF Pro Display Heavy font from module assets");
-                    return cachedSfProHeavy;
-                }
-            } catch (Throwable t) {
-                android.util.Log.w("DressroomLyrics", "Could not load SF Pro from module context: " + t.getMessage());
-            }
-
-            try {
-                cachedSfProHeavy = Typeface.createFromAsset(
-                        context.getAssets(),
-                        "fonts/SF-Pro-Display-Heavy.otf");
-                if (cachedSfProHeavy != null) {
-                    android.util.Log.i("DressroomLyrics", "Loaded SF Pro Display Heavy font from local context");
-                    return cachedSfProHeavy;
-                }
-            } catch (Throwable ignored) {}
-        }
-
-        if (android.os.Build.VERSION.SDK_INT >= 28) {
-            cachedSfProHeavy = Typeface.create(Typeface.SANS_SERIF, 800, false);
-        } else {
-            cachedSfProHeavy = Typeface.create("sans-serif", Typeface.BOLD);
-        }
-        return cachedSfProHeavy;
     }
 
     @Override
