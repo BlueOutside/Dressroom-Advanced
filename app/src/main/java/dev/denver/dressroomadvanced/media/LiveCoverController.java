@@ -41,6 +41,11 @@ import java.util.concurrent.Executors;
 final class LiveCoverController implements LiveCoverPlayer.FrameListener {
     static final String KEY = "liveMediaArtwork";
     static final String WIFI_ONLY = "liveMediaWifiOnly";
+    static final String SOURCE = "liveMediaSource";
+    static final int SOURCE_SPOTIFY_FIRST = 0;
+    static final int SOURCE_APPLE_FIRST = 1;
+    static final int SOURCE_SPOTIFY_ONLY = 2;
+    static final int SOURCE_APPLE_ONLY = 3;
 
     private static final String CACHE_DIR_NAME = "dressroom_live_covers";
     static final long BLUR_FRAME_INTERVAL_MS = 120L;
@@ -54,8 +59,10 @@ final class LiveCoverController implements LiveCoverPlayer.FrameListener {
     private static Method drawTextureLayerMethod;
     private static Class<?> recordingCanvasClass;
 
-    private static final List<AnimatedCoverProvider> PROVIDERS =
-            List.of(new AppleMusicAnimatedCoverProvider());
+    private static final AnimatedCoverProvider SPOTIFY_PROVIDER =
+            new SpotifyCanvasAnimatedCoverProvider();
+    private static final AnimatedCoverProvider APPLE_PROVIDER =
+            new AppleMusicAnimatedCoverProvider();
     private static final ExecutorService resolvePool =
             Executors.newFixedThreadPool(
                     2,
@@ -100,6 +107,7 @@ final class LiveCoverController implements LiveCoverPlayer.FrameListener {
     private float coverOpacity;
     private String activeRequestKey = "";
     private String activeAlbumKey = "";
+    private int activeSourceMode = -1;
     private boolean resolving;
     private AnimatedCoverProvider.AnimatedCoverAsset activeAsset;
     private Bitmap lastVideoFrame;
@@ -304,9 +312,10 @@ final class LiveCoverController implements LiveCoverPlayer.FrameListener {
             return;
         }
 
-        String requestKey = query.playbackKey();
+        int sourceMode = currentSourceMode();
+        String requestKey = trackRequestKey(query, sourceMode);
         if (!requestKey.equals(activeRequestKey)) {
-            startTrack(query);
+            startTrack(query, sourceMode);
             return;
         }
 
@@ -349,6 +358,7 @@ final class LiveCoverController implements LiveCoverPlayer.FrameListener {
         closingLive = false;
         activeRequestKey = "";
         activeAlbumKey = "";
+        activeSourceMode = -1;
         resolving = false;
         activeAsset = null;
         player.resetMedia();
@@ -932,22 +942,24 @@ final class LiveCoverController implements LiveCoverPlayer.FrameListener {
             return;
         }
         if (refreshPowerRestriction()) return;
+        int sourceMode = currentSourceMode();
         if (!activeWanted) {
             if (query != null && query.isValid() && RuntimeExtras.enabled(context, KEY)
                     && RuntimeExtras.enabled(context, "fullscreenArt"))
-                requestCover(query);
+                requestCover(query, sourceMode);
             return;
         }
         if (query == null || !query.isValid()) {
             waitForTrack();
             return;
         }
-        String nextKey = query.playbackKey();
-        if (!nextKey.equals(activeRequestKey)) startTrack(query);
+        String nextKey = trackRequestKey(query, sourceMode);
+        if (!nextKey.equals(activeRequestKey)) startTrack(query, sourceMode);
     }
 
     private void changeAmbientTrack(AnimatedCoverProvider.TrackQuery query) {
-        String key = query.playbackKey();
+        int sourceMode = currentSourceMode();
+        String key = trackRequestKey(query, sourceMode);
         if (key.equals(ambientTrackKey)) return;
         ambientTrackKey = key;
         ambientDecodeAsset = null;
@@ -958,6 +970,8 @@ final class LiveCoverController implements LiveCoverPlayer.FrameListener {
         contrastSample = null;
         lastContrastSampleUptimeMs = 0L;
         activeRequestKey = "";
+        activeAlbumKey = "";
+        activeSourceMode = -1;
         activeAsset = null;
         resolving = false;
         ambientTrackSwitched = true;
@@ -970,7 +984,7 @@ final class LiveCoverController implements LiveCoverPlayer.FrameListener {
         }
         invalidateCover();
         if (!animated) return;
-        requestCover(query).whenComplete((asset, error) -> main.post(() -> {
+        requestCover(query, sourceMode).whenComplete((asset, error) -> main.post(() -> {
             if (!attached || !key.equals(ambientTrackKey) || (interactive() && !isDozing())) return;
             if (asset == null) {
                 if (ambientAwaitingArtwork && artwork != null) {
@@ -997,6 +1011,8 @@ final class LiveCoverController implements LiveCoverPlayer.FrameListener {
         contrastSample = null;
         lastContrastSampleUptimeMs = 0L;
         activeRequestKey = "";
+        activeAlbumKey = "";
+        activeSourceMode = -1;
         activeAsset = null;
         resolving = false;
         player.pauseAndHide();
@@ -1004,13 +1020,17 @@ final class LiveCoverController implements LiveCoverPlayer.FrameListener {
         main.postDelayed(artworkTimeout, 1800L);
     }
 
-    private void startTrack(AnimatedCoverProvider.TrackQuery query) {
+    private void startTrack(AnimatedCoverProvider.TrackQuery query, int sourceMode) {
         String albumKey = query.normalizedAlbumKey();
-        if (activeAsset != null && activeAsset.isPlayableLocalFile()
-                && !albumKey.isEmpty() && albumKey.equals(activeAlbumKey)) {
+        String requestKey = trackRequestKey(query, sourceMode);
+        if (sourceMode == activeSourceMode
+                && activeAsset != null
+                && activeAsset.isPlayableLocalFile()
+                && canReuseAlbumAsset(
+                        sourceMode, activeAsset.providerId(), activeAlbumKey, albumKey)) {
             // Every track on this album shares the cached motion cover. Keep its
             // decoder and surface running rather than freezing and preparing it again.
-            activeRequestKey = query.playbackKey();
+            activeRequestKey = requestKey;
             return;
         }
         Bitmap outgoing = captureFrame(SNAPSHOT_MAX_SIDE);
@@ -1021,14 +1041,15 @@ final class LiveCoverController implements LiveCoverPlayer.FrameListener {
         player.pauseAndHide();
         main.removeCallbacks(artworkTimeout);
         fadeToStatic.cancel();
-        activeRequestKey = query.playbackKey();
+        activeSourceMode = sourceMode;
+        activeRequestKey = requestKey;
         activeAlbumKey = albumKey;
         activeAsset = null;
         resolving = true;
         // A cold network lookup must not leave the previous song's cover up
         // for its entire download. Cached video can still replace it before this fade.
         main.postDelayed(artworkTimeout, 450L);
-        resolveAsync(query);
+        resolveAsync(query, sourceMode, requestKey);
     }
 
     private void playResolvedCover() {
@@ -1046,11 +1067,11 @@ final class LiveCoverController implements LiveCoverPlayer.FrameListener {
         fadeToStatic.start();
     }
 
-    private void resolveAsync(AnimatedCoverProvider.TrackQuery query) {
-        String key = query.playbackKey();
-        requestCover(query).whenComplete(
+    private void resolveAsync(
+            AnimatedCoverProvider.TrackQuery query, int sourceMode, String requestKey) {
+        requestCover(query, sourceMode).whenComplete(
                 (asset, err) -> main.post(() -> {
-                    if (!attached || !key.equals(activeRequestKey)) return;
+                    if (!attached || !requestKey.equals(activeRequestKey)) return;
                     resolving = false;
                     if (asset != null && asset.isPlayableLocalFile()) {
                         activeAsset = asset;
@@ -1060,22 +1081,71 @@ final class LiveCoverController implements LiveCoverPlayer.FrameListener {
                 }));
     }
 
+    private int currentSourceMode() {
+        return clampSource(RuntimeExtras.get(context).getInt(SOURCE, SOURCE_SPOTIFY_FIRST));
+    }
+
+    static int clampSource(int source) {
+        return source >= SOURCE_SPOTIFY_FIRST && source <= SOURCE_APPLE_ONLY
+                ? source
+                : SOURCE_SPOTIFY_FIRST;
+    }
+
+    static List<AnimatedCoverProvider> providersForSource(int source) {
+        return switch (clampSource(source)) {
+            case SOURCE_APPLE_FIRST -> List.of(APPLE_PROVIDER, SPOTIFY_PROVIDER);
+            case SOURCE_SPOTIFY_ONLY -> List.of(SPOTIFY_PROVIDER);
+            case SOURCE_APPLE_ONLY -> List.of(APPLE_PROVIDER);
+            default -> List.of(SPOTIFY_PROVIDER, APPLE_PROVIDER);
+        };
+    }
+
+    static boolean canReuseAlbumAsset(
+            int sourceMode, String activeProviderId, String activeAlbumKey, String nextAlbumKey) {
+        if (activeAlbumKey == null
+                || activeAlbumKey.isEmpty()
+                || nextAlbumKey == null
+                || !nextAlbumKey.equals(activeAlbumKey)) {
+            return false;
+        }
+        int mode = clampSource(sourceMode);
+        if (mode == SOURCE_APPLE_ONLY) return true;
+        return mode == SOURCE_APPLE_FIRST
+                && AppleMusicAnimatedCoverProvider.PROVIDER_ID.equals(activeProviderId);
+    }
+
+    static String trackRequestKey(AnimatedCoverProvider.TrackQuery query, int sourceMode) {
+        return clampSource(sourceMode) + "|" + query.playbackKey();
+    }
+
+    static String requestFlightKey(
+            AnimatedCoverProvider.TrackQuery query, int sourceMode, boolean allowNet) {
+        int mode = clampSource(sourceMode);
+        if (mode == SOURCE_APPLE_ONLY) {
+            String albumKey = query.normalizedAlbumKey();
+            String key = albumKey.isEmpty() ? query.playbackKey() : albumKey;
+            return mode + "|" + key + "|" + allowNet;
+        }
+        return mode + "|" + query.playbackKey() + "|" + allowNet;
+    }
+
     private CompletableFuture<AnimatedCoverProvider.AnimatedCoverAsset> requestCover(
-            AnimatedCoverProvider.TrackQuery query) {
-        String albumKey = query.normalizedAlbumKey();
-        String key = albumKey.isEmpty() ? query.playbackKey() : albumKey;
+            AnimatedCoverProvider.TrackQuery query, int sourceMode) {
         AnimatedCoverCache cache = obtainCache(context);
         boolean wifiOnly = RuntimeExtras.get(context).getBoolean(WIFI_ONLY, true);
         boolean allowNet = !wifiOnly || isUnmeteredNetwork(context);
-        String flightKey = key + "|" + allowNet;
+        String flightKey = requestFlightKey(query, sourceMode, allowNet);
 
-        return requests.request(flightKey, () -> queryProviders(query, allowNet, cache));
-
+        return requests.request(
+                flightKey, () -> queryProviders(query, sourceMode, allowNet, cache));
     }
 
     private static AnimatedCoverProvider.AnimatedCoverAsset queryProviders(
-            AnimatedCoverProvider.TrackQuery query, boolean allowNet, AnimatedCoverCache cache) {
-        for (AnimatedCoverProvider provider : PROVIDERS) {
+            AnimatedCoverProvider.TrackQuery query,
+            int sourceMode,
+            boolean allowNet,
+            AnimatedCoverCache cache) {
+        for (AnimatedCoverProvider provider : providersForSource(sourceMode)) {
             AnimatedCoverProvider.AnimatedCoverAsset asset = provider.resolve(query, allowNet, cache);
             if (asset != null && asset.isPlayableLocalFile()) return asset;
         }

@@ -269,13 +269,26 @@ final class MediaArtworkUncap {
                 }
             }
             if (!artist.isEmpty() && (!song.isEmpty() || !album.isEmpty())) {
+                String mediaId =
+                        metadata != null
+                                ? firstNonEmptyString(
+                                        metadata.getString(MediaMetadata.METADATA_KEY_MEDIA_ID),
+                                        metadata.getString(MediaMetadata.METADATA_KEY_MEDIA_URI))
+                                : "";
+                String canvasUri =
+                        metadata != null
+                                ? charSeqToString(
+                                        metadata.getString(LiveMediaTracker.SPOTIFY_CANVAS_URI_KEY))
+                                : "";
                 LiveMediaTracker.onLoaderMetadata(
                         ctx,
                         artist,
                         song,
                         album,
                         LiveMediaTracker.packageForToken(ctx, token),
-                        firstArtUri);
+                        firstArtUri,
+                        mediaId,
+                        canvasUri);
             }
 
             Icon currentIcon = (Icon) artworkIconField.get(self);
@@ -401,6 +414,14 @@ final class MediaArtworkUncap {
 
     private static String charSeqToString(Object value) {
         return value instanceof CharSequence cs ? cs.toString().trim() : "";
+    }
+
+    private static String firstNonEmptyString(String... values) {
+        if (values == null) return "";
+        for (String v : values) {
+            if (v != null && !v.trim().isEmpty()) return v.trim();
+        }
+        return "";
     }
 
     private static boolean isHttpScheme(Uri uri) {

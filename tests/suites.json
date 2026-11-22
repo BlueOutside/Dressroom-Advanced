@@ -1,7 +1,7 @@
 {
   "Jvm": [
     "FoldSupportTest", "FoldStateMonitorTest", "FontAxesTest", "BlurOpacityTest", "ChargingStateTest", "DeferredDiscoveryTest", "IdentityLocksTest",
-    "LatestDepthWorkTest", "LifecycleContractTest", "ReflectContractTest", "WidgetLayoutTest", "AdapterContractsTest", "NowBarStackContractsTest", "MediaContractsTest", "LiveCoverContractsTest", "DepthContractsTest", "DeferredRefreshTest", "DepthSourcePolicyTest", "WallpaperMotionTest", "CaptureInstanceStateTest", "ReleaseVersionTest", "BlurRetryStateTest", "MediaWallpaperBlurTest", "Mod9ExtrasContractsTest", "ClockInlineSecondsGeometryTest", "OneUi95ContractsTest", "ClockLabelScaleTest"
+    "LatestDepthWorkTest", "LifecycleContractTest", "ReflectContractTest", "WidgetLayoutTest", "AdapterContractsTest", "NowBarStackContractsTest", "MediaContractsTest", "LiveCoverContractsTest", "DepthContractsTest", "DeferredRefreshTest", "DepthSourcePolicyTest", "WallpaperMotionTest", "CaptureInstanceStateTest", "ReleaseVersionTest", "BlurRetryStateTest", "MediaWallpaperBlurTest", "Mod9ExtrasContractsTest", "ClockInlineSecondsGeometryTest", "OneUi95ContractsTest", "DiyNowBarLogicTest", "ClockLabelScaleTest"
   ],
   "Android": [
     "MediaPerformanceProbe", "ClockBlurSyncProbe", "OptimizationProbe", "ClockContentClipProbe", "WidgetDepthClipProbe", "WidgetPlacementOrderProbe",

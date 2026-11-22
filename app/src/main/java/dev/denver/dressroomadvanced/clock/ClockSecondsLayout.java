@@ -9,6 +9,7 @@ import java.util.regex.Pattern;
 /** Pure geometry, axis, and directional motion-blur helpers for inline clock seconds. */
 final class ClockSecondsLayout {
     private static final float MIN_FIT_SCALE = 0.35f;
+    private static final float MIN_CONDENSED_ASPECT = 0.72f;
     private static final float BLUR_EPSILON = 0.35f;
     private static final Pattern HEGT_AXIS =
             Pattern.compile("(['\"]HEGT['\"]\\s*)[-+]?\\d+(?:\\.\\d+)?");
@@ -87,6 +88,16 @@ final class ClockSecondsLayout {
         return 1f + (plan.fitScale - 1f) * u;
     }
 
+    static float fitScaleY(float fitScaleX) {
+        if (!Float.isFinite(fitScaleX)) return 1f;
+        return clamp(fitScaleX / MIN_CONDENSED_ASPECT, MIN_FIT_SCALE, 1f);
+    }
+
+    static float scaleYAt(Plan plan, float progress) {
+        float u = clamp01(progress);
+        return 1f + (fitScaleY(plan.fitScale) - 1f) * u;
+    }
+
     static float shiftAt(Plan plan, float progress) {
         return plan.shiftX * clamp01(progress);
     }
@@ -98,8 +109,8 @@ final class ClockSecondsLayout {
     }
 
     static float timeGroupTy(Plan plan, float progress, float tgTop, float baseTy) {
-        float s = scaleAt(plan, progress);
-        return baseTy + (1f - s) * (plan.anchorY - tgTop);
+        float sy = scaleYAt(plan, progress);
+        return baseTy + (1f - sy) * (plan.anchorY - tgTop);
     }
 
     static float hostTx(Plan plan, float progress) {
@@ -109,8 +120,8 @@ final class ClockSecondsLayout {
     }
 
     static float hostTy(Plan plan, float progress) {
-        float s = scaleAt(plan, progress);
-        return (1f - s) * plan.anchorY;
+        float sy = scaleYAt(plan, progress);
+        return (1f - sy) * plan.anchorY;
     }
 
     static float slideOffset(Plan plan, float progress) {
