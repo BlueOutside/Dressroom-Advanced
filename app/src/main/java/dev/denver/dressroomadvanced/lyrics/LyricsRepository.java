@@ -159,7 +159,7 @@ public final class LyricsRepository {
             }
         }
 
-        // Step 2: Secondary Fallback — lyrics.ovh
+        // Step 2: Secondary Fallback - lyrics.ovh
         entry = fetchLyricsOvh(cleanArtist, cleanTitle, album, durationMs);
         if (entry == null && (!rawArtist.equalsIgnoreCase(cleanArtist) || !rawTitle.equalsIgnoreCase(cleanTitle))) {
             entry = fetchLyricsOvh(rawArtist, rawTitle, album, durationMs);
