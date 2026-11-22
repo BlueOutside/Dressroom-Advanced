@@ -33,6 +33,7 @@ import android.view.ViewParent;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.animation.AccelerateInterpolator;
 import android.view.animation.PathInterpolator;
+import dev.denver.dressroomadvanced.LockscreenFrameBoost;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -1349,6 +1350,10 @@ public final class LyricsView extends FrameLayout {
                 holder.view.setTranslationY(holder.liftY);
             }
             scrollView.scrollTo(0, targetScrollY);
+            scrollView.postInvalidate();
+            linesContainer.postInvalidate();
+            postInvalidate();
+            LockscreenFrameBoost.pulse(this, 120L);
             snapshotLaidOutTops();
             return;
         }
@@ -1876,10 +1881,19 @@ public final class LyricsView extends FrameLayout {
 
         @Override
         protected void onDraw(Canvas canvas) {
-            // Apple's line-synced renderer highlights whole lines. A word sweep
-            // is only meaningful when the source actually supplies word timestamps.
-            // On AOD (lineByLineMode), always render whole lines without partial gradient sweep.
-            if (!wordTimings || lineByLineMode) {
+            // In line-by-line mode (e.g. AOD), render solid colors without partial gradient sweep.
+            if (lineByLineMode) {
+                TextPaint paint = getPaint();
+                int origColor = paint.getColor();
+                Shader origShader = paint.getShader();
+                paint.setShader(null);
+                paint.setColor(focus > 0.5f ? 0xFFFFFFFF : 0x66FFFFFF);
+                super.onDraw(canvas);
+                paint.setColor(origColor);
+                paint.setShader(origShader);
+                return;
+            }
+            if (!wordTimings) {
                 super.onDraw(canvas);
                 return;
             }

@@ -54,8 +54,8 @@ public final class LyricsController {
     private static final String TAG = "DressroomLyrics";
     private int lastValidHostY = -1;
 
-    public boolean isInteractive() {
-        return isInteractive(context);
+    public static boolean isInteractive() {
+        return isInteractive(activeInstance != null ? activeInstance.context : null);
     }
 
     public static boolean isInteractive(Context ctx) {
@@ -73,8 +73,8 @@ public final class LyricsController {
         return true;
     }
 
-    public boolean isKeyguardLocked() {
-        return isKeyguardLocked(context);
+    public static boolean isKeyguardLocked() {
+        return isKeyguardLocked(activeInstance != null ? activeInstance.context : null);
     }
 
     public static boolean isKeyguardLocked(Context ctx) {
@@ -91,8 +91,9 @@ public final class LyricsController {
 
     public static void onWakefulnessChanged(boolean sleeping) {
         Main.HANDLER.post(() -> {
-            if (activeInstance != null && activeInstance.isVisible) {
+            if (activeInstance != null && (activeInstance.isVisible || activeInstance.lyricsView.getVisibility() == View.VISIBLE)) {
                 android.util.Log.i(TAG, "onWakefulnessChanged: sleeping=" + sleeping);
+                activeInstance.isVisible = true;
                 activeInstance.setAodMode(sleeping);
                 if (!sleeping) {
                     ViewGroup shade = MediaFullscreenExtras.getNotificationShadeWindowView();
@@ -104,24 +105,35 @@ public final class LyricsController {
                 } else {
                     activeInstance.lyricsView.setVisibility(View.VISIBLE);
                     activeInstance.lyricsView.setAlpha(1f);
+                    activeInstance.startAodTracking();
                 }
             }
         });
     }
 
+    public void startAodTracking() {
+        trackingActive = true;
+        Main.HANDLER.removeCallbacks(aodTickRunnable);
+        long nowUptimeMs = SystemClock.uptimeMillis();
+        syncMediaController(nowUptimeMs);
+        long posMs = playbackPosition();
+        boolean playing = cachedPlaybackState != null
+                && cachedPlaybackState.getState() == PlaybackState.STATE_PLAYING;
+        android.util.Log.i(TAG, "startAodTracking: posMs=" + posMs + " playing=" + playing);
+        lyricsView.setLineByLineMode(true);
+        lyricsView.stepFrame(posMs, 0.1f, nowUptimeMs, playing);
+        if (playing) {
+            Main.HANDLER.postDelayed(aodTickRunnable, 120L);
+        } else {
+            Main.HANDLER.postDelayed(aodTickRunnable, 1000L);
+        }
+    }
+
     public void setAodMode(boolean aod) {
+        android.util.Log.i(TAG, "setAodMode: aod=" + aod + " isVisible=" + isVisible + " trackingActive=" + trackingActive);
         lyricsView.setLineByLineMode(aod);
         if (aod) {
-            Main.HANDLER.removeCallbacks(aodTickRunnable);
-            long nowUptimeMs = SystemClock.uptimeMillis();
-            syncMediaController(nowUptimeMs);
-            long posMs = playbackPosition();
-            boolean playing = cachedPlaybackState != null
-                    && cachedPlaybackState.getState() == PlaybackState.STATE_PLAYING;
-            lyricsView.stepFrame(posMs, 0.1f, nowUptimeMs, playing);
-            if (playing) {
-                Main.HANDLER.postDelayed(aodTickRunnable, 120L);
-            }
+            startAodTracking();
         }
     }
     private static final String STATUS_CLOCK_TAG = "dressroom_lyrics_status_clock";
@@ -207,6 +219,9 @@ public final class LyricsController {
     private final Runnable aodTickRunnable = new Runnable() {
         @Override
         public void run() {
+            android.util.Log.i(TAG, "aodTickRunnable tick: trackingActive=" + trackingActive
+                    + " isVisible=" + isVisible
+                    + " isInteractive=" + isInteractive());
             if (!trackingActive || !isVisible) return;
             if (isInteractive()) {
                 startTracking();
@@ -217,6 +232,7 @@ public final class LyricsController {
             long posMs = playbackPosition();
             boolean playing = cachedPlaybackState != null
                     && cachedPlaybackState.getState() == PlaybackState.STATE_PLAYING;
+            android.util.Log.i(TAG, "aodTickRunnable executing stepFrame: posMs=" + posMs + " playing=" + playing);
             lyricsView.setLineByLineMode(true);
             lyricsView.stepFrame(posMs, 0.1f, nowUptimeMs, playing);
             if (playing) {
@@ -236,6 +252,7 @@ public final class LyricsController {
             lyricsView.setLineByLineMode(!interactive);
 
             if (!interactive) {
+                android.util.Log.i(TAG, "frameCallback: not interactive -> dispatching aodTickRunnable");
                 Main.HANDLER.removeCallbacks(aodTickRunnable);
                 Main.HANDLER.post(aodTickRunnable);
                 return;
