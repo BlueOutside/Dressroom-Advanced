@@ -1,11 +1,11 @@
 package dev.denver.dressroomadvanced;
 
-import android.graphics.Rect;
 import android.os.Bundle;
+import android.graphics.Rect;
 import android.view.Gravity;
+import android.widget.LinearLayout;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.LinearLayout;
 
 import java.lang.reflect.Method;
 import java.util.Collections;
@@ -24,7 +24,7 @@ final class DateEffects {
                     "common_home_date_view",
                     "common_home_date_upper_view",
                     "common_home_date_lower_view");
-    private static final Map<View, Appearance> appearances =
+    private static final Map<View, Boolean> previews =
             Collections.synchronizedMap(new WeakHashMap<>());
     private static final Map<View, int[]> identities =
             Collections.synchronizedMap(new WeakHashMap<>());
@@ -43,49 +43,15 @@ final class DateEffects {
             Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
     private static final Set<Method> hooked = new java.util.HashSet<>();
 
-    private static final Map<View, ClockLabelLayout> labelLayouts =
-            Collections.synchronizedMap(new WeakHashMap<>());
-
-    private static final Map<View, Bounds> editorBounds =
-            Collections.synchronizedMap(new WeakHashMap<>());
-    private static final Map<View, Integer> providerWidths =
-            Collections.synchronizedMap(new WeakHashMap<>());
-
-    private record Bounds(float scale, int width, int height) {}
-
-    private record Appearance(boolean hide, int date, int weather, float reference) {
-        static final Appearance DEFAULT =
-                new Appearance(false, ClockLabelScale.DEFAULT, ClockLabelScale.DEFAULT, 0f);
-
-        static Appearance from(Bundle settings) {
-            if (settings == null) return DEFAULT;
-            int date = ClockLabelScale.clamp(settings.getInt(ClockLabelScale.DATE, ClockLabelScale.DEFAULT));
-            int weather = ClockLabelScale.clamp(settings.getInt(ClockLabelScale.WEATHER, ClockLabelScale.DEFAULT));
-            float reference = ClockLabelScale.reference(
-                    settings.getFloat(ClockLabelScale.REFERENCE), date, weather);
-            return new Appearance(settings.getBoolean("hideDate"), date, weather, reference);
-        }
-    }
-
     private DateEffects() {}
 
     static void resetPreviews() {
-        appearances.clear();
+        previews.clear();
         identities.clear();
-        editorBounds.clear();
-        originalLayoutGravities.clear();
-        originalRowGravities.clear();
-        synchronized (labelLayouts) {
-            labelLayouts.values().forEach(ClockLabelLayout::restore);
-            labelLayouts.clear();
-        }
+        ClockLabelSizing.reset();
     }
 
     static synchronized void attach(DressroomModule module, View clock) {
-        if (tracked.add(clock)) {
-            clock.addOnLayoutChangeListener(
-                    (v, l, t, r, b, ol, ot, or, ob) -> updateDate(v));
-        }
         try {
             Method setter = clock.getClass().getMethod("setDateVisibility", int.class);
             if (!hooked.contains(setter)) {
@@ -127,19 +93,23 @@ final class DateEffects {
                                     Object result = chain.proceed();
                                     View target = (View) chain.getThisObject();
                                     updateDate(target);
-                                    deferUpdate(target);
                                     return result;
                                 });
                 hooked.add(method);
             }
+            if (tracked.add(clock)) {
+                clock.addOnLayoutChangeListener(
+                        (v, l, t, r, b, ol, ot, or, ob) -> updateDate(clock));
+            }
+            apply(clock);
         } catch (Exception | LinkageError e) {
             module.report("Date visibility unavailable for this clock", e);
         }
-        apply(clock);
     }
 
     static synchronized void prepareMeasurement(DressroomModule module, View clock) {
-        // Clock Style measurement refresh
+        // Clock Style's size probe is never attached to a window. Hide its date
+        // before measuring too, including when Samsung reuses and refreshes it.
         measured.add(clock);
         attach(module, clock);
         try {
@@ -163,91 +133,47 @@ final class DateEffects {
     }
 
     static void preview(View clock, boolean hide, int date, int weather, float reference) {
-        setAppearance(clock, new Appearance(hide, date, weather, reference));
-    }
-
-    static void bindSettings(View clock, Bundle settings) {
-        setAppearance(clock, Appearance.from(settings));
-    }
-
-    static boolean hideDate(View clock) {
-        return appearance(clock).hide();
-    }
-
-    static void editorBounds(View clock, Rect area, float scale, int maxHeight) {
-        if (area.isEmpty()) return;
-        scale = ClockLabelScale.zoom(scale);
-        int height = maxHeight > 0 ? Math.min(maxHeight, area.height()) : area.height();
-        Bounds next = new Bounds(scale, area.width(), height);
-        if (next.equals(editorBounds.put(clock, next))) return;
-        if (appearance(clock).reference() > 0f) apply(clock);
-    }
-
-    static ClockLabelFit.Size stockSize(View clock) {
-        ClockLabelLayout layout = labelLayouts.get(clock);
-        return layout == null ? null : layout.stock();
-    }
-
-    static synchronized void installProviderSizing(DressroomModule module, Class<?> renderer)
-            throws ReflectiveOperationException {
-        Method width = renderer.getMethod("setClockMaxWidth", int.class);
-        installProviderWidth(module, width);
-
-        Method scale = renderer.getMethod("setScale", float.class);
-        if (hooked.contains(scale)) return;
-        module.hook(scale)
-                .setId("dressroom-advanced.label-native-scale")
-                .intercept(chain -> {
-                    View clock = (View) chain.getThisObject();
-                    ClockLabelLayout layout = labelLayouts.get(clock);
-                    // Stock sizes for Samsung's scale pass
-                    if (layout != null) layout.restore();
-                    Object result = chain.proceed();
-                    if (layout != null) {
-                        if (measured.contains(clock) && !clock.isAttachedToWindow()) updateDate(clock);
-                        else deferUpdate(clock);
-                    }
-                    return result;
-                });
-        hooked.add(scale);
-        module.deoptimize(scale);
-    }
-
-    private static void installProviderWidth(DressroomModule module, Method width) {
-        if (hooked.contains(width)) return;
-        module.hook(width)
-                .setId("dressroom-advanced.date-width")
-                .intercept(chain -> {
-                    View clock = (View) chain.getThisObject();
-                    providerWidths.put(clock, (Integer) chain.getArg(0));
-                    Object result = chain.proceed();
-                    if (tracked.contains(clock)) apply(clock);
-                    return result;
-                });
-        hooked.add(width);
-        module.deoptimize(width);
-    }
-
-    private static void setAppearance(View clock, Appearance appearance) {
-        appearances.put(clock, appearance);
+        previews.put(clock, hide);
+        ClockLabelSizing.bind(clock, date, weather, reference);
         apply(clock);
     }
 
+    static void preview(View clock, Bundle settings) {
+        previews.put(clock, settings != null && settings.getBoolean("hideDate"));
+        ClockLabelSizing.bind(clock, settings);
+        apply(clock);
+    }
+
+    static void bindSettings(View clock, Bundle settings) {
+        ClockLabelSizing.bind(clock, settings);
+    }
+
+    static boolean hideDate(View clock) {
+        return Boolean.TRUE.equals(shouldHide(clock));
+    }
+
+    static void editorBounds(View clock, Rect area, float scale, int maxHeight) {
+        ClockLabelSizing.editorBounds(clock, area, scale, maxHeight);
+    }
+
+    static ClockLabelFit.Size stockSize(View clock) {
+        return ClockLabelSizing.stockSize(clock);
+    }
+
+    static void installProviderSizing(DressroomModule module, Class<?> renderer)
+            throws ReflectiveOperationException {
+        ClockLabelSizing.install(module, renderer);
+    }
+
     static void bindIdentity(View clock, int type, int font, int orientation) {
-        int[] next = {type, font, orientation};
-        if (java.util.Arrays.equals(identities.put(clock, next), next)) return;
-        appearances.remove(clock);
+        identities.put(clock, new int[] {type, font, orientation});
         apply(clock);
     }
 
     static void clearPreview(View clock) {
-        Appearance previous = appearances.remove(clock);
-        identities.remove(clock);
-        editorBounds.remove(clock);
-        ClockLabelLayout layout = labelLayouts.remove(clock);
-        if (layout != null)
-            layout.restore();
-        if (previous != null && previous.hide()) apply(clock);
+        previews.remove(clock);
+        ClockLabelSizing.clear(clock);
+        apply(clock);
     }
 
     static void apply(View clock) {
@@ -256,7 +182,8 @@ final class DateEffects {
     }
 
     static void deferUpdate(View clock) {
-        // Attached clocks only
+        // Detached size probes never drain View.post's run queue. They already
+        // received the synchronous update; only attached clocks need a second pass.
         if (!clock.isAttachedToWindow() || !pending.add(clock)) return;
         java.lang.ref.WeakReference<View> reference = new java.lang.ref.WeakReference<>(clock);
         try {
@@ -275,9 +202,9 @@ final class DateEffects {
         pending.remove(clock);
     }
 
-    private static Appearance appearance(View clock) {
-        Appearance bound = appearances.get(clock);
-        if (bound != null) return bound;
+    private static Boolean shouldHide(View clock) {
+        Boolean preview = previews.get(clock);
+        if (preview != null) return preview;
         try {
             Bundle query = new Bundle();
             int[] identity = identities.get(clock);
@@ -289,15 +216,15 @@ final class DateEffects {
             query.putInt(
                     "font", identity == null ? ClockBinding.of(clock).fontId(clock) : identity[1]);
             if (identity != null) query.putInt(LayoutOrientation.FIELD, identity[2]);
-            return Appearance.from(SettingsBridge.read(clock.getContext(), query));
+            Bundle saved = SettingsBridge.read(clock.getContext(), query);
+            return saved != null && saved.getBoolean("hideDate");
         } catch (Exception ignored) {
-            return Appearance.DEFAULT;
+            return false;
         }
     }
 
     private static void updateDate(View clock) {
-        Appearance appearance = appearance(clock);
-        boolean hide = appearance.hide();
+        boolean hide = Boolean.TRUE.equals(shouldHide(clock));
         View[] rowPair = new View[2];
         applySubtree(clock, hide, rowPair);
         View weather = rowPair[0], dateRow = rowPair[1];
@@ -305,41 +232,8 @@ final class DateEffects {
             boolean weatherVisible = weather.getVisibility() == View.VISIBLE;
             updateText(dateRow, hide && !weatherVisible);
             alignSingleLabel(dateRow, weather, hide && weatherVisible);
-        } else if (dateRow != null) {
-            updateText(dateRow, hide);
         }
-        boolean mediaExpanded = false;
-        try {
-            mediaExpanded = ClockTransitionBinding.of(clock).mediaExpanded.getBoolean(clock);
-        } catch (ReflectiveOperationException | RuntimeException ignored) {
-        }
-        if (!ClockLabelScale.labelLayoutEnabled(appearance.reference(), mediaExpanded)) {
-            ClockLabelLayout previous = labelLayouts.remove(clock);
-            if (previous != null) previous.restore();
-            return;
-        }
-
-        Bounds bounds = editorBounds.get(clock);
-        float nativeScale = 1f;
-        if (bounds == null) {
-            float scale = ClockLabelScale.zoom(clock.getScaleX());
-            if (clock instanceof ViewGroup group) {
-                View content = clockContent(group);
-                if (content != null) scale *= ClockLabelScale.zoom(content.getScaleX());
-            }
-            int width = providerWidths.getOrDefault(clock, 0);
-            if (width <= 0) {
-                width = clock.getResources().getDisplayMetrics().widthPixels
-                        - clock.getPaddingLeft() - clock.getPaddingRight();
-            }
-            bounds = new Bounds(scale, width, clock.getResources().getDisplayMetrics().heightPixels);
-            nativeScale = nativeScale(clock);
-        }
-        if (bounds.width() <= 0 || bounds.height() <= 0) return;
-        ClockLabelLayout layout = labelLayouts.computeIfAbsent(clock, ignored -> new ClockLabelLayout());
-        float factor = ClockLabelScale.labelFactor(appearance.reference(), bounds.scale(), nativeScale);
-        layout.apply(clock, appearance.date(), appearance.weather(), factor,
-                (int) (bounds.width() / bounds.scale()), (int) (bounds.height() / bounds.scale()));
+        ClockLabelSizing.apply(clock);
     }
 
     private static void alignSingleLabel(View dateRow, View weather, boolean singleLabel) {
@@ -347,7 +241,12 @@ final class DateEffects {
         if (rowParams instanceof LinearLayout.LayoutParams lp) {
             if (singleLabel) {
                 originalLayoutGravities.putIfAbsent(dateRow, lp.gravity);
-                int target = Gravity.CENTER_HORIZONTAL | (lp.gravity & Gravity.VERTICAL_GRAVITY_MASK);
+                int gravity = lp.gravity;
+                if (gravity < 0) {
+                    gravity = dateRow.getParent() instanceof LinearLayout parent
+                            ? parent.getGravity() : Gravity.TOP;
+                }
+                int target = Gravity.CENTER_HORIZONTAL | (gravity & Gravity.VERTICAL_GRAVITY_MASK);
                 if (lp.gravity != target) {
                     lp.gravity = target;
                     dateRow.setLayoutParams(lp);
@@ -377,32 +276,11 @@ final class DateEffects {
         }
     }
 
-    private static float nativeScale(View clock) {
-        try {
-            Object value = Reflect.call(clock, "getScale");
-            if (value instanceof Number scale) return scale.floatValue();
-        } catch (ReflectiveOperationException ignored) {
-        }
-        return 1f;
-    }
-
-    private static View clockContent(ViewGroup group) {
-        for (int i = 0; i < group.getChildCount(); i++) {
-            View child = group.getChildAt(i);
-            if ("common_time_date_container".equals(entryName(child))) return child;
-            if (child instanceof ViewGroup children) {
-                View content = clockContent(children);
-                if (content != null) return content;
-            }
-        }
-        return null;
-    }
-
     private static void applySubtree(View view, boolean hide, View[] rowPair) {
         if (view == null) return;
         String entry = entryName(view);
         if (entry != null) {
-            if (isDate(entry)) {
+            if (DATE_TEXT_ENTRIES.contains(entry)) {
                 updateText(view, hide);
             } else if ("common_weather_container".equals(entry)) {
                 updateWeatherMargin(view, hide);
@@ -423,18 +301,14 @@ final class DateEffects {
         if (!(params instanceof ViewGroup.MarginLayoutParams margins)) return;
         if (hide) {
             weatherMargins.putIfAbsent(weather, margins.getMarginStart());
-            if (margins.getMarginStart() != 0 || margins.leftMargin != 0) {
+            if (margins.getMarginStart() != 0) {
                 margins.setMarginStart(0);
-                margins.leftMargin = 0;
-                margins.rightMargin = 0;
-                margins.resolveLayoutDirection(weather.getLayoutDirection());
                 weather.setLayoutParams(margins);
             }
         } else {
             Integer original = weatherMargins.remove(weather);
             if (original != null && margins.getMarginStart() != original) {
                 margins.setMarginStart(original);
-                margins.resolveLayoutDirection(weather.getLayoutDirection());
                 weather.setLayoutParams(margins);
             }
         }

@@ -20,16 +20,12 @@ final class EditorClockBox {
     private static final class Preview {
         final WeakReference<View> renderer;
         final int type;
-        Frame frame;
 
         Preview(View renderer, int type) {
             this.renderer = new WeakReference<>(renderer);
             this.type = type;
         }
     }
-
-    private record Frame(
-            int top, int height, float scale, float center, boolean labels, boolean hideDate) {}
 
     private EditorClockBox() {}
 
@@ -44,12 +40,6 @@ final class EditorClockBox {
             int type = number(data, "getClockType");
             if (preview == null || preview.type != type || preview.renderer.get() != clock) {
                 preview = new Preview(clock, type);
-                int height = number(data, "getScaledHeight");
-                int top = number(data, "getY");
-                float scale = ((Number) Reflect.call(data, "getScale")).floatValue();
-                if (height > 0) preview.frame =
-                        new Frame(top, height, scale, top + height / 2f, false,
-                                DateEffects.hideDate(clock));
                 previews.put(positioner, preview);
             }
         } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
@@ -100,12 +90,12 @@ final class EditorClockBox {
                 module.deoptimize(method);
             }
 
-            // Vertical center
+            // Refresh label budgets without rewriting Samsung's saved clock coordinates
             hooks.add(module.hook(position).setId("dressroom-advanced.label-box-position").intercept(chain -> {
                 Object model = chain.getArg(0);
                 try {
                     View clock = renderer(chain.getThisObject(), model);
-                    if (clock != null) center(previews.get(chain.getThisObject()), clock, model);
+                    if (clock != null) updateBudget(clock, model);
                 } catch (ReflectiveOperationException | RuntimeException error) {
                     module.report("Clock box placement unavailable", error);
                 }
@@ -126,35 +116,6 @@ final class EditorClockBox {
         Size max = (Size) Reflect.call(constraints, "getMaxSize");
         DateEffects.editorBounds(clock, (Rect) Reflect.call(data, "getMovableArea"),
                 ((Number) Reflect.call(data, "getScale")).floatValue(), max.getHeight());
-    }
-
-    private static void center(Preview preview, View clock, Object data) throws ReflectiveOperationException {
-        updateBudget(clock, data);
-        if (Boolean.TRUE.equals(Reflect.call(data, "isSupportSeparateDateTimeScale"))) return;
-        Rect area = (Rect) Reflect.call(data, "getMovableArea");
-        int height = number(data, "getScaledHeight");
-        if (area.isEmpty() || height <= 0 || height > area.height()) return;
-
-        int top = number(data, "getY");
-        float scale = ((Number) Reflect.call(data, "getScale")).floatValue();
-        boolean labels = DateEffects.stockSize(clock) != null;
-        boolean hideDate = DateEffects.hideDate(clock);
-        float center = top + height / 2f;
-        Frame previous = preview.frame;
-        if (previous != null
-                && ClockLabelFit.preserveEditorCenter(
-                        previous.scale, scale, previous.hideDate, hideDate,
-                        labels, previous.labels)) {
-            if (height != previous.height) {
-                center = previous.center;
-                int centered = ClockLabelFit.centeredStart(center, height, area.top, area.bottom);
-                if (centered != top) Reflect.call(data, "setY", centered);
-                top = centered;
-            } else if (top == previous.top) {
-                center = previous.center;
-            }
-        }
-        preview.frame = new Frame(top, height, scale, center, labels, hideDate);
     }
 
     private static int number(Object target, String name) throws ReflectiveOperationException {

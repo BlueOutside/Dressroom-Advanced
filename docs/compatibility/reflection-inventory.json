@@ -6,7 +6,7 @@
     "Constructors, method signatures, enum values and behavioral contracts",
     "Resource names matched by traversal rather than getIdentifier literals"
   ],
-  "sourceFiles": 251,
+  "sourceFiles": 252,
   "entries": [
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/DressroomModule.java",
@@ -573,34 +573,34 @@
       "target": "setScaleClock"
     },
     {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/ClockLabelSizing.java",
+      "line": 79,
+      "kind": "public-method",
+      "target": "setClockMaxWidth"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/ClockLabelSizing.java",
+      "line": 91,
+      "kind": "public-method",
+      "target": "setScale"
+    },
+    {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/DateEffects.java",
-      "line": 82,
+      "line": 56,
       "kind": "public-method",
       "target": "setDateVisibility"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/DateEffects.java",
-      "line": 97,
+      "line": 71,
       "kind": "public-method",
       "target": "setShowWeatherInformation"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/DateEffects.java",
-      "line": 138,
+      "line": 116,
       "kind": "public-method",
       "target": "forceRefresh"
-    },
-    {
-      "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/DateEffects.java",
-      "line": 181,
-      "kind": "public-method",
-      "target": "setClockMaxWidth"
-    },
-    {
-      "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/DateEffects.java",
-      "line": 184,
-      "kind": "public-method",
-      "target": "setScale"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/GlyphDrawReuse.java",

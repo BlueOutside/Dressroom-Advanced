@@ -1,5 +1,33 @@
 # Lockscreen UI polish on One UI 8.5 and 9.0
 
+## Date/weather scaling and clock placement, 2026-11-23
+
+The scaling PR changed date visibility refresh and clock preview positioning
+together. The preview hook rewrote ClockData Y while mapping preview coordinates;
+it did not perform Samsung's native move operation that updates the saved margins.
+It no longer changes Y. Native positioning owns the editor and saved geometry.
+
+DateEffects uses its pre-scaling-PR visibility/measurement behavior from 221fa93.
+ClockLabelSizing owns custom font/icon sizes separately and is inactive without an
+explicit label reference. Runtime label binding does not replace the date visibility
+profile. Editor previews still supply their unsaved hide-date value. Native scale
+passes restore custom sizes before Samsung runs, and expanded media uses native
+label sizes. Default profiles do not create label layout state.
+
+The confirmed weather-only horizontal centering is retained. A default layout
+gravity of -1 means inherit; masking it as an explicit gravity incorrectly produces
+FILL_VERTICAL. The centering helper now preserves the parent's vertical gravity
+and restores the original values when both labels are shown. No pixel offset is
+applied to the clock or date row.
+
+The signed 2.0.6-clock-position-fix build (code 20006016) is installed and
+Dressroom/SystemUI were reloaded. All 29 JVM suites and the five-check date refresh
+lifecycle probe pass. The text layout probe has cases for default native height,
+detached custom sizing, restoration and inherited gravity, but app_process aborts
+in Typeface initialization on this firmware before those fixtures run. Editor to
+lockscreen visual alignment and the sizing controls were initially pending. The
+user subsequently confirmed the fix before requesting this commit.
+
 ## Live cover screen-off ANR, 2026-11-22
 
 A reported SystemUI ANR names LiveCoverController's SCREEN_OFF receiver. The
@@ -24,7 +52,8 @@ suites, repository/layout checks and the regenerated inventory pass. Compiled
 receiver bytecode confirms that onReceive only updates the pending state and
 queues the handler task, with no playback or frame capture inline. The reporter's
 full ANR main-thread stack and an affected-device sleep/wake check remain needed
-to confirm the ANR is resolved; the summary alone cannot establish that.
+to confirm the exact blocking operation; the summary alone cannot establish that.
+The affected user subsequently confirmed the screen-off-fix build resolved their ANR.
 The supplied LogFox crash-com-android-systemui-22_11-12-58-46_848 export contains
 only the same ActivityManager summary plus app/device metadata, with no thread
 stacks. Its app metadata reports SystemUI 17 / SDK 37.

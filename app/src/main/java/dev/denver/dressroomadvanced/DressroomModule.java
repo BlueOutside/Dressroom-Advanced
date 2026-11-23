@@ -1014,7 +1014,7 @@ public final class DressroomModule extends XposedModule {
                                                     draft != null ? draft : saved;
                                             EditorClockBox.bind(
                                                     this, editorBinding, chain.getThisObject(), clock, data);
-                                            DateEffects.bindSettings(clock, effects);
+                                            DateEffects.preview(clock, effects);
                                             if (effects != null) {
                                                 float scale =
                                                         ((Number) Reflect.call(data, "getScale"))

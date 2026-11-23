@@ -9,6 +9,7 @@ import android.os.Looper;
 import android.util.TypedValue;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.Gravity;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -18,6 +19,7 @@ import java.util.Set;
 public final class ClockLabelLayoutProbe {
     private static final int DATE = 1001;
     private static final int WEATHER = 1002;
+    private static final int DATE_ROW = 1003;
     private static final int WRAP = ViewGroup.LayoutParams.WRAP_CONTENT;
     private static int checks;
 
@@ -57,6 +59,7 @@ public final class ClockLabelLayoutProbe {
             public String getResourceEntryName(int id) {
                 if (id == DATE) return "common_date";
                 if (id == WEATHER) return "common_weather_container";
+                if (id == DATE_ROW) return "common_date_container";
                 return super.getResourceEntryName(id);
             }
         };
@@ -132,6 +135,15 @@ public final class ClockLabelLayoutProbe {
         clock.setOrientation(LinearLayout.VERTICAL);
         layout(clock, 0);
         int nativeHeight = clock.getMeasuredHeight();
+        clock.setTranslationY(37f);
+        Bundle defaults = new Bundle();
+        defaults.putInt(ClockLabelScale.DATE, 100);
+        defaults.putInt(ClockLabelScale.WEATHER, 100);
+        DateEffects.bindSettings(clock, defaults);
+        layout(clock, 0);
+        check(DateEffects.stockSize(clock) == null, "Default settings do not create a label layout");
+        check(clock.getMeasuredHeight() == nativeHeight, "Default settings preserve native height");
+        check(clock.getTranslationY() == 37f, "Label binding does not own clock position");
         var measured = DateEffects.class.getDeclaredField("measured");
         measured.setAccessible(true);
         ((Set<View>) measured.get(null)).add(clock);
@@ -148,6 +160,31 @@ public final class ClockLabelLayoutProbe {
         DateEffects.bindSettings(clock, null);
         layout(clock, 0);
         check(clock.getMeasuredHeight() == nativeHeight, "Detached height restores without custom sizes");
+
+        LinearLayout parent = new LinearLayout(context);
+        parent.setOrientation(LinearLayout.VERTICAL);
+        parent.setGravity(Gravity.CENTER);
+        LinearLayout row = new LinearLayout(context);
+        row.setId(DATE_ROW);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(500, 80);
+        parent.addView(row, rowParams);
+        TextView singleDate = label(context, "Monday", 20);
+        singleDate.setId(DATE);
+        row.addView(singleDate, WRAP, WRAP);
+        TextView singleWeather = label(context, "26 degrees", 20);
+        singleWeather.setId(WEATHER);
+        row.addView(singleWeather, WRAP, WRAP);
+        DateEffects.preview(parent, true, 100, 100, 0f);
+        check(singleDate.getVisibility() == View.GONE, "Hidden date occupies no layout space");
+        check((rowParams.gravity & Gravity.VERTICAL_GRAVITY_MASK) == Gravity.CENTER_VERTICAL,
+                "Single-label centering preserves inherited vertical gravity");
+        check((row.getGravity() & Gravity.VERTICAL_GRAVITY_MASK) == Gravity.CENTER_VERTICAL,
+                "Single-label content preserves vertical alignment");
+        DateEffects.preview(parent, false, 100, 100, 0f);
+        check(singleDate.getVisibility() == View.VISIBLE, "Showing date restores native visibility");
+        check(rowParams.gravity == -1 && row.getGravity() == Gravity.CENTER_VERTICAL,
+                "Showing date restores inherited and content gravity");
 
         System.out.println("Clock label layout: " + checks + " checks passed");
         System.exit(0);
