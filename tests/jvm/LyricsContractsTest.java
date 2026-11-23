@@ -7,6 +7,8 @@ import dev.denver.dressroomadvanced.lyrics.LyricsEntry;
 import dev.denver.dressroomadvanced.lyrics.LrcParser;
 import dev.denver.dressroomadvanced.lyrics.Lyricsfile;
 import dev.denver.dressroomadvanced.lyrics.LyricScrollMotion;
+import dev.denver.dressroomadvanced.lyrics.LyricsPageLayout;
+import dev.denver.dressroomadvanced.lyrics.LyricsPageLayout.Bounds;
 
 import org.json.JSONObject;
 
@@ -38,7 +40,45 @@ public final class LyricsContractsTest {
         testLyricsFontPreferenceHelpers();
         testPlaybackPositionMath();
         testAppleMusicChoreographyAndHorizontalBounds();
+        testPlayerLayoutRegions();
         System.out.println("Lyrics contracts: " + checks + " checks passed successfully.");
+    }
+
+    private static void testPlayerLayoutRegions() {
+        Bounds portrait = new Bounds(0, 40, 400, 840);
+        Bounds controls = new Bounds(20, 640, 380, 820);
+        check(new Bounds(0, 40, 400, 632).equals(LyricsPageLayout.place(
+                portrait, controls, 8, 200, 160)), "Portrait lyrics overlap the native controls");
+        Bounds landscape = new Bounds(30, 20, 850, 390);
+        check(new Bounds(30, 20, 532, 390).equals(LyricsPageLayout.place(landscape,
+                new Bounds(540, 40, 840, 380), 8, 200, 160)),
+                "Right-side landscape player leaves no room for lyrics");
+        check(new Bounds(348, 20, 850, 390).equals(LyricsPageLayout.place(landscape,
+                new Bounds(40, 40, 340, 380), 8, 200, 160)),
+                "Left-side landscape player leaves no room for lyrics");
+        check(LyricsPageLayout.place(portrait, new Bounds(0, 40, 400, 840), 8, 200, 160) == null,
+                "A full-window host creates a blank, unusable lyrics page");
+        check(LyricsPageLayout.place(portrait, new Bounds(420, 400, 800, 800), 8, 200, 160) == null,
+                "An offscreen preloaded player gets a lyrics region");
+        check(LyricsPageLayout.place(new Bounds(0, 0, 0, 0), controls, 8, 200, 160) == null,
+                "An unmeasured window uses fabricated pixel bounds");
+        check(new Bounds(0, 228, 400, 840).equals(LyricsPageLayout.place(portrait,
+                new Bounds(0, 40, 400, 220), 8, 200, 160)),
+                "A top-aligned legacy controller creates an unusable overlay");
+        // Includes clipped, translated and partially offscreen legacy control rectangles.
+        for (int x = -100; x <= 500; x += 50) {
+            for (int y = -100; y <= 900; y += 100) {
+                Bounds nativeControls = new Bounds(x, y, x + 280, y + 180);
+                Bounds placed = LyricsPageLayout.place(portrait, nativeControls, 8, 200, 160);
+                if (placed == null) continue;
+                check(placed.left() >= portrait.left() && placed.top() >= portrait.top()
+                        && placed.right() <= portrait.right() && placed.bottom() <= portrait.bottom(),
+                        "Lyrics escape the inset-safe window bounds");
+                check(placed.right() <= nativeControls.left() || placed.left() >= nativeControls.right()
+                        || placed.bottom() <= nativeControls.top() || placed.top() >= nativeControls.bottom(),
+                        "Lyrics cover native playback controls");
+            }
+        }
     }
 
     private static void testLrcParser() {

@@ -25,6 +25,14 @@ Inline seconds use the older dashboard launch path and fit inside the visible cl
 
 Clock glass and additional Now Bar stack slots are outside this preview.
 
+Lyrics now use the legacy-player binding rather than One UI 9's artwork layout.
+Each native controls host owns its own lyrics controller. The overlay is placed
+in the window above/beside measured controls, uses its own blurred artwork, and
+preserves native control listeners and saved title/artist opacity. The local AOD
+and Clock Style holder resources were checked; visual confirmation on both 8.0
+providers is pending. See [8.5 media research](../research/MEDIA_8.5.md) for the
+shared lifecycle/geometry changes and APK comparison.
+
 ## Music page attachment crash
 
 The 2026-11-23 S901E report crashes in `ViewGroup.dispatchAttachedToWindow`

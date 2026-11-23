@@ -192,7 +192,7 @@ public final class OneUi85FullscreenArt {
             if (titleArtist == null) titleArtist = find(item, "facewidget_music_page_title");
             ViewGroup pageContainer = item instanceof ViewGroup itemGroup ? itemGroup : null;
             if (controlsView instanceof ViewGroup hostGroup) {
-                var lyricsCtrl = dev.denver.dressroomadvanced.lyrics.LyricsController.bind(
+                var lyricsCtrl = dev.denver.dressroomadvanced.lyrics.LyricsController.bindLegacy(
                         pageContainer, hostGroup, titleArtist, frame, source::bitmap);
                 if (lyricsCtrl != null) {
                     lyricsCtrl.applyPreferences(RuntimeExtras.get(hostGroup.getContext()));

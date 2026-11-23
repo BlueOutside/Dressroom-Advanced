@@ -1,5 +1,75 @@
 # One UI 8.5 media player
 
+## Lyrics page integration (2026-11-23)
+
+JADX MCP inspection of AOD 8.9.32.95 confirms a scaled music holder containing
+a ViewPager2 with several native media holders. `getNowBarMusicHeight` and
+`getNowBarMusicWidth` use different device/orientation ratios; the page also
+animates its holder scale. The media adapter constructs holders ahead of display
+and separately binds their visibility, artwork, title and artist. Consequently,
+the latest constructed holder is not necessarily the player the user is viewing.
+
+The previous global lyrics controller was retargeted by every holder constructor.
+Lyrics could inherit a hidden/offscreen page's controls, title or artwork. Its
+fallback container could also be inside the scaled/clipped native pager. These
+are concrete black/empty-page failure paths; the individual user reports still
+need a visual retest to establish which path affected each device.
+
+The lyrics binding now keeps one controller per controls host, with weak registry
+entries and a single active page. Closed/preloaded pages do not register media
+listeners or request lyrics. View moves remain deferred until attachment ends.
+The active overlay belongs to its actual window; leaving/recycling the player
+closes and removes that overlay, including native alpha-only closes.
+
+Bounds map the measured controls through their full ancestor transform into the
+overlay window. The safe region excludes system bars/cutouts. Portrait normally
+uses the area above the controls; side regions or available lower space
+cover landscape/compact layouts. Unmeasured/offscreen/full-window controls cannot
+open a zero-sized lyrics page. No guessed 1750px position is used. Layout changes
+do not reorder window children; while open, geometry follows native motion.
+
+The 8.x binding uses its own blurred artwork and restores original native title,
+artist and artwork alpha/translation on close. It does not depend on the transient
+native full-cover layer being visible. Hiding lockscreen clocks/indications now
+protects ancestors of the lyrics and player controls. Native control/output touch
+listeners are preserved. The lyrics toggle positions beside the measured legacy
+output button instead of assuming the One UI 9 icon layout.
+
+Resource checks covered both `now_bar_music_page_holder` and the dashboard's
+`facewidget_music_page_holder` in these local samples:
+
+| Provider | Controls resource |
+| --- | --- |
+| 8.0 AOD 8.9.15.50, Clock Style 8.9.15.39 | `facewidget_music_container_small_expand` |
+| 8.5 AOD 8.9.32.95, both 8.9.36.23 samples, Clock Style 8.9.35.60 | `facewidget_music_container_expand_Player` |
+
+All sampled layouts expose separate title, artist and media-output views. The
+existing constructor/body signatures are unchanged; no obfuscated runtime lookup
+was introduced.
+
+JADX aliases applied to the reference 8.5 AOD project:
+
+| Original | Alias |
+| --- | --- |
+| `aod.YR` | `LegacyMusicPageViewHolder` |
+| `aod.NR` | `LegacyMusicPageAdapter` |
+| holder `M(boolean)` | `animateMusicPageVisibility` |
+| holder `N()` | `applyMusicPageVisibility` |
+| holder `F()` | `isLandscape` |
+| holder `g0` | `expandedControls` |
+| holder `U` | `albumArtContainer` |
+| holder `T` | `albumArtAndTitles` |
+| holder `P` | `artworkTransitionContainer` |
+
+Validation: signed preview `2.0.6-legacy-lyrics-preview` (`20006019`) built;
+all 29 JVM suites passed, including 645 lyrics checks. Repository/layout/diff
+checks passed. The lyrics suite includes portrait, landscape, cutout-safe,
+clipped/offscreen and insufficient-space geometry cases. The preview was installed
+on the connected One UI 9 phone and SystemUI was reloaded for a shared-code smoke
+test. Device validation must cover framed and
+fullscreen players, switching pager cards, opening/closing lyrics and rotation
+on 8.0 and 8.5. APK inspection does not establish their visual behavior.
+
 Inspected Clock Style 8.9.35.60 through JADX MCP. AOD 8.9.32.95 is compared
 against the earlier source inspection and read-only APK binding checks.
 

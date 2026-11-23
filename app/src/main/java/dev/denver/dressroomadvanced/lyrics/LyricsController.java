@@ -3,6 +3,9 @@ package dev.denver.dressroomadvanced.lyrics;
 import android.content.Context;
 import android.content.res.Resources;
 import android.graphics.Bitmap;
+import android.graphics.Matrix;
+import android.graphics.Rect;
+import android.graphics.RectF;
 import android.graphics.Canvas;
 import android.graphics.Typeface;
 import android.graphics.drawable.BitmapDrawable;
@@ -41,6 +44,7 @@ import dev.denver.dressroomadvanced.VariableFonts;
 
 import java.lang.ref.WeakReference;
 import java.util.List;
+import java.util.ArrayList;
 import java.util.Map;
 import java.util.WeakHashMap;
 import java.util.function.Supplier;
@@ -59,7 +63,7 @@ public final class LyricsController {
         static final Handler HANDLER = new Handler(Looper.getMainLooper());
     }
 
-    private static final Map<View, LyricsController> BOUND_CONTROLLERS = new WeakHashMap<>();
+    private static final Map<View, WeakReference<LyricsController>> BOUND_CONTROLLERS = new WeakHashMap<>();
     private static volatile boolean lyricsActive = false;
     private static boolean extrasListenerInstalled = false;
     private static LyricsController activeInstance;
@@ -83,10 +87,14 @@ public final class LyricsController {
     private final LyricsView lyricsView;
     private final LyricsToggleButton toggleButton;
     private final Context context;
+    private boolean legacyLayout;
+    private final Matrix controlsMatrix = new Matrix(), windowMatrix = new Matrix();
+    private final RectF controlsBounds = new RectF();
+    private final Rect visibleControls = new Rect();
+    private record NativePresentation(float alpha, float translationY) {}
+    private final Map<View, NativePresentation> hiddenPresentation = new java.util.IdentityHashMap<>();
 
     private final Map<View, Float> hiddenByLyrics = new WeakHashMap<>();
-    private float savedAlbumArtAlpha = -1f;
-    private boolean albumArtHiddenForLocalBackdrop = false;
 
     private boolean isVisible = false;
     private boolean trackingActive = false;
@@ -136,6 +144,9 @@ public final class LyricsController {
         @Override
         public void doFrame(long frameTimeNanos) {
             if (!trackingActive || !isVisible) return;
+            hideIfHostGone();
+            if (!isVisible) return;
+            updateLyricsBounds();
 
             long nowUptimeMs = SystemClock.uptimeMillis();
             float dtSec = lastFrameNanos > 0L
@@ -159,6 +170,7 @@ public final class LyricsController {
 
     private final View.OnLayoutChangeListener layoutListener =
             (v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
+                if (v == controlHostRef.get()) positionToggleButton();
                 if (isVisible) {
                     View host = controlHostRef.get();
                     if (host == null || !host.isAttachedToWindow()
@@ -205,18 +217,39 @@ public final class LyricsController {
         ViewGroup controls = controlHostRef.get();
         if (controls == null || !controls.isAttachedToWindow()) return;
         ViewGroup best = findBestContainer(controls);
-        if (best == null) best = pageContainerRef.get();
         if (best == null || !best.isAttachedToWindow()
                 || best.getRootView() != controls.getRootView()) return;
         attachToggleButton(controls);
+        positionToggleButton();
         attachLyricsView(best);
         updateLyricsBounds();
     }
 
     private void hideIfHostGone() {
         View host = controlHostRef.get();
-        if (isVisible && (host == null || !host.isAttachedToWindow()
-                || host.getVisibility() != View.VISIBLE)) hideLyrics();
+        if (host != null && host.isAttachedToWindow() && host.isShown()
+                && hasVisibleAlpha(host) && host.getGlobalVisibleRect(visibleControls)) return;
+        if (isVisible) hideLyrics();
+        // The window must not retain overlays/controllers for recycled music pages.
+        if (lyricsView.getParent() instanceof ViewGroup parent) {
+            lyricsView.animate().cancel();
+            lyricsView.setVisibility(View.GONE);
+            lyricsView.setAlpha(0f);
+            parent.removeOnLayoutChangeListener(layoutListener);
+            parent.removeView(lyricsView);
+        }
+    }
+
+    private static boolean hasVisibleAlpha(View view) {
+        float alpha = 1f;
+        for (View current = view; current != null;
+                current = current.getParent() instanceof View parent ? parent : null) {
+            float value = current.getAlpha();
+            if (!Float.isFinite(value)) return false;
+            alpha *= value;
+            if (alpha <= .01f) return false;
+        }
+        return true;
     }
 
     private void bindPage(ViewGroup page) {
@@ -290,9 +323,7 @@ public final class LyricsController {
         updateLyricsBounds();
         applyPreferences(RuntimeExtras.get(context));
 
-        LiveMediaTracker.addListener(context, liveTrackListener);
         ensureExtrasListener(context);
-        onTrackChanged();
     }
 
     private static synchronized void ensureExtrasListener(Context context) {
@@ -314,6 +345,33 @@ public final class LyricsController {
         btnLp.gravity = Gravity.TOP | Gravity.END;
         btnLp.setMargins(0, dpToPx(8), dpToPx(56), 0);
         controlHost.addView(toggleButton, btnLp);
+    }
+
+    private void positionToggleButton() {
+        ViewGroup controls = controlHostRef.get();
+        if (!legacyLayout || controls == null || controls.getWidth() <= 0
+                || toggleButton.getParent() != controls) return;
+        View output = findViewByResourceEntryName(controls, "facewidget_music_page_media_output_btn");
+        int size = dpToPx(36), gap = dpToPx(8);
+        int x = controls.getWidth() - dpToPx(56) - size, y = gap;
+        if (output != null && output.isShown() && output.getWidth() > 0) {
+            controlsMatrix.reset(); windowMatrix.reset();
+            output.transformMatrixToGlobal(controlsMatrix);
+            controls.transformMatrixToGlobal(windowMatrix);
+            if (windowMatrix.invert(windowMatrix)) {
+                controlsBounds.set(0, 0, output.getWidth(), output.getHeight());
+                controlsMatrix.mapRect(controlsBounds); windowMatrix.mapRect(controlsBounds);
+                x = Math.round(controlsBounds.left) - gap - size;
+                y = Math.round(controlsBounds.centerY()) - size / 2;
+            }
+        }
+        x = Math.max(gap, Math.min(controls.getWidth() - size - gap, x));
+        y = Math.max(0, Math.min(Math.max(0, controls.getHeight() - size), y));
+        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) toggleButton.getLayoutParams();
+        if (lp.gravity == (Gravity.TOP | Gravity.LEFT) && lp.leftMargin == x && lp.topMargin == y) return;
+        lp.gravity = Gravity.TOP | Gravity.LEFT; lp.leftMargin = x; lp.topMargin = y;
+        lp.rightMargin = 0;
+        toggleButton.setLayoutParams(lp);
     }
 
     private MediaController currentMediaController() {
@@ -374,39 +432,10 @@ public final class LyricsController {
     }
 
     private ViewGroup findBestContainer(View child) {
-        ViewGroup shade = MediaFullscreenExtras.getNotificationShadeWindowView();
-        if (shade != null) return shade;
-
+        // An inner pager/card inherits Samsung's clipping, scale and show/hide alpha.
+        // The actual window owning these controls is independent of those transitions.
         View root = child != null ? child.getRootView() : null;
-        if (root instanceof ViewGroup rootVg) {
-            if (root.getClass().getName().contains("NotificationShadeWindowView")) {
-                return rootVg;
-            }
-            int nowBarId = root.getResources().getIdentifier("now_bar_rootview", "id", "com.android.systemui");
-            if (nowBarId != 0) {
-                View nb = root.findViewById(nowBarId);
-                if (nb instanceof ViewGroup vg) return vg;
-            }
-        }
-        for (ViewParent p = child != null ? child.getParent() : null; p instanceof View pv; p = pv.getParent()) {
-            if (pv.getClass().getName().contains("NotificationShadeWindowView") && pv instanceof ViewGroup vg) {
-                return vg;
-            }
-            if (pv.getClass().getName().contains("FaceWidgetMusicPage") && pv instanceof ViewGroup vg) {
-                return vg;
-            }
-        }
-        for (ViewParent p = child != null ? child.getParent() : null; p instanceof View pv; p = pv.getParent()) {
-            if (pv.getId() != View.NO_ID) {
-                try {
-                    String name = pv.getResources().getResourceEntryName(pv.getId());
-                    if ("facewidget_music_page_container".equals(name) && pv instanceof ViewGroup vg) {
-                        return vg;
-                    }
-                } catch (Exception ignored) {}
-            }
-        }
-        return null;
+        return root instanceof FrameLayout window && window.isAttachedToWindow() ? window : null;
     }
 
     private void attachLyricsView(ViewGroup container) {
@@ -442,11 +471,6 @@ public final class LyricsController {
             if (activeInstance != null) {
                 activeInstance.lyricsView.setArtwork(bitmap);
             }
-            for (LyricsController ctrl : BOUND_CONTROLLERS.values()) {
-                if (ctrl != null && ctrl != activeInstance) {
-                    ctrl.lyricsView.setArtwork(bitmap);
-                }
-            }
         });
     }
 
@@ -459,28 +483,17 @@ public final class LyricsController {
             old.removeOnLayoutChangeListener(layoutListener);
         }
         boundControls = new WeakReference<>(controlHost);
-        controlHost.setOnTouchListener((v, event) -> lyricsActive);
         controlHost.addOnAttachStateChangeListener(controlsAttachListener);
         controlHost.addOnLayoutChangeListener(layoutListener);
+    }
 
-        try {
-            int devId = controlHost.getResources().getIdentifier(
-                    "facewidget_music_page_device", "id", "com.samsung.android.app.aodservice");
-            if (devId != 0) {
-                View devView = controlHost.findViewById(devId);
-                if (devView != null) {
-                    devView.setOnTouchListener((v, event) -> lyricsActive);
-                }
-            }
-            int outId = controlHost.getResources().getIdentifier(
-                    "facewidget_music_icon_device_media_output_container", "id", "com.samsung.android.app.aodservice");
-            if (outId != 0) {
-                View outView = controlHost.findViewById(outId);
-                if (outView != null) {
-                    outView.setOnTouchListener((v, event) -> lyricsActive);
-                }
-            }
-        } catch (Exception ignored) {}
+    private static synchronized List<LyricsController> controllers() {
+        List<LyricsController> result = new ArrayList<>();
+        for (var reference : BOUND_CONTROLLERS.values()) {
+            LyricsController controller = reference.get();
+            if (controller != null) result.add(controller);
+        }
+        return result;
     }
 
     public static synchronized LyricsController bind(ViewGroup container) {
@@ -501,15 +514,23 @@ public final class LyricsController {
         ViewGroup target = controlHost != null ? controlHost : pageContainer;
         if (target == null) return null;
 
-        if (activeInstance != null) {
-            activeInstance.updateTarget(pageContainer, target, titleArtist, albumArt, artworkSupplier);
-            BOUND_CONTROLLERS.put(target, activeInstance);
-            return activeInstance;
+        WeakReference<LyricsController> reference = BOUND_CONTROLLERS.get(target);
+        LyricsController controller = reference == null ? null : reference.get();
+        if (controller != null) {
+            controller.updateTarget(pageContainer, target, titleArtist, albumArt, artworkSupplier);
+            return controller;
         }
 
-        activeInstance = new LyricsController(pageContainer, target, titleArtist, albumArt, artworkSupplier);
-        BOUND_CONTROLLERS.put(target, activeInstance);
-        return activeInstance;
+        controller = new LyricsController(pageContainer, target, titleArtist, albumArt, artworkSupplier);
+        BOUND_CONTROLLERS.put(target, new WeakReference<>(controller));
+        return controller;
+    }
+
+    public static LyricsController bindLegacy(ViewGroup page, ViewGroup controls, View titleArtist,
+            View albumArt, Supplier<Bitmap> artwork) {
+        LyricsController controller = bind(page, controls, titleArtist, albumArt, artwork);
+        if (controller != null) controller.legacyLayout = true;
+        return controller;
     }
 
     public void updateTarget(
@@ -535,57 +556,54 @@ public final class LyricsController {
         refreshCoverOnly();
     }
 
-    private void updateLyricsBounds() {
+    private boolean updateLyricsBounds() {
         View controlHost = controlHostRef.get();
-        if (controlHost == null) return;
-        ViewGroup parent = (ViewGroup) lyricsView.getParent();
-        if (parent == null) return;
+        if (controlHost == null || controlHost.getWidth() <= 0 || controlHost.getHeight() <= 0
+                || !(lyricsView.getParent() instanceof FrameLayout parent)
+                || parent.getWidth() <= 0 || parent.getHeight() <= 0
+                || controlHost.getRootView() != parent.getRootView()) return false;
+        controlsMatrix.reset(); windowMatrix.reset();
+        controlHost.transformMatrixToGlobal(controlsMatrix);
+        parent.transformMatrixToGlobal(windowMatrix);
+        if (!windowMatrix.invert(windowMatrix)) return false;
+        controlsBounds.set(0, 0, controlHost.getWidth(), controlHost.getHeight());
+        controlsMatrix.mapRect(controlsBounds);
+        windowMatrix.mapRect(controlsBounds);
 
-        int[] hostLoc = new int[2];
-        controlHost.getLocationInWindow(hostLoc);
-        int[] parentLoc = new int[2];
-        parent.getLocationInWindow(parentLoc);
-        int hostY = hostLoc[1] - parentLoc[1];
-        if (hostY <= 0) {
-            if (parent.getHeight() > 0 && controlHost.getHeight() > 0) {
-                hostY = parent.getHeight() - controlHost.getHeight();
-            } else {
-                hostY = 1750;
-            }
+        int left = parent.getPaddingLeft(), top = parent.getPaddingTop();
+        int right = parent.getWidth() - parent.getPaddingRight();
+        int bottom = parent.getHeight() - parent.getPaddingBottom();
+        var insets = parent.getRootWindowInsets();
+        if (insets != null) {
+            var bars = insets.getInsetsIgnoringVisibility(android.view.WindowInsets.Type.systemBars()
+                    | android.view.WindowInsets.Type.displayCutout());
+            left = Math.max(left, bars.left); top = Math.max(top, bars.top);
+            right = Math.min(right, parent.getWidth() - bars.right);
+            bottom = Math.min(bottom, parent.getHeight() - bars.bottom);
         }
-
-        int resId = parent.getResources().getIdentifier("status_bar_height", "dimen", "android");
-        int statusBarHeight = resId > 0 ? parent.getResources().getDimensionPixelSize(resId) : dpToPx(38);
+        var region = LyricsPageLayout.place(new LyricsPageLayout.Bounds(left, top, right, bottom),
+                new LyricsPageLayout.Bounds((int) Math.floor(controlsBounds.left),
+                        (int) Math.floor(controlsBounds.top), (int) Math.ceil(controlsBounds.right),
+                        (int) Math.ceil(controlsBounds.bottom)), dpToPx(8), dpToPx(200), dpToPx(160));
+        if (region == null) return false;
         lyricsView.setStatusBarInset(0);
-
-        int targetHeight = Math.max(dpToPx(200), hostY - statusBarHeight);
-        ViewGroup.LayoutParams lp = lyricsView.getLayoutParams();
-        if (lp instanceof FrameLayout.LayoutParams flp) {
-            if (flp.width == ViewGroup.LayoutParams.MATCH_PARENT
-                    && flp.topMargin == statusBarHeight
-                    && flp.height == targetHeight) {
-                return;
-            }
-            flp.width = ViewGroup.LayoutParams.MATCH_PARENT;
-            flp.gravity = Gravity.TOP | Gravity.START;
-            flp.topMargin = statusBarHeight;
-            flp.height = targetHeight;
-            flp.leftMargin = 0;
-            flp.rightMargin = 0;
-            flp.bottomMargin = 0;
-            lyricsView.setLayoutParams(flp);
-            lyricsView.bringToFront();
-        } else if (lp instanceof ViewGroup.MarginLayoutParams mlp) {
-            if (mlp.width == ViewGroup.LayoutParams.MATCH_PARENT
-                    && mlp.topMargin == statusBarHeight
-                    && mlp.height == targetHeight) {
-                return;
-            }
-            mlp.width = ViewGroup.LayoutParams.MATCH_PARENT;
-            mlp.height = targetHeight;
-            mlp.topMargin = statusBarHeight;
-            lyricsView.setLayoutParams(mlp);
+        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) lyricsView.getLayoutParams();
+        if (lp.width != region.width() || lp.height != region.height()
+                || lp.leftMargin != region.left() || lp.topMargin != region.top()) {
+            lp.width = region.width(); lp.height = region.height();
+            lp.gravity = Gravity.TOP | Gravity.LEFT;
+            lp.leftMargin = region.left(); lp.topMargin = region.top();
+            lp.rightMargin = lp.bottomMargin = 0;
+            lyricsView.setLayoutParams(lp);
         }
+        return true;
+    }
+
+    private static boolean contains(View ancestor, View descendant) {
+        for (View current = descendant; current != null;
+                current = current.getParent() instanceof View parent ? parent : null)
+            if (current == ancestor) return true;
+        return false;
     }
 
     /**
@@ -600,6 +618,11 @@ public final class LyricsController {
             View child = root.getChildAt(i);
             if (child == null || child == lyricsView) continue;
             if (STATUS_CLOCK_TAG.equals(child.getTag())) continue;
+            // Older status/clock containers can also own the entire music page.
+            if (contains(child, controlHostRef.get()) || contains(child, lyricsView)) {
+                if (child instanceof ViewGroup group) hideLockscreenElements(group);
+                continue;
+            }
 
             String name = resourceEntryName(child);
             if ("keyguard_header".equals(name)
@@ -661,8 +684,8 @@ public final class LyricsController {
      * icons in {@code keyguard_notification_icon_container}.
      */
     private static void updateStatusBarClock(boolean show) {
-        ViewGroup shade = MediaFullscreenExtras.getNotificationShadeWindowView();
-        if (shade == null && activeInstance != null) {
+        ViewGroup shade = null;
+        if (activeInstance != null) {
             View control = activeInstance.controlHostRef.get();
             if (control != null && control.getRootView() instanceof ViewGroup rg) {
                 shade = rg;
@@ -1013,8 +1036,8 @@ public final class LyricsController {
             if (activeInstance != null) {
                 activeInstance.applyPreferences(extras);
             }
-            for (LyricsController ctrl : BOUND_CONTROLLERS.values()) {
-                if (ctrl != null && ctrl != activeInstance) {
+            for (LyricsController ctrl : controllers()) {
+                if (ctrl != activeInstance) {
                     ctrl.applyPreferences(extras);
                 }
             }
@@ -1080,59 +1103,39 @@ public final class LyricsController {
 
     public void showLyrics() {
         if (isVisible) return;
+        View controls = controlHostRef.get();
+        if (controls == null || !controls.isShown() || !hasVisibleAlpha(controls)
+                || !controls.getGlobalVisibleRect(visibleControls)) return;
+        attachToCurrentHost();
+        if (!lyricsView.isAttachedToWindow() || !updateLyricsBounds()) return;
+        if (activeInstance != null && activeInstance != this) activeInstance.hideLyrics();
+        activeInstance = this;
         isVisible = true;
         lyricsActive = true;
-        MediaCoverWakefulness.setLyricsBlur(true);
+        // Legacy covers belong to a scaled pager that Samsung can hide independently.
+        // Use this page's own blurred artwork rather than depending on that layer staying visible.
+        MediaCoverWakefulness.setLyricsBlur(!legacyLayout);
         MediaClockVisibility.setLyricsMode(true);
         MediaFullscreenExtras.invalidateAllHosts();
 
         // Check if Fullscreen Album Cover is providing the blurred backdrop; otherwise use local blurred cover
-        boolean hasFullscreenBackdrop = MediaFullscreenExtras.isFullscreenBackdropActive()
-                || OneUi85FullscreenArt.isFullscreenBackdropActive();
+        boolean hasFullscreenBackdrop = !legacyLayout && MediaFullscreenExtras.isFullscreenBackdropActive();
         lyricsView.setUseLocalBackdrop(!hasFullscreenBackdrop);
-        if (!hasFullscreenBackdrop) {
-            View art = albumArtRef.get();
-            if (art != null) {
-                savedAlbumArtAlpha = art.getAlpha();
-                albumArtHiddenForLocalBackdrop = true;
-                art.animate().cancel();
-                art.animate().alpha(0f).setDuration(200).start();
-            }
-        }
-
-        ViewGroup best = findBestContainer(controlHostRef.get());
-        if (best != null && best != lyricsView.getParent()) {
-            attachLyricsView(best);
-        }
 
         // Refresh cover and metadata immediately so top cover art is guaranteed up to date
         refreshCoverOnly();
-        if (currentTrackKey.isEmpty()) {
-            onTrackChanged();
-        }
+        onTrackChanged();
+        hideNativePresentation(!hasFullscreenBackdrop);
 
         updateLyricsBounds();
         lyricsView.bringToFront();
         lyricsView.animateOpen();
 
         // Hide lockscreen clock and complications (preserving status bar & notification icons)
-        ViewGroup shade = MediaFullscreenExtras.getNotificationShadeWindowView();
         View control = controlHostRef.get();
         ViewGroup controlRoot = control != null && control.getRootView() instanceof ViewGroup rg ? rg : null;
-        hideLockscreenElements(shade);
-        if (controlRoot != null && controlRoot != shade) hideLockscreenElements(controlRoot);
+        hideLockscreenElements(controlRoot);
         updateStatusBarClock(true);
-
-        View titleArtist = titleArtistRef.get();
-        if (titleArtist != null) {
-            titleArtist.animate().cancel();
-            titleArtist.animate()
-                    .alpha(0f)
-                    .translationY(dpToPx(12))
-                    .setDuration(220)
-                    .setInterpolator(new PathInterpolator(0.2f, 0f, 0.1f, 1f))
-                    .start();
-        }
 
         toggleButton.bringToFront();
         toggleButton.setActive(true);
@@ -1150,7 +1153,8 @@ public final class LyricsController {
         MediaFullscreenExtras.invalidateAllHosts();
 
         View host = controlHostRef.get();
-        boolean hostMissing = host == null || !host.isAttachedToWindow() || host.getVisibility() != View.VISIBLE;
+        boolean hostMissing = host == null || !host.isAttachedToWindow() || !host.isShown()
+                || !host.getGlobalVisibleRect(visibleControls);
 
         if (hostMissing) {
             lyricsView.animate().cancel();
@@ -1160,34 +1164,40 @@ public final class LyricsController {
             lyricsView.animateClose(null);
         }
 
-        if (albumArtHiddenForLocalBackdrop) {
-            albumArtHiddenForLocalBackdrop = false;
-            View art = albumArtRef.get();
-            if (art != null) {
-                art.animate().cancel();
-                float restoreAlpha = savedAlbumArtAlpha >= 0f ? savedAlbumArtAlpha : 1f;
-                art.animate().alpha(restoreAlpha).setDuration(220).start();
-            }
-            savedAlbumArtAlpha = -1f;
+        for (var entry : hiddenPresentation.entrySet()) {
+            View view = entry.getKey(); NativePresentation saved = entry.getValue();
+            view.animate().cancel();
+            view.animate().alpha(saved.alpha()).translationY(saved.translationY()).setDuration(220).start();
         }
+        hiddenPresentation.clear();
 
         restoreLockscreenElements();
         updateStatusBarClock(false);
 
-        View titleArtist = titleArtistRef.get();
-        if (titleArtist != null) {
-            titleArtist.animate().cancel();
-            titleArtist.animate()
-                    .alpha(1f)
-                    .translationY(0f)
-                    .setDuration(220)
-                    .setInterpolator(new PathInterpolator(0.2f, 0f, 0.1f, 1f))
-                    .start();
-        }
-
         toggleButton.setActive(false);
 
         stopTracking();
+        if (activeInstance == this) activeInstance = null;
+    }
+
+    private void hideNativePresentation(boolean localBackdrop) {
+        fadeNativePresentation(titleArtistRef.get(), true);
+        if (legacyLayout) {
+            View page = pageContainerRef.get();
+            fadeNativePresentation(findViewByResourceEntryName(page, "facewidget_music_page_title"), true);
+            fadeNativePresentation(findViewByResourceEntryName(page, "facewidget_music_page_artist"), true);
+        }
+        // Keep Samsung's art if no replacement bitmap is ready yet.
+        if (localBackdrop && lyricsView.hasArtwork()) fadeNativePresentation(albumArtRef.get(), false);
+    }
+
+    private void fadeNativePresentation(View view, boolean move) {
+        if (view == null || contains(view, controlHostRef.get()) || contains(view, lyricsView)) return;
+        NativePresentation saved = hiddenPresentation.computeIfAbsent(view,
+                key -> new NativePresentation(key.getAlpha(), key.getTranslationY()));
+        view.animate().cancel();
+        view.animate().alpha(0f).translationY(saved.translationY() + (move ? dpToPx(12) : 0))
+                .setDuration(220).setInterpolator(new PathInterpolator(0.2f, 0f, 0.1f, 1f)).start();
     }
 
     private void refreshCoverOnly() {
@@ -1295,6 +1305,7 @@ public final class LyricsController {
     }
 
     public void onTrackChanged() {
+        if (!isVisible) return;
         try {
             MediaController controller = currentMediaController();
             if (controller == null) {
@@ -1327,12 +1338,11 @@ public final class LyricsController {
             Bitmap cover = resolveCoverBitmap(metadata);
             lyricsView.setTrackInfo(displayTitle, displayArtist, cover, isNewTrack);
 
-            if (lyricsActive) {
-                ViewGroup shade = MediaFullscreenExtras.getNotificationShadeWindowView();
+            if (isVisible) {
                 View control = controlHostRef.get();
                 ViewGroup controlRoot = control != null && control.getRootView() instanceof ViewGroup rg ? rg : null;
-                hideLockscreenElements(shade);
-                if (controlRoot != null && controlRoot != shade) hideLockscreenElements(controlRoot);
+                hideLockscreenElements(controlRoot);
+                hideNativePresentation(legacyLayout || !MediaFullscreenExtras.isFullscreenBackdropActive());
                 updateStatusBarClock(true);
             }
 
@@ -1365,6 +1375,7 @@ public final class LyricsController {
 
     private void startTracking() {
         if (trackingActive) return;
+        LiveMediaTracker.addListener(context, liveTrackListener);
         trackingActive = true;
         lastFrameNanos = 0L;
         syncMediaController(SystemClock.uptimeMillis());
@@ -1376,6 +1387,7 @@ public final class LyricsController {
     }
 
     private void stopTracking() {
+        LiveMediaTracker.removeListener(liveTrackListener);
         trackingActive = false;
         lastFrameNanos = 0L;
         Choreographer.getInstance().removeFrameCallback(frameCallback);

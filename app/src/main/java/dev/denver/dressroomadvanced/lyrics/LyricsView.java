@@ -510,6 +510,10 @@ public final class LyricsView extends FrameLayout {
                         : GONE);
     }
 
+    public boolean hasArtwork() {
+        return currentCoverBitmap != null && !currentCoverBitmap.isRecycled();
+    }
+
     public void setLyricsTypeface(Typeface primary, Typeface secondary) {
         Typeface nextPrimary = primary != null ? primary : Typeface.DEFAULT_BOLD;
         Typeface nextSecondary = secondary != null ? secondary : nextPrimary;
