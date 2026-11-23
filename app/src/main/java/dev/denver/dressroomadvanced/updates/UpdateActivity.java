@@ -120,7 +120,6 @@ public final class UpdateActivity extends Activity {
                         boolean hasRoot = RootUpdater.hasRoot();
                         if (cancelled || isDestroyed()) return;
                         if (hasRoot) {
-                            UpdateRepository.markPendingRelaunch(appContext);
                             runOnUiThread(
                                     () -> {
                                         if (cancelled || isDestroyed()) return;
@@ -151,7 +150,6 @@ public final class UpdateActivity extends Activity {
                                         });
                             }
                         } else {
-                            UpdateRepository.clearPendingRelaunch(appContext);
                             runOnUiThread(
                                     () -> {
                                         if (cancelled || isDestroyed()) return;
@@ -170,7 +168,6 @@ public final class UpdateActivity extends Activity {
 
     private void cancelAndClose() {
         cancelled = true;
-        UpdateRepository.clearPendingRelaunch(getApplicationContext());
         closeHost();
     }
 
@@ -212,11 +209,9 @@ public final class UpdateActivity extends Activity {
             if (getPackageManager().canRequestPackageInstalls()) {
                 launchSystemInstaller();
             } else {
-                UpdateRepository.clearPendingRelaunch(getApplicationContext());
                 error("Allow Dressroom Advanced to install updates, then try again.");
             }
         } else if (request == 2) {
-            UpdateRepository.clearPendingRelaunch(getApplicationContext());
             closeHost();
         }
     }
@@ -253,7 +248,6 @@ public final class UpdateActivity extends Activity {
 
     private void error(String message) {
         waiting = false;
-        UpdateRepository.clearPendingRelaunch(getApplicationContext());
         if (cancelled || isFinishing() || isDestroyed()) return;
         dismissDialog();
         dialog =

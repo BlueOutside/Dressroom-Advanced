@@ -49,7 +49,7 @@ See [foldable support](docs/compatibility/ONE_UI_9_FOLDABLES.md) and [device val
 4. Tap the clock for **Advanced**, or use the bottom-bar **Advanced** button for **Widgets** and **Extras**.
 5. Tap Apply/Done to save. Closing without applying discards the editor draft.
 
-Reboot after module updates too, so all scoped processes load the new version. If Dressroom Advanced has root access, in-app updates install silently and relaunch scoped processes automatically.
+With root access granted to Dressroom Advanced, module updates reload running scoped processes automatically, including APKs installed manually or through ADB. If the replacement broadcast was missed, opening DIY Studio checks for a pending reload. In-app updates can also install silently. Without root, reboot after updating so every scoped process loads the new module.
 
 Opening the editor checks for a newer GitHub release. (Checks are cached for 15 minutes if you wanna know for auto checks.) Enable **Pre-release updates** under **Advanced -> Extras -> Updates**, or install a `dev` build from the `dev` branch, to also check pre-release builds and choose between stable and pre-release updates when both are newer.
 

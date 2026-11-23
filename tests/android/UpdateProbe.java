@@ -22,6 +22,7 @@ public final class UpdateProbe {
     }
 
     public static void main(String[] args) throws Exception {
+        verifyReloadShell();
         String official =
                 "https://github.com/BlueOutside/Dressroom-Advanced/releases/download/v1.1.9/module.apk";
         check(UpdateRepository.asset(release(official, 100)) != null, "Official APK rejected");
@@ -79,5 +80,47 @@ public final class UpdateProbe {
         }
         System.out.println("Update/depth availability: " + checks + " checks passed");
         System.exit(0);
+    }
+
+    private record ShellResult(int exit, String output) {}
+
+    private static ShellResult shell(String fixture) throws Exception {
+        // These functions shadow the system commands: no real process receives a signal.
+        Process process = new ProcessBuilder("/system/bin/sh", "-c", fixture + "\n"
+                + RootUpdater.relaunchCommand()).redirectErrorStream(true).start();
+        String output = new String(process.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+        return new ShellResult(process.waitFor(), output);
+    }
+
+    private static void verifyReloadShell() throws Exception {
+        String fixture = "ps() { printf '%s\\n' 'PID NAME' "
+                + "'101 com.android.systemui' '102 com.android.systemui:screenshot' "
+                + "'103 com.samsung.android.app.dressroom' "
+                + "'104 com.samsung.android.app.aodservice:provider' "
+                + "'105 com.samsung.android.app.aodservice' "
+                + "'106 com.samsung.android.app.clockpack:provider' "
+                + "'107 com.samsung.android.wallpaper.live:wallpaper' "
+                + "'108 com.android.systemui.other' '109 dev.denver.dressroomadvanced'; }\n"
+                + "kill() { return 0; }\n";
+        ShellResult result = shell(fixture);
+        check(result.exit == 0, "Scoped reload script failed: " + result.output);
+        for (int pid = 101; pid <= 107; pid++)
+            check(result.output.contains("(pid " + pid + ")"), "Scoped subprocess missed: " + pid);
+        check(!result.output.contains("pid 108") && !result.output.contains("pid 109"),
+                "Reload matched a lookalike package or the module itself");
+        check(result.output.indexOf("pid 103") < result.output.indexOf("pid 101"),
+                "SystemUI reloads before its providers");
+        check(shell("ps() { return 1; }\nkill() { return 0; }").exit != 0,
+                "Process enumeration failure reported success");
+        ShellResult denied = shell("""
+                ps() { printf '%s\\n' 'PID NAME' '101 com.android.systemui'; }
+                kill() { if [ "$1" = '-0' ]; then return 0; else return 1; fi; }
+                """);
+        check(denied.exit != 0 && denied.output.contains("Could not stop com.android.systemui"),
+                "A denied kill is silently reported as success");
+        check(shell("""
+                ps() { printf '%s\\n' 'PID NAME' '101 com.android.systemui'; }
+                kill() { return 1; }
+                """).exit == 0, "A process that already exited is reported as a failed kill");
     }
 }

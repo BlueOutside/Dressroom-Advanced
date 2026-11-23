@@ -183,6 +183,7 @@ public final class NowBarStudioActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        UpdateProcessRelaunch.check(this, false, () -> {});
         if (editingCard == null) {
             reloadState();
             showManager();

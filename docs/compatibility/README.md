@@ -167,3 +167,30 @@ Required validation after a port:
 | Upgrade | Module replacement and Samsung package/provider reload restore the same committed profiles without reapplying |
 
 Helper tests are necessary but do not establish compatibility with an APK whose bindings have not been inspected and exercised.
+
+## Root reload after module replacement
+
+`MY_PACKAGE_REPLACED` previously required a five-minute flag written only by the
+in-app updater. Manual APK/ADB updates therefore skipped the root reload. The
+old command also discarded kill errors and returned success unconditionally.
+
+Replacement broadcasts now schedule a bounded worker regardless of install route.
+The worker records the successfully reloaded installation's `lastUpdateTime`.
+Studio checks that stamp on resume as a fallback for missed/stopped-app broadcasts;
+fresh installs and already handled replacements do not reload hosts. Failures keep
+the installation pending and log the root result, with a retry cooldown on resume.
+
+The root command snapshots `ps` once, matches each scoped package exactly or with
+its colon process suffix, and sends TERM to those PIDs. Providers/editor/wallpaper
+precede SystemUI. A process already gone is harmless; denied kills and enumeration
+failures return nonzero. Running services restart through Android; idle activities
+load the new module on their next launch. No force-stop flag is applied.
+
+Validation of `2.0.6-update-reload-fix` (`20006020`): 29 JVM suites passed, plus
+21 read-only Android update/depth checks. The Android shell tests replace `ps` and
+`kill` with fixtures to cover child processes, lookalike names, ordering, denied
+signals and exited PIDs without sending signals. An actual ADB update on the
+connected One UI 9 phone automatically changed SystemUI PID 14156 to 16858,
+wallpaper PID 19592 to 16895, and the AOD provider PID 30906 to 17469. Dressroom
+and idle AOD were stopped. The success stamp was persisted; opening Studio kept
+SystemUI at PID 16858. No manual restart command was used for that test.

@@ -10,10 +10,9 @@ import java.util.concurrent.TimeUnit;
 
 /** Optional root helpers to install updates silently and relaunch scoped host processes. */
 final class RootUpdater {
-    static final List<String> HOOKED_PROCESSES =
+    static final List<String> HOOKED_PACKAGES =
             List.of(
                     "com.samsung.android.app.dressroom",
-                    "com.samsung.android.app.aodservice:provider",
                     "com.samsung.android.app.aodservice",
                     "com.samsung.android.app.clockpack",
                     "com.samsung.android.wallpaper.live",
@@ -45,13 +44,25 @@ final class RootUpdater {
     }
 
     static String relaunchCommand() {
-        StringBuilder command = new StringBuilder();
-        for (int i = 0; i < HOOKED_PROCESSES.size(); i++) {
-            if (i > 0) command.append("; ");
-            command.append("killall ").append(shellQuote(HOOKED_PROCESSES.get(i))).append(" >/dev/null 2>&1");
-        }
-        command.append("; true");
-        return command.toString();
+        String packages = String.join(" ", HOOKED_PACKAGES.stream().map(RootUpdater::shellQuote).toList());
+        return "proc_list=$(ps -A -o PID,NAME) || exit 1\nfailed=0\nfor target in " + packages + "\ndo\n" + """
+                while read -r pid name; do
+                    case "$pid" in ''|*[!0-9]*) continue ;; esac
+                    case "$name" in "$target"|"$target":*)
+                        if kill -TERM "$pid" 2>/dev/null; then
+                            printf 'Restarted %s (pid %s)\n' "$name" "$pid"
+                        elif kill -0 "$pid" 2>/dev/null; then
+                            printf 'Could not stop %s (pid %s)\n' "$name" "$pid"
+                            failed=1
+                        fi
+                        ;;
+                    esac
+                done <<PROCESSES
+                $proc_list
+                PROCESSES
+                done
+                exit "$failed"
+                """;
     }
 
     static boolean isRootOutput(CommandResult result) {
@@ -83,7 +94,7 @@ final class RootUpdater {
     }
 
     static CommandResult relaunchHookedProcesses() {
-        return runSu(relaunchCommand(), 10_000L);
+        return runSu(relaunchCommand(), 6_000L);
     }
 
     private static CommandResult runSu(String command, long timeoutMs) {

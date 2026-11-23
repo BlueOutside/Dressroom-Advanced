@@ -224,30 +224,24 @@ public final class ReleaseVersionTest {
                 "timedOut fails install check");
 
         String relaunch = RootUpdater.relaunchCommand();
-        for (String proc : RootUpdater.HOOKED_PROCESSES) {
+        for (String proc : RootUpdater.HOOKED_PACKAGES) {
             check(relaunch.contains("'" + proc + "'"), "relaunchCommand missing " + proc);
         }
         check(
                 relaunch.indexOf("com.samsung.android.app.dressroom")
                         < relaunch.indexOf("com.android.systemui"),
                 "relaunchCommand kills dressroom before systemui");
-        check(
-                relaunch.contains("com.samsung.android.app.aodservice:provider"),
-                "relaunchCommand includes aodservice:provider");
-        check(relaunch.endsWith("; true"), "relaunchCommand ends with ; true");
-
-        check(
-                UpdateRepository.shouldRelaunchAfterInstall(2000L, 1000L),
-                "within relaunch window");
-        check(
-                UpdateRepository.shouldRelaunchAfterInstall(2000L, 2000L),
-                "exact relaunch boundary");
-        check(
-                !UpdateRepository.shouldRelaunchAfterInstall(2000L, 2001L),
-                "expired relaunch window");
-        check(!UpdateRepository.shouldRelaunchAfterInstall(0L, 1000L), "zero until fails");
-        check(!UpdateRepository.shouldRelaunchAfterInstall(-1L, 1000L), "negative until fails");
-        check(!UpdateRepository.shouldRelaunchAfterInstall(1000L, 0L), "zero now fails");
+        check(UpdateProcessRelaunch.needsReload(1000, 2000, 0, false),
+                "External installation is ignored without an in-app flag");
+        check(UpdateProcessRelaunch.needsReload(1000, 2000, 1000, true),
+                "Replacement broadcast does not request a reload");
+        check(!UpdateProcessRelaunch.needsReload(1000, 2000, 2000, true),
+                "Repeated broadcast restarts an already reloaded installation");
+        check(!UpdateProcessRelaunch.needsReload(1000, 1000, 0, false),
+                "Opening Studio after a first install restarts hosts");
+        check(!UpdateProcessRelaunch.needsReload(0, 0, 0, true), "Unknown installation triggers reload");
+        check(UpdateProcessRelaunch.needsReload(1000, 1500, 2000, false),
+                "A clock rollback suppresses an actual package replacement");
     }
 
     public static void main(String[] args) {
