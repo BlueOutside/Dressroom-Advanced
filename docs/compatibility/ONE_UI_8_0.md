@@ -24,3 +24,27 @@ Extras includes widget and Now Bar blur controls where Samsung's window blur is 
 Inline seconds use the older dashboard launch path and fit inside the visible clock container. On the SM-G990B2, seconds opened on the first tap after SystemUI restarted without applying a new editor draft. Both 8.0 clock providers passed the binding check. Extras also offers fullscreen artwork and a switch to hide the clock in the expanded player. The artwork and wallpaper-fade bindings passed on both providers.
 
 Clock glass and additional Now Bar stack slots are outside this preview.
+
+## Music page attachment crash
+
+The 2026-11-23 S901E report crashes in `ViewGroup.dispatchAttachedToWindow`
+while the AOD pager's RecyclerView adds a page. The supplied 8.9.15.39 sample
+matches the reported `ml.c` child-helper and `Xv0.b` layout-manager call chain;
+the affected device's exact provider version has not yet been confirmed.
+
+The 8.0 framework snapshots the child count and array, then dispatches each
+child's attachment before accessing the next child's visibility. The shared
+lyrics controls listener previously moved the lyrics view out of its ancestor
+music page synchronously during this traversal. That can leave the next slot
+null and matches the reported exception. This does not require lyrics to be open.
+
+Lyrics and toggle attachment now run in a coalesced main-handler task, including
+initial construction and retargeting. The task resolves the current controls,
+rejects detached or different-window hosts and updates bounds after reparenting.
+The correction is shared with later providers because it fixes our view lifecycle
+without changing Samsung bindings or catching framework exceptions.
+
+Signed build: `2.0.6-8.0-attach-fix`, version code `20006018`. The build, 29 JVM
+suites (including 438 lyrics checks), repository/layout checks and diff checks
+passed. Confirmation on the reporting 8.0 device is pending; no live reproduction
+or on-device fix confirmation is claimed.

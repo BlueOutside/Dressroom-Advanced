@@ -184,14 +184,34 @@ public final class LyricsController {
             new View.OnAttachStateChangeListener() {
                 @Override public void onViewAttachedToWindow(View v) {
                     if (v != controlHostRef.get()) return;
-                    ViewGroup best = findBestContainer(v);
-                    if (best != null) attachLyricsView(best);
-                    updateLyricsBounds();
+                    requestHostAttachment();
                 }
                 @Override public void onViewDetachedFromWindow(View v) {
                     Main.HANDLER.post(LyricsController.this::hideIfHostGone);
                 }
             };
+
+    private final Runnable attachToCurrentHost = this::attachToCurrentHost;
+
+    private void requestHostAttachment() {
+        // ViewGroup snapshots its children before dispatching attachment. Moving the
+        // lyrics out of an ancestor here can leave a null slot in that traversal.
+        Main.HANDLER.removeCallbacks(attachToCurrentHost);
+        Main.HANDLER.post(attachToCurrentHost);
+    }
+
+    private void attachToCurrentHost() {
+        // Resolve after dispatch: recycled pages may have retargeted us in the meantime.
+        ViewGroup controls = controlHostRef.get();
+        if (controls == null || !controls.isAttachedToWindow()) return;
+        ViewGroup best = findBestContainer(controls);
+        if (best == null) best = pageContainerRef.get();
+        if (best == null || !best.isAttachedToWindow()
+                || best.getRootView() != controls.getRootView()) return;
+        attachToggleButton(controls);
+        attachLyricsView(best);
+        updateLyricsBounds();
+    }
 
     private void hideIfHostGone() {
         View host = controlHostRef.get();
@@ -261,13 +281,11 @@ public final class LyricsController {
         });
         this.toggleButton.setOnClickListener(v -> toggleLyricsVisibility());
 
-        // Attach toggle button to the top right of controlHost (positioned next to output switcher)
-        attachToggleButton(controlHost);
         setupControlHost(controlHost);
 
         bindPage(targetPage);
 
-        attachLyricsView(targetPage);
+        requestHostAttachment();
 
         updateLyricsBounds();
         applyPreferences(RuntimeExtras.get(context));
@@ -507,17 +525,12 @@ public final class LyricsController {
         if (controlHost != null) {
             this.controlHostRef = new WeakReference<>(controlHost);
             setupControlHost(controlHost);
-            attachToggleButton(controlHost);
         }
         if (titleArtist != null) this.titleArtistRef = new WeakReference<>(titleArtist);
         if (albumArt != null) this.albumArtRef = new WeakReference<>(albumArt);
         if (artworkSupplier != null) this.artworkSupplier = artworkSupplier;
 
-        ViewGroup best = findBestContainer(controlHost != null ? controlHost : pageContainer);
-        if (best != null && lyricsView.getParent() != best) {
-            attachLyricsView(best);
-        }
-        updateLyricsBounds();
+        requestHostAttachment();
         applyPreferences(RuntimeExtras.get(context));
         refreshCoverOnly();
     }

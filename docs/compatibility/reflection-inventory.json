@@ -2110,49 +2110,49 @@
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/lyrics/LyricsController.java",
-      "line": 367,
+      "line": 385,
       "kind": "resource",
       "target": "now_bar_rootview"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/lyrics/LyricsController.java",
-      "line": 449,
+      "line": 467,
       "kind": "resource",
       "target": "facewidget_music_page_device"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/lyrics/LyricsController.java",
-      "line": 457,
+      "line": 475,
       "kind": "resource",
       "target": "facewidget_music_icon_device_media_output_container"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/lyrics/LyricsController.java",
-      "line": 544,
+      "line": 557,
       "kind": "resource",
       "target": "status_bar_height"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/lyrics/LyricsController.java",
-      "line": 818,
+      "line": 831,
       "kind": "resource",
       "target": "status_bar_clock_size"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/lyrics/LyricsController.java",
-      "line": 842,
+      "line": 855,
       "kind": "resource",
       "target": "status_bar_padding_top"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/lyrics/LyricsController.java",
-      "line": 915,
+      "line": 928,
       "kind": "resource",
       "target": "status_bar_left_clock_end_padding"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/lyrics/LyricsController.java",
-      "line": 916,
+      "line": 929,
       "kind": "resource",
       "target": "keyguard_carrier_text_nio_default_margin"
     },
