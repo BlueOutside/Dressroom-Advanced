@@ -16,8 +16,8 @@ import java.util.WeakHashMap;
  * motion is in flight, releasing back to {@link View#REQUESTED_FRAME_RATE_CATEGORY_DEFAULT} once
  * motion settles so idle lockscreen and AOD VRR power savings remain untouched.
  */
-final class LockscreenFrameBoost {
-    static final long DEFAULT_PULSE_MS = 180L;
+public final class LockscreenFrameBoost {
+    public static final long DEFAULT_PULSE_MS = 180L;
     private static final long SWEEP_GRACE_MS = 32L;
     private static final long MIN_SWEEP_DELAY_MS = 48L;
 
@@ -29,11 +29,11 @@ final class LockscreenFrameBoost {
 
     private LockscreenFrameBoost() {}
 
-    static void pulse(View view) {
+    public static void pulse(View view) {
         pulse(view, DEFAULT_PULSE_MS);
     }
 
-    static void pulse(View view, long durationMs) {
+    public static void pulse(View view, long durationMs) {
         if (Build.VERSION.SDK_INT < 35 || view == null) return;
         Looper mainLooper = Looper.getMainLooper();
         if (mainLooper == null || Looper.myLooper() != mainLooper) return;

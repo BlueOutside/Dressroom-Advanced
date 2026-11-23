@@ -33,6 +33,7 @@ import android.view.ViewParent;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.animation.AccelerateInterpolator;
 import android.view.animation.PathInterpolator;
+import dev.denver.dressroomadvanced.LockscreenFrameBoost;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -130,6 +131,33 @@ public final class LyricsView extends FrameLayout {
     private int primaryAnchorIndex = -1;
     private boolean isSynced = false;
     private boolean autoScrollEnabled = true;
+    private boolean lineByLineMode = false;
+
+    public boolean isLineByLineMode() {
+        return lineByLineMode;
+    }
+
+    public void setLineByLineMode(boolean enabled) {
+        if (this.lineByLineMode != enabled) {
+            this.lineByLineMode = enabled;
+            for (RowHolder h : rowHolders) {
+                if (h.textView != null) {
+                    h.textView.setLineByLineMode(enabled);
+                }
+                if (enabled && h.view != null) {
+                    h.view.setRenderEffect(null);
+                    h.blurBucket = 0;
+                    h.blurDp = 0f;
+                    h.liftY = 0f;
+                    h.liftVelY = 0f;
+                    h.currentCascadeY = 0f;
+                    h.scrollLagY = 0f;
+                    h.view.setTranslationY(0f);
+                }
+            }
+            invalidate();
+        }
+    }
     private int textSizeSp = 28;
     private Typeface lyricTypeface = Typeface.DEFAULT_BOLD;
     private Typeface artistTypeface = Typeface.DEFAULT;
@@ -990,55 +1018,65 @@ public final class LyricsView extends FrameLayout {
             }
         }
 
-        // 3. Choose scroll anchor (prefer incoming/latest active lead line; if inside interlude before
-        //    its final 500ms handoff, anchor on the active interlude)
+        // 3. Choose scroll anchor (in line-by-line mode, directly synchronize with the active line)
         int anchorIndex = -1;
-        // Prefer latest active non-interlude lead line
-        for (int i = count - 1; i >= 0; i--) {
-            LyricLine line = lyricLines.get(i);
-            if (line.isActiveAt(lineFocusPosMs) && !line.isInterlude() && !line.isBackgroundVocal()) {
-                anchorIndex = i;
-                break;
+        if (lineByLineMode) {
+            int lineByLineIdx = LrcParser.findActiveLineIndex(lyricLines, positionMs + 250L);
+            if (lineByLineIdx < 0 && !lyricLines.isEmpty() && positionMs >= lyricLines.get(0).timestampMs() - 600L) {
+                lineByLineIdx = 0;
             }
-        }
-        // Fallback: active interlude (before its final 520ms handoff to the next verse)
-        if (anchorIndex < 0) {
-            for (int i = count - 1; i >= 0; i--) {
-                if (activeScratch[i] && lyricLines.get(i).isInterlude()) {
-                    long nextVocal = rowHolders.get(i).nextVocalMs;
-                    if (nextVocal > 0L && (nextVocal - positionMs) <= LrcParser.DEFAULT_LINE_ADVANCE_LEAD_MS
-                            && i + 1 < count) {
-                        anchorIndex = i + 1;
-                    } else {
-                        anchorIndex = i;
-                    }
-                    break;
-                }
+            for (int i = 0; i < count; i++) {
+                activeScratch[i] = (i == lineByLineIdx);
             }
-        }
-        // Fallback: active backing vocal or binary-search nearest line
-        if (anchorIndex < 0) {
+            anchorIndex = lineByLineIdx;
+        } else {
+            // Prefer latest active non-interlude lead line
             for (int i = count - 1; i >= 0; i--) {
-                if (activeScratch[i]) {
+                LyricLine line = lyricLines.get(i);
+                if (line.isActiveAt(lineFocusPosMs) && !line.isInterlude() && !line.isBackgroundVocal()) {
                     anchorIndex = i;
                     break;
                 }
             }
-        }
-        if (anchorIndex < 0) {
-            int fallback = LrcParser.findActiveLineIndex(lyricLines, lineFocusPosMs);
-            if (fallback < 0) fallback = 0;
-            // Skip collapsed GONE interludes when selecting fallback anchor
-            while (fallback < count && rowHolders.get(fallback).view.getVisibility() == GONE) {
-                fallback++;
-            }
-            if (fallback >= count) {
-                fallback = count - 1;
-                while (fallback >= 0 && rowHolders.get(fallback).view.getVisibility() == GONE) {
-                    fallback--;
+            // Fallback: active interlude (before its final 520ms handoff to the next verse)
+            if (anchorIndex < 0) {
+                for (int i = count - 1; i >= 0; i--) {
+                    if (activeScratch[i] && lyricLines.get(i).isInterlude()) {
+                        long nextVocal = rowHolders.get(i).nextVocalMs;
+                        if (nextVocal > 0L && (nextVocal - positionMs) <= LrcParser.DEFAULT_LINE_ADVANCE_LEAD_MS
+                                && i + 1 < count) {
+                            anchorIndex = i + 1;
+                        } else {
+                            anchorIndex = i;
+                        }
+                        break;
+                    }
                 }
             }
-            anchorIndex = fallback;
+            // Fallback: active backing vocal or binary-search nearest line
+            if (anchorIndex < 0) {
+                for (int i = count - 1; i >= 0; i--) {
+                    if (activeScratch[i]) {
+                        anchorIndex = i;
+                        break;
+                    }
+                }
+            }
+            if (anchorIndex < 0) {
+                int fallback = LrcParser.findActiveLineIndex(lyricLines, lineFocusPosMs);
+                if (fallback < 0) fallback = 0;
+                // Skip collapsed GONE interludes when selecting fallback anchor
+                while (fallback < count && rowHolders.get(fallback).view.getVisibility() == GONE) {
+                    fallback++;
+                }
+                if (fallback >= count) {
+                    fallback = count - 1;
+                    while (fallback >= 0 && rowHolders.get(fallback).view.getVisibility() == GONE) {
+                        fallback--;
+                    }
+                }
+                anchorIndex = fallback;
+            }
         }
 
         // 4. Apple Music manual-browse state:
@@ -1145,6 +1183,21 @@ public final class LyricsView extends FrameLayout {
                     float se = CASCADE_INTERPOLATOR.getInterpolation(sAfter / holder.scaleDurationMs);
                     holder.currentScale = holder.scaleFrom + (holder.scaleTo - holder.scaleFrom) * se;
                 }
+            }
+
+            if (lineByLineMode) {
+                float a = isActive ? 1.0f : (line.isBackgroundVocal() ? ALPHA_UPCOMING_BACKING : ALPHA_UPCOMING_LEAD);
+                v.setAlpha(a);
+                v.setScaleX(isActive ? 1.04f : 1.0f);
+                v.setScaleY(isActive ? 1.04f : 1.0f);
+                v.setTranslationY(0f);
+                if (holder.blurBucket != 0) {
+                    holder.blurBucket = 0;
+                    holder.blurDp = 0f;
+                    v.setRenderEffect(null);
+                }
+                holder.textView.updateKaraoke(isActive ? 1f : 0f, isActive ? 1f : 0f, 0f, a);
+                continue;
             }
 
             // Evaluate Apple Music alpha/focus curve (0f <-> 1f)
@@ -1279,12 +1332,14 @@ public final class LyricsView extends FrameLayout {
         if (contentHeight <= 0 || anchorView.getVisibility() != VISIBLE || anchorView.getHeight() <= 0) {
             return;
         }
-        int anchorTopOffset = Math.max(dpToPx(24), Math.round(scrollHeight * 0.085f));
+        int anchorTopOffset = lineByLineMode
+                ? Math.max(dpToPx(48), Math.round(scrollHeight * 0.28f))
+                : Math.max(dpToPx(24), Math.round(scrollHeight * 0.085f));
         int maxScrollY = Math.max(0, contentHeight - scrollHeight);
         int targetScrollY = Math.max(0, Math.min(maxScrollY, anchorView.getTop() - anchorTopOffset));
 
         lastScrolledAnchorIndex = anchorIndex;
-        if (snapImmediate) {
+        if (snapImmediate || lineByLineMode) {
             scrollMotion.cancel();
             scrollInitialized = true;
             for (RowHolder holder : rowHolders) {
@@ -1295,6 +1350,10 @@ public final class LyricsView extends FrameLayout {
                 holder.view.setTranslationY(holder.liftY);
             }
             scrollView.scrollTo(0, targetScrollY);
+            scrollView.postInvalidate();
+            linesContainer.postInvalidate();
+            postInvalidate();
+            LockscreenFrameBoost.pulse(this, 120L);
             snapshotLaidOutTops();
             return;
         }
@@ -1811,10 +1870,29 @@ public final class LyricsView extends FrameLayout {
                     && layout.getParagraphDirection(0) == Layout.DIR_RIGHT_TO_LEFT;
         }
 
+        private boolean lineByLineMode = false;
+
+        public void setLineByLineMode(boolean enabled) {
+            if (this.lineByLineMode != enabled) {
+                this.lineByLineMode = enabled;
+                invalidate();
+            }
+        }
+
         @Override
         protected void onDraw(Canvas canvas) {
-            // Apple's line-synced renderer highlights whole lines. A word sweep
-            // is only meaningful when the source actually supplies word timestamps.
+            // In line-by-line mode (e.g. AOD), render solid colors without partial gradient sweep.
+            if (lineByLineMode) {
+                TextPaint paint = getPaint();
+                int origColor = paint.getColor();
+                Shader origShader = paint.getShader();
+                paint.setShader(null);
+                paint.setColor(focus > 0.5f ? 0xFFFFFFFF : 0x66FFFFFF);
+                super.onDraw(canvas);
+                paint.setColor(origColor);
+                paint.setShader(origShader);
+                return;
+            }
             if (!wordTimings) {
                 super.onDraw(canvas);
                 return;

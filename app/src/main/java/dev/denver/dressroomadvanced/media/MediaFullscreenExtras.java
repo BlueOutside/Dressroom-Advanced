@@ -2115,7 +2115,11 @@ public final class MediaFullscreenExtras {
                                 }
                                 Object result = chain.proceed();
                                 if (Boolean.FALSE.equals(chain.getArg(0))) {
-                                    if (LyricsController.isLyricsActive()) {
+                                    boolean asleep = MediaCoverWakefulness.isSleeping()
+                                            || MediaCoverWakefulness.isPanelDozing()
+                                            || !LyricsController.isInteractive()
+                                            || LyricsController.isKeyguardLocked();
+                                    if (LyricsController.isLyricsActive() && !asleep) {
                                         LyricsController.hideActiveLyrics();
                                     }
                                     if (!animatedFullscreenReturn
@@ -2132,7 +2136,11 @@ public final class MediaFullscreenExtras {
                     .setId("dressroom-advanced.media-collapse-geometry")
                     .intercept(
                             chain -> {
-                                if (LyricsController.isLyricsActive()) {
+                                boolean asleep = MediaCoverWakefulness.isSleeping()
+                                        || MediaCoverWakefulness.isPanelDozing()
+                                        || !LyricsController.isInteractive()
+                                        || LyricsController.isKeyguardLocked();
+                                if (LyricsController.isLyricsActive() && !asleep) {
                                     LyricsController.hideActiveLyrics();
                                 }
                                 View big = (View) chain.getArg(2),
@@ -2188,7 +2196,11 @@ public final class MediaFullscreenExtras {
                     .setId("dressroom-advanced.media-collapse-cleanup")
                     .intercept(
                             chain -> {
-                                if (LyricsController.isLyricsActive()) {
+                                boolean asleep = MediaCoverWakefulness.isSleeping()
+                                        || MediaCoverWakefulness.isPanelDozing()
+                                        || !LyricsController.isInteractive()
+                                        || LyricsController.isKeyguardLocked();
+                                if (LyricsController.isLyricsActive() && !asleep) {
                                     LyricsController.hideActiveLyrics();
                                 }
                                 View small = (View) chain.getArg(1);

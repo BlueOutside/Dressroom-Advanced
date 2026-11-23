@@ -52,6 +52,90 @@ import java.util.function.Supplier;
  */
 public final class LyricsController {
     private static final String TAG = "DressroomLyrics";
+    private int lastValidHostY = -1;
+
+    public static boolean isInteractive() {
+        return isInteractive(activeInstance != null ? activeInstance.context : null);
+    }
+
+    public static boolean isInteractive(Context ctx) {
+        if (MediaCoverWakefulness.isSleeping() || MediaCoverWakefulness.isPanelDozing()) {
+            return false;
+        }
+        if (ctx != null) {
+            try {
+                android.os.PowerManager pm = ctx.getSystemService(android.os.PowerManager.class);
+                if (pm != null && !pm.isInteractive()) {
+                    return false;
+                }
+            } catch (Throwable ignored) {}
+        }
+        return true;
+    }
+
+    public static boolean isKeyguardLocked() {
+        return isKeyguardLocked(activeInstance != null ? activeInstance.context : null);
+    }
+
+    public static boolean isKeyguardLocked(Context ctx) {
+        if (ctx != null) {
+            try {
+                android.app.KeyguardManager km = ctx.getSystemService(android.app.KeyguardManager.class);
+                if (km != null) {
+                    return km.isKeyguardLocked();
+                }
+            } catch (Throwable ignored) {}
+        }
+        return true;
+    }
+
+    public static void onWakefulnessChanged(boolean sleeping) {
+        Main.HANDLER.post(() -> {
+            if (activeInstance != null && (activeInstance.isVisible || activeInstance.lyricsView.getVisibility() == View.VISIBLE)) {
+                android.util.Log.i(TAG, "onWakefulnessChanged: sleeping=" + sleeping);
+                activeInstance.isVisible = true;
+                activeInstance.setAodMode(sleeping);
+                if (!sleeping) {
+                    ViewGroup shade = MediaFullscreenExtras.getNotificationShadeWindowView();
+                    activeInstance.hideLockscreenElements(shade);
+                    updateStatusBarClock(true);
+                    activeInstance.updateLyricsBounds();
+                    activeInstance.lyricsView.bringToFront();
+                    activeInstance.startTracking();
+                } else {
+                    activeInstance.lyricsView.setVisibility(View.VISIBLE);
+                    activeInstance.lyricsView.setAlpha(1f);
+                    activeInstance.startAodTracking();
+                }
+            }
+        });
+    }
+
+    public void startAodTracking() {
+        trackingActive = true;
+        Main.HANDLER.removeCallbacks(aodTickRunnable);
+        long nowUptimeMs = SystemClock.uptimeMillis();
+        syncMediaController(nowUptimeMs);
+        long posMs = playbackPosition();
+        boolean playing = cachedPlaybackState != null
+                && cachedPlaybackState.getState() == PlaybackState.STATE_PLAYING;
+        android.util.Log.i(TAG, "startAodTracking: posMs=" + posMs + " playing=" + playing);
+        lyricsView.setLineByLineMode(true);
+        lyricsView.stepFrame(posMs, 0.1f, nowUptimeMs, playing);
+        if (playing) {
+            Main.HANDLER.postDelayed(aodTickRunnable, 120L);
+        } else {
+            Main.HANDLER.postDelayed(aodTickRunnable, 1000L);
+        }
+    }
+
+    public void setAodMode(boolean aod) {
+        android.util.Log.i(TAG, "setAodMode: aod=" + aod + " isVisible=" + isVisible + " trackingActive=" + trackingActive);
+        lyricsView.setLineByLineMode(aod);
+        if (aod) {
+            startAodTracking();
+        }
+    }
     private static final String STATUS_CLOCK_TAG = "dressroom_lyrics_status_clock";
     private static final long BINDER_RESYNC_INTERVAL_MS = 1500L;
 
@@ -132,10 +216,47 @@ public final class LyricsController {
         }
     };
 
+    private final Runnable aodTickRunnable = new Runnable() {
+        @Override
+        public void run() {
+            android.util.Log.i(TAG, "aodTickRunnable tick: trackingActive=" + trackingActive
+                    + " isVisible=" + isVisible
+                    + " isInteractive=" + isInteractive());
+            if (!trackingActive || !isVisible) return;
+            if (isInteractive()) {
+                startTracking();
+                return;
+            }
+            long nowUptimeMs = SystemClock.uptimeMillis();
+            syncMediaController(nowUptimeMs);
+            long posMs = playbackPosition();
+            boolean playing = cachedPlaybackState != null
+                    && cachedPlaybackState.getState() == PlaybackState.STATE_PLAYING;
+            android.util.Log.i(TAG, "aodTickRunnable executing stepFrame: posMs=" + posMs + " playing=" + playing);
+            lyricsView.setLineByLineMode(true);
+            lyricsView.stepFrame(posMs, 0.1f, nowUptimeMs, playing);
+            if (playing) {
+                Main.HANDLER.postDelayed(this, 120L);
+            } else {
+                Main.HANDLER.postDelayed(this, 1000L);
+            }
+        }
+    };
+
     private final Choreographer.FrameCallback frameCallback = new Choreographer.FrameCallback() {
         @Override
         public void doFrame(long frameTimeNanos) {
             if (!trackingActive || !isVisible) return;
+
+            boolean interactive = isInteractive();
+            lyricsView.setLineByLineMode(!interactive);
+
+            if (!interactive) {
+                android.util.Log.i(TAG, "frameCallback: not interactive -> dispatching aodTickRunnable");
+                Main.HANDLER.removeCallbacks(aodTickRunnable);
+                Main.HANDLER.post(aodTickRunnable);
+                return;
+            }
 
             long nowUptimeMs = SystemClock.uptimeMillis();
             float dtSec = lastFrameNanos > 0L
@@ -160,6 +281,9 @@ public final class LyricsController {
     private final View.OnLayoutChangeListener layoutListener =
             (v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
                 if (isVisible) {
+                    if (!isInteractive()) {
+                        return;
+                    }
                     View host = controlHostRef.get();
                     if (host == null || !host.isAttachedToWindow()
                             || host.getVisibility() != View.VISIBLE) {
@@ -186,6 +310,14 @@ public final class LyricsController {
                     if (v != controlHostRef.get()) return;
                     ViewGroup best = findBestContainer(v);
                     if (best != null) attachLyricsView(best);
+                    if (isVisible) {
+                        lyricsView.bringToFront();
+                        attachToggleButton((ViewGroup) v);
+                        toggleButton.bringToFront();
+                        toggleButton.setActive(true);
+                        hideLockscreenElements(MediaFullscreenExtras.getNotificationShadeWindowView());
+                        updateStatusBarClock(true);
+                    }
                     updateLyricsBounds();
                 }
                 @Override public void onViewDetachedFromWindow(View v) {
@@ -194,6 +326,9 @@ public final class LyricsController {
             };
 
     private void hideIfHostGone() {
+        if (!isInteractive() || isKeyguardLocked()) {
+            return;
+        }
         View host = controlHostRef.get();
         if (isVisible && (host == null || !host.isAttachedToWindow()
                 || host.getVisibility() != View.VISIBLE)) hideLyrics();
@@ -274,6 +409,20 @@ public final class LyricsController {
 
         LiveMediaTracker.addListener(context, liveTrackListener);
         ensureExtrasListener(context);
+
+        // Listen for device unlock to cleanly dismiss lyrics when entering home screen / apps
+        try {
+            android.content.IntentFilter unlockFilter = new android.content.IntentFilter(android.content.Intent.ACTION_USER_PRESENT);
+            context.registerReceiver(new android.content.BroadcastReceiver() {
+                @Override
+                public void onReceive(Context ctx, android.content.Intent intent) {
+                    if (isVisible) {
+                        android.util.Log.i(TAG, "Device unlocked (ACTION_USER_PRESENT) -> hideLyrics");
+                        hideLyrics();
+                    }
+                }
+            }, unlockFilter);
+        } catch (Exception ignored) {}
         onTrackChanged();
     }
 
@@ -533,12 +682,14 @@ public final class LyricsController {
         int[] parentLoc = new int[2];
         parent.getLocationInWindow(parentLoc);
         int hostY = hostLoc[1] - parentLoc[1];
-        if (hostY <= 0) {
-            if (parent.getHeight() > 0 && controlHost.getHeight() > 0) {
-                hostY = parent.getHeight() - controlHost.getHeight();
-            } else {
-                hostY = 1750;
-            }
+        if (hostY > 0 && controlHost.isAttachedToWindow() && controlHost.getHeight() > 0) {
+            lastValidHostY = hostY;
+        } else if (lastValidHostY > 0) {
+            hostY = lastValidHostY;
+        } else if (parent.getHeight() > 0 && controlHost.getHeight() > 0) {
+            hostY = parent.getHeight() - controlHost.getHeight();
+        } else {
+            hostY = 1750;
         }
 
         int resId = parent.getResources().getIdentifier("status_bar_height", "dimen", "android");
@@ -1368,6 +1519,7 @@ public final class LyricsController {
         Choreographer.getInstance().removeFrameCallback(frameCallback);
         detachMediaCallback();
         cachedPlaybackState = null;
+        Main.HANDLER.removeCallbacks(aodTickRunnable);
     }
 
     public static long calculatePosition(PlaybackState state) {
