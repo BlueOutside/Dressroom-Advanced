@@ -2,8 +2,10 @@ package dev.denver.dressroomadvanced;
 
 import android.graphics.Rect;
 import android.os.Bundle;
+import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.LinearLayout;
 
 import java.lang.reflect.Method;
 import java.util.Collections;
@@ -27,6 +29,10 @@ final class DateEffects {
     private static final Map<View, int[]> identities =
             Collections.synchronizedMap(new WeakHashMap<>());
     private static final Map<View, Integer> originalVisibility =
+            Collections.synchronizedMap(new WeakHashMap<>());
+    private static final Map<View, Integer> originalLayoutGravities =
+            Collections.synchronizedMap(new WeakHashMap<>());
+    private static final Map<View, Integer> originalRowGravities =
             Collections.synchronizedMap(new WeakHashMap<>());
     private static final Map<View, Integer> weatherMargins =
             Collections.synchronizedMap(new WeakHashMap<>());
@@ -67,6 +73,8 @@ final class DateEffects {
         appearances.clear();
         identities.clear();
         editorBounds.clear();
+        originalLayoutGravities.clear();
+        originalRowGravities.clear();
         synchronized (labelLayouts) {
             labelLayouts.values().forEach(ClockLabelLayout::restore);
             labelLayouts.clear();
@@ -294,7 +302,11 @@ final class DateEffects {
         applySubtree(clock, hide, rowPair);
         View weather = rowPair[0], dateRow = rowPair[1];
         if (dateRow != null && weather != null) {
-            updateText(dateRow, hide && weather.getVisibility() != View.VISIBLE);
+            boolean weatherVisible = weather.getVisibility() == View.VISIBLE;
+            updateText(dateRow, hide && !weatherVisible);
+            alignSingleLabel(dateRow, weather, hide && weatherVisible);
+        } else if (dateRow != null) {
+            updateText(dateRow, hide);
         }
         boolean mediaExpanded = false;
         try {
@@ -328,6 +340,41 @@ final class DateEffects {
         float factor = ClockLabelScale.labelFactor(appearance.reference(), bounds.scale(), nativeScale);
         layout.apply(clock, appearance.date(), appearance.weather(), factor,
                 (int) (bounds.width() / bounds.scale()), (int) (bounds.height() / bounds.scale()));
+    }
+
+    private static void alignSingleLabel(View dateRow, View weather, boolean singleLabel) {
+        ViewGroup.LayoutParams rowParams = dateRow.getLayoutParams();
+        if (rowParams instanceof LinearLayout.LayoutParams lp) {
+            if (singleLabel) {
+                originalLayoutGravities.putIfAbsent(dateRow, lp.gravity);
+                int target = Gravity.CENTER_HORIZONTAL | (lp.gravity & Gravity.VERTICAL_GRAVITY_MASK);
+                if (lp.gravity != target) {
+                    lp.gravity = target;
+                    dateRow.setLayoutParams(lp);
+                }
+            } else {
+                Integer orig = originalLayoutGravities.remove(dateRow);
+                if (orig != null && lp.gravity != orig) {
+                    lp.gravity = orig;
+                    dateRow.setLayoutParams(lp);
+                }
+            }
+        }
+        android.view.ViewParent parent = weather.getParent();
+        if (parent instanceof LinearLayout inner) {
+            if (singleLabel) {
+                originalRowGravities.putIfAbsent(inner, inner.getGravity());
+                int target = Gravity.CENTER_HORIZONTAL | (inner.getGravity() & Gravity.VERTICAL_GRAVITY_MASK);
+                if (inner.getGravity() != target) {
+                    inner.setGravity(target);
+                }
+            } else {
+                Integer orig = originalRowGravities.remove(inner);
+                if (orig != null && inner.getGravity() != orig) {
+                    inner.setGravity(orig);
+                }
+            }
+        }
     }
 
     private static float nativeScale(View clock) {
@@ -376,14 +423,18 @@ final class DateEffects {
         if (!(params instanceof ViewGroup.MarginLayoutParams margins)) return;
         if (hide) {
             weatherMargins.putIfAbsent(weather, margins.getMarginStart());
-            if (margins.getMarginStart() != 0) {
+            if (margins.getMarginStart() != 0 || margins.leftMargin != 0) {
                 margins.setMarginStart(0);
+                margins.leftMargin = 0;
+                margins.rightMargin = 0;
+                margins.resolveLayoutDirection(weather.getLayoutDirection());
                 weather.setLayoutParams(margins);
             }
         } else {
             Integer original = weatherMargins.remove(weather);
             if (original != null && margins.getMarginStart() != original) {
                 margins.setMarginStart(original);
+                margins.resolveLayoutDirection(weather.getLayoutDirection());
                 weather.setLayoutParams(margins);
             }
         }
@@ -392,12 +443,12 @@ final class DateEffects {
     private static void updateText(View date, boolean hide) {
         if (date == null) return;
         if (hide) {
-            if (date.getVisibility() != View.INVISIBLE || !originalVisibility.containsKey(date))
+            if (date.getVisibility() != View.GONE || !originalVisibility.containsKey(date))
                 originalVisibility.put(date, date.getVisibility());
-            if (date.getVisibility() != View.INVISIBLE) date.setVisibility(View.INVISIBLE);
+            if (date.getVisibility() != View.GONE) date.setVisibility(View.GONE);
         } else {
             Integer original = originalVisibility.remove(date);
-            if (original != null && date.getVisibility() == View.INVISIBLE) date.setVisibility(original);
+            if (original != null && date.getVisibility() == View.GONE) date.setVisibility(original);
         }
     }
 
