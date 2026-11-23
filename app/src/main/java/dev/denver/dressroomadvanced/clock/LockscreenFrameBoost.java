@@ -6,6 +6,7 @@ import android.os.Looper;
 import android.os.SystemClock;
 import android.view.View;
 
+import java.lang.ref.WeakReference;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.WeakHashMap;
@@ -22,6 +23,7 @@ final class LockscreenFrameBoost {
     private static final long MIN_SWEEP_DELAY_MS = 48L;
 
     private static final WeakHashMap<View, Long> deadlines = new WeakHashMap<>();
+    private static final WeakHashMap<View, WeakReference<View>> roots = new WeakHashMap<>();
     private static Handler mainHandler;
     private static boolean sweepScheduled;
 
@@ -42,7 +44,15 @@ final class LockscreenFrameBoost {
         long now = SystemClock.uptimeMillis();
         long deadline = now + Math.max(60L, durationMs);
         boostTarget(view, deadline);
-        View root = view.getRootView();
+        // Cache only the hierarchy walk; every pulse still extends both deadlines.
+        WeakReference<View> cached = roots.get(view);
+        View root = cached == null ? null : cached.get();
+        android.os.IBinder token = view.getWindowToken();
+        if (root == null || token == null || !root.isAttachedToWindow()
+                || root.getWindowToken() != token) {
+            root = view.getRootView();
+            if (root != null) roots.put(view, new WeakReference<>(root));
+        }
         if (root != null && root != view && root.isAttachedToWindow()) {
             boostTarget(root, deadline);
         }
@@ -81,6 +91,7 @@ final class LockscreenFrameBoost {
             if (target == null || !target.isAttachedToWindow() || now >= deadline) {
                 it.remove();
                 if (target != null) {
+                    roots.remove(target);
                     target.setRequestedFrameRate(View.REQUESTED_FRAME_RATE_CATEGORY_DEFAULT);
                 }
             } else {

@@ -46,6 +46,30 @@ checked from the touch animator after the gesture ends. Media,
 screen, shortcut and bouncer blockers remain native. Disabling the setting
 restores the last native opacity and forwards the real clock alpha again.
 
+The unlock performance patch keeps the global `View.setAlpha` and
+`BackgroundBlurDrawable.setAlpha` hooks only while Keep live blur is enabled.
+Settings notifications reconcile those hooks on the main thread. Disabling
+first restores the current native opacity, then releases both hook handles;
+enabling takes fresh opacity baselines at the next drag. Partial installation
+rolls back both hooks. Eligibility checks are cached for at most 500 ms and
+invalidated on a new touch or Extras notification. Glyph mapping adds the
+native path through its matrix directly, avoiding a temporary matrix and path.
+
+Frame boost caches the window root weakly and checks its window token before
+reuse. Every pulse extends both view and root deadlines for the full requested
+duration. The proposed early-return shortcut was removed because it could
+expire before the last pulse's requested tail. Expiry/detachment releases the
+boost and its root cache entry.
+
+Validation: 29 JVM suites passed; focused phone probes passed 47 unlock-blur
+checks and 9 frame-boost checks, covering opacity restoration before unhook,
+repeat disable, fresh baselines, path transforms, deadline extension, root
+replacement and expiry. The preview build is `2.0.6-unlock-perf-preview`
+(`20006017`); it was installed and SystemUI logged successful opacity/core hook
+installation. These checks do not measure animation smoothness.
+The user confirmed that a cancelled swipe still moves/fades and restores blur
+correctly, and completed the off/on toggle check on the installed preview.
+
 During the drag, the clock matte is rebuilt from native local glyph/weather
 paths using each view's complete global matrix relative to the blur host.
 Clipped visible rectangles and the clock's standalone scale omit ancestor

@@ -169,8 +169,10 @@ final class UnlockBlur {
                                                 Object result = chain.proceed();
                                                 MotionEvent event = (MotionEvent) chain.getArg(0);
                                                 int action = event.getActionMasked();
-                                                if (action == MotionEvent.ACTION_DOWN)
+                                                if (action == MotionEvent.ACTION_DOWN) {
                                                     gestureDownTime = event.getDownTime();
+                                                    enabledKnown = false;
+                                                }
                                                 if ((action == MotionEvent.ACTION_UP
                                                         || action == MotionEvent.ACTION_CANCEL)) {
                                                     boolean unlocked = false;
@@ -190,8 +192,79 @@ final class UnlockBlur {
                                                 return result;
                                             })
                             ::unhook);
+            for (Method method : new Method[] {register, update, gesture, touch})
+                module.deoptimize(method);
+            hooks.commit();
+            installed = true;
+            hookModule = module;
+            // View.setAlpha and BackgroundBlurDrawable.setAlpha run for every view in
+            // SystemUI. Only intercept them while the swipe-blur setting is on.
+            refreshOpacityHooks();
+            RuntimeExtras.listen(UnlockBlur::refreshOpacityHooks);
+            android.util.Log.i(DressroomModule.TAG, "Live unlock blur hooks installed");
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+            module.report("Optional live unlock blur unavailable", error);
+        }
+    }
+
+    private static DressroomModule hookModule;
+    private static boolean opacityHooksInstalled;
+    private static final List<Runnable> opacityUnhooks = new ArrayList<>(2);
+
+    private static void refreshOpacityHooks() {
+        if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) {
+            Main.HANDLER.removeCallbacks(REFRESH_OPACITY_HOOKS);
+            Main.HANDLER.post(REFRESH_OPACITY_HOOKS);
+            return;
+        }
+        enabledKnown = false;
+        if (settingOnOrUnknown()) {
+            if (hookModule != null) installOpacityHooks(hookModule);
+            if (!enabled()) stop();
+        } else {
+            uninstallOpacityHooks();
+        }
+    }
+
+    private static final Runnable REFRESH_OPACITY_HOOKS = UnlockBlur::refreshOpacityHooks;
+
+    private static synchronized void uninstallOpacityHooks() {
+        // Restore while interception is still active, with the writing guard set by stop().
+        stop();
+        Throwable failure = null;
+        for (int i = opacityUnhooks.size() - 1; i >= 0; i--) {
+            try {
+                opacityUnhooks.get(i).run();
+                opacityUnhooks.remove(i);
+            } catch (RuntimeException | LinkageError error) {
+                if (failure == null) failure = error;
+                else if (failure != error) failure.addSuppressed(error);
+            }
+        }
+        if (opacityUnhooks.isEmpty() && opacityHooksInstalled) {
+            opacityHooksInstalled = false;
+            android.util.Log.i(DressroomModule.TAG, "Live unlock blur opacity hooks removed");
+        }
+        if (failure != null && hookModule != null)
+            hookModule.report("Live unlock blur opacity cleanup failed", failure);
+    }
+
+    private static boolean settingOnOrUnknown() {
+        try {
+            if (context == null)
+                context = (Context) Class.forName("android.app.ActivityThread")
+                        .getMethod("currentApplication").invoke(null);
+            return context == null || RuntimeExtras.enabled(context, "swipeBlur");
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+            return true;
+        }
+    }
+
+    private static synchronized void installOpacityHooks(DressroomModule module) {
+        if (opacityHooksInstalled) return;
+        try (HookTransaction hooks = new HookTransaction()) {
             Method viewAlpha = View.class.getDeclaredMethod("setAlpha", float.class);
-            hooks.add(
+            Runnable viewUnhook =
                     module.hook(viewAlpha)
                                     .setId("dressroom-advanced.unlock-blur-clock-opacity")
                                     .intercept(
@@ -208,11 +281,12 @@ final class UnlockBlur {
                                                 }
                                                 return chain.proceed();
                                             })
-                            ::unhook);
+                            ::unhook;
+            hooks.add(viewUnhook);
             Class<?> blur =
                     Class.forName("com.android.internal.graphics.drawable.BackgroundBlurDrawable");
             Method opacity = blur.getDeclaredMethod("setAlpha", int.class);
-            hooks.add(
+            Runnable backgroundUnhook =
                     module.hook(opacity)
                                     .setId("dressroom-advanced.unlock-blur-background-opacity")
                                     .intercept(
@@ -235,19 +309,17 @@ final class UnlockBlur {
                                                             });
                                                 return chain.proceed();
                                             })
-                            ::unhook);
-            for (Method method :
-                    new Method[] {register, update, gesture, touch, viewAlpha, opacity})
-                module.deoptimize(method);
+                            ::unhook;
+            hooks.add(backgroundUnhook);
+            module.deoptimize(viewAlpha);
+            module.deoptimize(opacity);
             hooks.commit();
-            installed = true;
-            RuntimeExtras.listen(
-                    () -> {
-                        if (!enabled()) stop();
-                    });
-            android.util.Log.i(DressroomModule.TAG, "Live unlock blur hooks installed");
+            opacityUnhooks.add(viewUnhook);
+            opacityUnhooks.add(backgroundUnhook);
+            opacityHooksInstalled = true;
+            android.util.Log.i(DressroomModule.TAG, "Live unlock blur opacity hooks installed");
         } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
-            module.report("Optional live unlock blur unavailable", error);
+            module.report("Optional live unlock blur opacity unavailable", error);
         }
     }
 
@@ -274,7 +346,23 @@ final class UnlockBlur {
         }
     }
 
+    // enabled() runs on every drag event and reads several system settings, so
+    // keep the answer briefly. Setting changes and each new touch invalidate it.
+    private static final long ENABLED_TTL_MS = 500L;
+    private static volatile boolean enabledKnown, enabledValue;
+    private static volatile long enabledAt;
+
     private static boolean enabled() {
+        long now = android.os.SystemClock.uptimeMillis();
+        if (enabledKnown && now - enabledAt < ENABLED_TTL_MS) return enabledValue;
+        boolean value = computeEnabled();
+        enabledValue = value;
+        enabledAt = now;
+        enabledKnown = true;
+        return value;
+    }
+
+    private static boolean computeEnabled() {
         try {
             if (context == null)
                 try {
@@ -306,7 +394,14 @@ final class UnlockBlur {
         }
         for (var entry : snapshot(backgrounds.entrySet(), backgrounds)) {
             Drawable drawable = entry.getKey();
-            if (drawable != null) entry.getValue().baseline = drawable.getAlpha();
+            if (drawable != null) {
+                Background state = entry.getValue();
+                state.baseline = state.requested = drawable.getAlpha();
+            }
+        }
+        for (var entry : snapshot(clockAlpha.entrySet(), clockAlpha)) {
+            View view = entry.getKey();
+            if (view != null) clockAlpha.put(view, view.getAlpha());
         }
     }
 
@@ -553,14 +648,11 @@ final class UnlockBlur {
     }
 
     static void append(Path result, Path local, View view, PointF origin, float scale) {
-        Matrix global = new Matrix(), source = new Matrix();
+        Matrix global = new Matrix();
         view.transformMatrixToGlobal(global);
-        source.setScale(scale, scale);
-        global.preConcat(source);
+        global.preScale(scale, scale);
         global.postTranslate(-origin.x, -origin.y);
-        Path transformed = new Path();
-        local.transform(global, transformed);
-        result.addPath(transformed);
+        result.addPath(local, global);
     }
 
     static void submitted(View view, boolean present, String surface) {

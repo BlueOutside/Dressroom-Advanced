@@ -64,7 +64,9 @@ public final class UnlockBlurProbe {
         check(drawable.getAlpha() == 90, "Moving blurred container does not fade with its content");
         restore.invoke(null);
         check(drawable.getAlpha() == 80, "Background native fade not restored");
-        Reflect.set(state, "requested", 0); drawable.setAlpha(0); apply.invoke(null);
+        // An idle native alpha write updates requested and baseline in the opacity hook.
+        Reflect.set(state, "requested", 0); Reflect.set(state, "baseline", 0);
+        drawable.setAlpha(0); apply.invoke(null);
         check(drawable.getAlpha() == 0, "Hidden background resurrected");
         View child = new AttachedView(context);
         android.widget.FrameLayout fadeParent = new android.widget.FrameLayout(context); fadeParent.addView(child);
@@ -134,6 +136,31 @@ public final class UnlockBlurProbe {
         mapped.reset(); UnlockBlur.append(mapped, local, digit, new android.graphics.PointF(10, 15), .5f);
         mapped.computeBounds(bounds, true);
         check(bounds.equals(new android.graphics.RectF(-50, 45, -40, 65)), "Weather path gets the wrong view transform");
+
+        // Re-enable after native opacity changed while the global hooks were absent.
+        clock.setAlpha(.6f); drawable.setAlpha(120);
+        begin.invoke(null);
+        check(clocks.get(clock) == .6f, "Re-enable retains a stale clock opacity");
+        check(((Number) Reflect.field(state, "requested")).intValue() == 120,
+                "Re-enable retains a stale background opacity");
+        field("alpha").setFloat(null, .5f); apply.invoke(null);
+        java.util.List<Runnable> unhooks = (java.util.List<Runnable>) field("opacityUnhooks").get(null);
+        int[] removed = {0};
+        unhooks.add(() -> {
+            check(clock.getAlpha() == .6f && drawable.getAlpha() == 120,
+                    "Opacity hooks removed before native opacity was restored");
+            removed[0]++;
+        });
+        unhooks.add(() -> removed[0]++);
+        field("opacityHooksInstalled").setBoolean(null, true);
+        Method uninstall = UnlockBlur.class.getDeclaredMethod("uninstallOpacityHooks");
+        uninstall.setAccessible(true); uninstall.invoke(null);
+        check(removed[0] == 2 && unhooks.isEmpty() && !field("opacityHooksInstalled").getBoolean(null),
+                "Disable leaves global opacity hooks installed");
+        check(!field("active").getBoolean(null) && !field("tracking").getBoolean(null),
+                "Disable leaves a gesture active");
+        uninstall.invoke(null);
+        check(removed[0] == 2, "Repeated disable unhooks twice");
         covers.clear();
         clocks.clear(); backgrounds.clear();
     }

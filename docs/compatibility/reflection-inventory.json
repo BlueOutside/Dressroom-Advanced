@@ -382,49 +382,61 @@
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/blur/UnlockBlur.java",
-      "line": 193,
-      "kind": "declared-method",
-      "target": "setAlpha"
-    },
-    {
-      "file": "app/src/main/java/dev/denver/dressroomadvanced/blur/UnlockBlur.java",
-      "line": 213,
-      "kind": "class",
-      "target": "com.android.internal.graphics.drawable.BackgroundBlurDrawable"
-    },
-    {
-      "file": "app/src/main/java/dev/denver/dressroomadvanced/blur/UnlockBlur.java",
-      "line": 214,
-      "kind": "declared-method",
-      "target": "setAlpha"
-    },
-    {
-      "file": "app/src/main/java/dev/denver/dressroomadvanced/blur/UnlockBlur.java",
-      "line": 259,
-      "kind": "public-method",
-      "target": "onKeyguardStatusViewAlphaChanged"
-    },
-    {
-      "file": "app/src/main/java/dev/denver/dressroomadvanced/blur/UnlockBlur.java",
-      "line": 283,
+      "line": 255,
       "kind": "class",
       "target": "android.app.ActivityThread"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/blur/UnlockBlur.java",
-      "line": 284,
+      "line": 256,
       "kind": "public-method",
       "target": "currentApplication"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/blur/UnlockBlur.java",
-      "line": 453,
+      "line": 266,
+      "kind": "declared-method",
+      "target": "setAlpha"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/blur/UnlockBlur.java",
+      "line": 287,
+      "kind": "class",
+      "target": "com.android.internal.graphics.drawable.BackgroundBlurDrawable"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/blur/UnlockBlur.java",
+      "line": 288,
+      "kind": "declared-method",
+      "target": "setAlpha"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/blur/UnlockBlur.java",
+      "line": 331,
+      "kind": "public-method",
+      "target": "onKeyguardStatusViewAlphaChanged"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/blur/UnlockBlur.java",
+      "line": 371,
+      "kind": "class",
+      "target": "android.app.ActivityThread"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/blur/UnlockBlur.java",
+      "line": 372,
+      "kind": "public-method",
+      "target": "currentApplication"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/blur/UnlockBlur.java",
+      "line": 548,
       "kind": "class",
       "target": "com.samsung.android.app.facewidget.complication.ComplicationWidgetHostViewContainer"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/blur/UnlockBlur.java",
-      "line": 460,
+      "line": 555,
       "kind": "declared-method",
       "target": "setCoverWidgetBlurState"
     },
