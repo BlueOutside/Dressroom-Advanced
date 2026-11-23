@@ -20,10 +20,9 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Resolves per-track Spotify Canvas looping portrait {@code .cnvs.mp4} motion covers across any
- * media player. Uses Spotify's {@code CANVAS_URI} / {@code MEDIA_ID} metadata fast-paths when
- * available, and anonymous Web Player TOTP auth + Pathfinder v2 {@code searchDesktop} + public
- * Canvas endpoint otherwise, requiring neither user login nor the Spotify app.
+ * Dormant Spotify Canvas implementation, deliberately unregistered in {@link LiveCoverController}.
+ * The public Canvas service is disabled and standalone anonymous requests returned no Canvas.
+ * Keep this source for a future provider with a working authentication path.
  */
 final class SpotifyCanvasAnimatedCoverProvider implements AnimatedCoverProvider {
     static final String PROVIDER_ID = "spotify_canvas";

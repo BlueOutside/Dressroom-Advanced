@@ -513,110 +513,38 @@ public final class LiveCoverContractsTest {
     }
 
     private static void verifyMultiProviderPolicyAndCacheIsolation() throws IOException {
-        check(
-                LiveCoverController.clampSource(-1) == LiveCoverController.SOURCE_SPOTIFY_FIRST
-                        && LiveCoverController.clampSource(4)
-                                == LiveCoverController.SOURCE_SPOTIFY_FIRST
-                        && LiveCoverController.clampSource(LiveCoverController.SOURCE_APPLE_ONLY)
-                                == LiveCoverController.SOURCE_APPLE_ONLY,
-                "clampSource bounds check failed");
-
-        check(
-                List.of("spotify_canvas", "apple_music")
-                        .equals(
-                                LiveCoverController.providersForSource(
-                                                LiveCoverController.SOURCE_SPOTIFY_FIRST)
-                                        .stream()
-                                        .map(AnimatedCoverProvider::id)
-                                        .toList()),
-                "SOURCE_SPOTIFY_FIRST provider order mismatch");
-        check(
-                List.of("apple_music", "spotify_canvas")
-                        .equals(
-                                LiveCoverController.providersForSource(
-                                                LiveCoverController.SOURCE_APPLE_FIRST)
-                                        .stream()
-                                        .map(AnimatedCoverProvider::id)
-                                        .toList()),
-                "SOURCE_APPLE_FIRST provider order mismatch");
-        check(
-                List.of("spotify_canvas")
-                        .equals(
-                                LiveCoverController.providersForSource(
-                                                LiveCoverController.SOURCE_SPOTIFY_ONLY)
-                                        .stream()
-                                        .map(AnimatedCoverProvider::id)
-                                        .toList()),
-                "SOURCE_SPOTIFY_ONLY provider order mismatch");
-        check(
-                List.of("apple_music")
-                        .equals(
-                                LiveCoverController.providersForSource(
-                                                LiveCoverController.SOURCE_APPLE_ONLY)
-                                        .stream()
-                                        .map(AnimatedCoverProvider::id)
-                                        .toList()),
-                "SOURCE_APPLE_ONLY provider order mismatch");
-
         String albumKey = "album|the weeknd|after hours";
-        check(
-                !LiveCoverController.canReuseAlbumAsset(
-                        LiveCoverController.SOURCE_SPOTIFY_FIRST, "apple_music", albumKey, albumKey),
-                "SOURCE_SPOTIFY_FIRST must never reuse previous track cover on album switch");
-        check(
-                !LiveCoverController.canReuseAlbumAsset(
-                        LiveCoverController.SOURCE_SPOTIFY_ONLY,
-                        "spotify_canvas",
-                        albumKey,
-                        albumKey),
-                "SOURCE_SPOTIFY_ONLY must never reuse previous track cover");
-        check(
-                LiveCoverController.canReuseAlbumAsset(
-                                LiveCoverController.SOURCE_APPLE_FIRST,
-                                "apple_music",
-                                albumKey,
-                                albumKey)
-                        && !LiveCoverController.canReuseAlbumAsset(
-                                LiveCoverController.SOURCE_APPLE_FIRST,
-                                "spotify_canvas",
-                                albumKey,
-                                albumKey),
-                "SOURCE_APPLE_FIRST should reuse album cover only when active asset is Apple Music");
-        check(
-                LiveCoverController.canReuseAlbumAsset(
-                        LiveCoverController.SOURCE_APPLE_ONLY, "apple_music", albumKey, albumKey),
-                "SOURCE_APPLE_ONLY should reuse album cover across same-album tracks");
-
         var t1 =
                 new AnimatedCoverProvider.TrackQuery(
                         "The Weeknd", "Blinding Lights", "After Hours", "pkg", "", 1080);
         var t2 =
                 new AnimatedCoverProvider.TrackQuery(
                         "The Weeknd", "Alone Again", "After Hours", "pkg", "", 1080);
-        check(
-                !LiveCoverController.requestFlightKey(t1, LiveCoverController.SOURCE_SPOTIFY_FIRST, true)
-                        .equals(
-                                LiveCoverController.requestFlightKey(
-                                        t2, LiveCoverController.SOURCE_SPOTIFY_FIRST, true)),
-                "Same-album tracks must have distinct flight keys when Spotify Canvas is enabled");
-        check(
-                !LiveCoverController.requestFlightKey(t1, LiveCoverController.SOURCE_APPLE_FIRST, true)
-                        .equals(
-                                LiveCoverController.requestFlightKey(
-                                        t2, LiveCoverController.SOURCE_APPLE_FIRST, true)),
-                "SOURCE_APPLE_FIRST must keep distinct flight keys for Spotify fallback");
-        check(
-                !LiveCoverController.requestFlightKey(t1, LiveCoverController.SOURCE_SPOTIFY_ONLY, true)
-                        .equals(
-                                LiveCoverController.requestFlightKey(
-                                        t2, LiveCoverController.SOURCE_SPOTIFY_ONLY, true)),
-                "SOURCE_SPOTIFY_ONLY must keep distinct flight keys");
-        check(
-                LiveCoverController.requestFlightKey(t1, LiveCoverController.SOURCE_APPLE_ONLY, true)
-                        .equals(
-                                LiveCoverController.requestFlightKey(
-                                        t2, LiveCoverController.SOURCE_APPLE_ONLY, true)),
-                "SOURCE_APPLE_ONLY should deduplicate in-flight requests per album");
+        for (int source : new int[] {-1, 0, 1, 2, 3, 4}) {
+            check(
+                    LiveCoverController.clampSource(source) == LiveCoverController.SOURCE_APPLE_ONLY,
+                    "Old and invalid source selections must use Apple Music while Canvas is disabled");
+            check(
+                    List.of("apple_music")
+                            .equals(
+                                    LiveCoverController.providersForSource(source).stream()
+                                            .map(AnimatedCoverProvider::id)
+                                            .toList()),
+                    "Disabled Spotify provider must never be registered");
+            check(
+                    LiveCoverController.canReuseAlbumAsset(source, "apple_music", albumKey, albumKey)
+                            && !LiveCoverController.canReuseAlbumAsset(
+                                    source, "spotify_canvas", albumKey, albumKey)
+                            && !LiveCoverController.canReuseAlbumAsset(
+                                    source, "apple_music", albumKey, "other album"),
+                    "Only Apple Music assets from the same album may be reused");
+            check(
+                    LiveCoverController.requestFlightKey(t1, source, true)
+                            .equals(LiveCoverController.requestFlightKey(t2, source, true))
+                            && !LiveCoverController.trackRequestKey(t1, source)
+                                    .equals(LiveCoverController.trackRequestKey(t2, source)),
+                    "Album downloads must deduplicate without losing track change detection");
+        }
 
         Path tempDir = Files.createTempDirectory("dressroom-provider-isolation-test");
         try {

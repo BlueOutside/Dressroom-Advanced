@@ -62,8 +62,7 @@ final class LiveCoverController implements LiveCoverPlayer.FrameListener {
     private static Method drawTextureLayerMethod;
     private static Class<?> recordingCanvasClass;
 
-    private static final AnimatedCoverProvider SPOTIFY_PROVIDER =
-            new SpotifyCanvasAnimatedCoverProvider();
+    // Spotify Canvas is unregistered while its anonymous lookup service is unavailable.
     private static final AnimatedCoverProvider APPLE_PROVIDER =
             new AppleMusicAnimatedCoverProvider();
     private static final ExecutorService resolvePool =
@@ -1117,18 +1116,12 @@ final class LiveCoverController implements LiveCoverPlayer.FrameListener {
     }
 
     static int clampSource(int source) {
-        return source >= SOURCE_SPOTIFY_FIRST && source <= SOURCE_APPLE_ONLY
-                ? source
-                : SOURCE_SPOTIFY_FIRST;
+        // Also migrate saved Spotify-only selections so live artwork still has a provider.
+        return SOURCE_APPLE_ONLY;
     }
 
     static List<AnimatedCoverProvider> providersForSource(int source) {
-        return switch (clampSource(source)) {
-            case SOURCE_APPLE_FIRST -> List.of(APPLE_PROVIDER, SPOTIFY_PROVIDER);
-            case SOURCE_SPOTIFY_ONLY -> List.of(SPOTIFY_PROVIDER);
-            case SOURCE_APPLE_ONLY -> List.of(APPLE_PROVIDER);
-            default -> List.of(SPOTIFY_PROVIDER, APPLE_PROVIDER);
-        };
+        return List.of(APPLE_PROVIDER);
     }
 
     static boolean canReuseAlbumAsset(
@@ -1139,10 +1132,7 @@ final class LiveCoverController implements LiveCoverPlayer.FrameListener {
                 || !nextAlbumKey.equals(activeAlbumKey)) {
             return false;
         }
-        int mode = clampSource(sourceMode);
-        if (mode == SOURCE_APPLE_ONLY) return true;
-        return mode == SOURCE_APPLE_FIRST
-                && AppleMusicAnimatedCoverProvider.PROVIDER_ID.equals(activeProviderId);
+        return AppleMusicAnimatedCoverProvider.PROVIDER_ID.equals(activeProviderId);
     }
 
     static String trackRequestKey(AnimatedCoverProvider.TrackQuery query, int sourceMode) {
