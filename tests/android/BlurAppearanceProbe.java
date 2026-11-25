@@ -40,8 +40,8 @@ public final class BlurAppearanceProbe {
                 BlurAppearance.permitsWindowBlur(false, true, false),
                 "Samsung blur rejected because Android compositor flag is false");
         check(
-                BlurAppearance.permitsWindowBlur(false, true, true),
-                "Android window-blur disable hid Samsung's own blur");
+                !BlurAppearance.permitsWindowBlur(false, true, true),
+                "Explicit system blur disable ignored for the Samsung backend");
         check(
                 !BlurAppearance.permitsWindowBlur(true, false, true),
                 "Explicit system disable ignored for the Android backend");
@@ -95,8 +95,9 @@ public final class BlurAppearanceProbe {
             check(curve != oldCurve, "Shared native curve mutated");
             check(read(curve, "mSaturation").equals(-.5f), "Signed saturation adjustment not applied");
             check(
-                    read(curve, "mCurveBias").equals(4f) && read(curve, "mMaxY").equals(245f),
-                    "Native contrast curve lost");
+                    read(curve, "mCurveBias").equals(surface.equals(AodWidgetAppearance.PROFILE) ? 0f : 4f)
+                            && read(curve, "mMaxY").equals(surface.equals(AodWidgetAppearance.PROFILE) ? 255f : 245f),
+                    "Wrong native/explicit-AOD luminance curve");
             check(
                     read(nativeInfo, "mBlurRadius").equals(77)
                             && read(oldCurve, "mSaturation").equals(.2f),
@@ -133,11 +134,51 @@ public final class BlurAppearanceProbe {
                 "AOD tint removal did not keep the window blur untinted");
         check(BlurAppearanceSettings.same(settings, untinted, "widgetBlur"),
                 "AOD tint altered the awake widget profile");
+        for (int tint : new int[] {1, 2, 3}) {
+            for (int opacity : new int[] {0, 5, 50, 100}) {
+                Bundle explicit = new Bundle(untinted);
+                explicit.putInt(aod + "Tint", tint);
+                explicit.putInt(aod + "TintOpacity", opacity);
+                Object request = BlurAppearance.styled(nativeInfo, explicit, aod);
+                Object explicitCurve = read(request, "mColorCurve");
+                check(read(explicitCurve, "mCurveBias").equals(0f)
+                                && read(explicitCurve, "mMinX").equals(0f)
+                                && read(explicitCurve, "mMaxX").equals(255f)
+                                && read(explicitCurve, "mMinY").equals(0f)
+                                && read(explicitCurve, "mMaxY").equals(255f),
+                        "Explicit AOD tint retains Samsung's pale luminance preset");
+                int alpha = tint == 3 ? 0 : Math.round(opacity * 2.55f);
+                int expected = (alpha << 24) | (tint == 2 ? 0xffffff : 0);
+                check(read(request, "mBackgroundBlurColor").equals(expected),
+                        "AOD tint opacity differs from the selected amount");
+            }
+        }
+        untinted.putBoolean(AodWidgetAppearance.NEUTRAL, true);
+        untinted.putInt(aod + "Contrast", 17);
+        untinted.putInt(aod + "Brightness", -20);
+        Object natural = BlurAppearance.styled(nativeInfo, untinted, aod);
+        Object naturalCurve = read(natural, "mColorCurve");
+        check(read(naturalCurve, "mCurveBias").equals(17f),
+                "Neutral colors overwrote the custom tone curve");
+        check((Float) read(naturalCurve, "mMaxY") < 255f,
+                "Neutral colors overwrote the custom brightness");
+        check(read(natural, "mBackgroundBlurColor").equals(0), "Neutral colors restored a removed tint");
+        JSONObject naturalJson = new JSONObject();
+        BlurAppearanceSettings.write(untinted, naturalJson);
+        Bundle naturalRestored = new Bundle();
+        BlurAppearanceSettings.read(naturalJson, naturalRestored);
+        check(naturalRestored.getInt(aod + "Contrast") == 17
+                        && naturalRestored.getInt(aod + "Brightness") == -20,
+                "Tone curve and brightness did not round-trip through saved settings");
         restored.putInt("widgetBlurRadius", 9999);
         restored.putInt("clockBlurSaturation", -999);
+        restored.putInt(aod + "Contrast", 999);
+        restored.putInt(aod + "Brightness", -999);
         Bundle cleaned = ExtrasPreferences.clean(restored);
         check(cleaned.getInt("widgetBlurRadius") == 300, "Radius not bounded");
         check(cleaned.getInt("clockBlurSaturation") == -100, "Saturation not bounded");
+        check(cleaned.getInt(aod + "Contrast") == 100, "Tone curve not bounded");
+        check(cleaned.getInt(aod + "Brightness") == -100, "Brightness not bounded");
         check(!BlurAppearanceSettings.same(settings, cleaned), "Changed draft marked committed");
         // A null color curve must get a linear curve rather than borrowing mutable native state.
         Object noCurve =
@@ -165,5 +206,30 @@ public final class BlurAppearanceProbe {
         check(
                 read(styled, "mBackgroundBlurColor").equals(read(canvas, "mBackgroundBlurColor")),
                 "Canvas blur received an unsupported tint");
+        // Framework SemBlurInfo.scaleDownRadius() mutates mBlurRadius in place when submitted;
+        // stored requests must isolate submitted copies and restore unscaled native radius.
+        Object isolated = BlurAppearance.isolateSubmission(nativeInfo, nativeInfo);
+        check(isolated != nativeInfo && read(isolated, "mBlurRadius").equals(77),
+                "Direct submission was not isolated from in-place framework radius scaling");
+        Class<?> memory = Class.forName("com.android.internal.os.ApplicationSharedMemory");
+        memory.getMethod("setInstance", memory)
+                .invoke(null, memory.getMethod("create").invoke(null));
+        View sampleHost = new View(
+                (android.content.Context) Class.forName("android.app.ActivityThread")
+                        .getMethod("getSystemContext")
+                        .invoke(Class.forName("android.app.ActivityThread")
+                                .getMethod("systemMain").invoke(null)));
+        sampleHost.setTag("BlurView");
+        sampleHost.layout(0, 0, 100, 50);
+        Object submittedCopy = BlurAppearance.submit(sampleHost, nativeInfo, nativeInfo, "widgetBlur");
+        check(submittedCopy != nativeInfo, "submit() returned live canonical SemBlurInfo reference");
+        Field radiusField = info.getDeclaredField("mBlurRadius");
+        radiusField.setAccessible(true);
+        radiusField.setInt(submittedCopy, 19);
+        check(read(BlurAppearance.nativeRequest(sampleHost), "mBlurRadius").equals(77),
+                "Mutated framework copy poisoned stored nativeRequest radius");
+        radiusField.setInt(nativeInfo, 19);
+        check(read(BlurAppearance.nativeRequest(sampleHost), "mBlurRadius").equals(77),
+                "In-place nativeInfo mutation was not restored from snapshot radius");
     }
 }

@@ -630,12 +630,20 @@ final class WidgetPanel {
         PanelRows.heading(label("Widgets"));
         extraToggle(b, "Disable widget clicks", WidgetClickBlock.KEY);
         note("Prevents tapping lockscreen widgets from opening apps while keeping swipe-to-unlock working.");
-        if (!editor.legacy()) {
+        if (!editor.earlyClockEditor()) {
             PanelRows.heading(label("Always On Display"));
+            if (!editor.legacy()) {
+                toggle(
+                        "Keep clock stretched",
+                        b.getBoolean("keepStretch"),
+                        next -> next.putBoolean("keepStretch", !b.getBoolean("keepStretch")),
+                        false);
+            }
+            boolean nowBarAod = NowBarAodOption.shownInEditor(context, b);
             toggle(
-                    "Keep clock stretched",
-                    b.getBoolean("keepStretch"),
-                    next -> next.putBoolean("keepStretch", !b.getBoolean("keepStretch")),
+                    "Show Now Bar on AOD",
+                    nowBarAod,
+                    next -> NowBarAodOption.setInEditor(next, !nowBarAod),
                     false);
         }
         if (android.os.Build.VERSION.SDK_INT >= 37) {
@@ -1018,6 +1026,7 @@ final class WidgetPanel {
             extraToggle(b, "Neutral blur colors", BlurAppearanceSettings.NEUTRAL_CLOCK);
             if (android.os.Build.VERSION.SDK_INT >= 37) {
                 extraToggle(b, "Shorter blur return delay", ClockBlurDelays.KEY);
+                extraToggle(b, "Keep clock blur with LockStar", LockStarClockBlur.KEY);
                 if (WallpaperAod.supported() && ScreenIdentity.value(b) != ScreenIdentity.SUB
                         && BlurAppearance.windowBlur(context)) {
                     extraToggle(b, "Keep clock blur on AOD", WallpaperAod.CLOCK_BLUR);
@@ -1034,7 +1043,7 @@ final class WidgetPanel {
             extraToggle(b, "Remove Picture Frame dimming", WidgetBackgroundOptions.PICTURE_FRAME);
         }
         if (b.getBoolean(key + "Custom")) blurControls(b, key);
-        if (key.equals("widgetBlur") && !editor.earlyClockEditor() && WallpaperAod.supported()
+        if (key.equals("widgetBlur") && !editor.earlyClockEditor() && WallpaperAod.fullscreenSupported()
                 && BlurAppearance.windowBlur(context)) {
             PanelRows.heading(label("Widgets on AOD"));
             note("Apply, then enter AOD with your wallpaper showing to see changes.");
@@ -1055,6 +1064,10 @@ final class WidgetPanel {
                 (next, value) -> next.putInt(key + "Radius", value), false);
         slider("Saturation adjustment", -100, 100, b.getInt(key + "Saturation"), "%",
                 (next, value) -> next.putInt(key + "Saturation", value), false);
+        slider("Tone curve adjustment", -100, 100, b.getInt(key + "Contrast"), "",
+                (next, value) -> next.putInt(key + "Contrast", value), false);
+        slider("Brightness adjustment", -100, 100, b.getInt(key + "Brightness"), "%",
+                (next, value) -> next.putInt(key + "Brightness", value), false);
         if (!BlurAppearance.windowBlur(context)) {
             note("Tint requires window blur. Only radius and saturation are available here.");
             return;
@@ -1064,6 +1077,7 @@ final class WidgetPanel {
         int tint = b.getInt(key + "Tint");
         choice("Tint", tints, tint,
                 (next, value) -> next.putInt(key + "Tint", value), false);
+        if (aod && tint != 0) note("Replaces Samsung's brightness preset. Opacity controls the tint over wallpaper blur.");
         if (key.equals("clockBlur")) note("Tint applies to window blur on the lockscreen.");
         if (tint == 1 || tint == 2)
             slider("Tint opacity", 0, 100, b.getInt(key + "TintOpacity", 20), "%",

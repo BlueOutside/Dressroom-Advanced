@@ -19,10 +19,11 @@ def main():
     parser.add_argument("manifest", type=Path)
     parser.add_argument("scan_dir", type=Path)
     parser.add_argument("output", type=Path)
+    parser.add_argument("--rules", type=Path, default=Path(__file__).with_name("rules.tsv"))
     args = parser.parse_args()
     repo = Path(__file__).resolve().parents[2]
     rules = {}
-    for line in Path(__file__).with_name("rules.tsv").read_text(encoding="utf-8").splitlines():
+    for line in args.rules.read_text(encoding="utf-8").splitlines():
         if not line or line.startswith("#"):
             continue
         role, scopes, kind, owner, method, proto, evidence = line.split("\t")

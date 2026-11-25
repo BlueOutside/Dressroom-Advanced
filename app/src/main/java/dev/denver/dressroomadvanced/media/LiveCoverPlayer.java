@@ -49,6 +49,7 @@ final class LiveCoverPlayer implements TextureView.SurfaceTextureListener {
     private volatile boolean desiredPlaying;
     private boolean prepared;
     private boolean firstFrameRendered;
+    private boolean holdingPausedFrame;
     private boolean revealHeld;
     private long hiddenFrameTimestamp;
     private float targetOpacity = 1f;
@@ -104,13 +105,17 @@ final class LiveCoverPlayer implements TextureView.SurfaceTextureListener {
     }
 
     boolean isVideoVisible() {
-        return desiredPlaying
-                && firstFrameRendered
+        return ((desiredPlaying && firstFrameRendered) || holdingPausedFrame)
                 && textureView != null
                 && textureView.getAlpha() > 0.01f;
     }
 
+    boolean isHoldingPausedFrame() {
+        return holdingPausedFrame;
+    }
+
     float revealMix() {
+        if (holdingPausedFrame) return 1f;
         return desiredPlaying && firstFrameRendered ? revealMix : 0f;
     }
 
@@ -136,6 +141,12 @@ final class LiveCoverPlayer implements TextureView.SurfaceTextureListener {
 
         desiredPlaying = true;
         if (sameAsset && prepared) {
+            if (holdingPausedFrame) {
+                holdingPausedFrame = false;
+                firstFrameRendered = true;
+                revealMix = 1f;
+                applyOpacity();
+            }
             long seq = generation.get();
             SurfaceTexture st = surfaceTexture;
             worker().post(() -> resumeOnWorker(seq, st));
@@ -147,6 +158,7 @@ final class LiveCoverPlayer implements TextureView.SurfaceTextureListener {
         currentFile = mp4File;
         prepared = false;
         firstFrameRendered = false;
+        holdingPausedFrame = false;
         videoWidth = 0;
         videoHeight = 0;
         hideTextureImmediately();
@@ -171,12 +183,47 @@ final class LiveCoverPlayer implements TextureView.SurfaceTextureListener {
     }
 
     void pauseAndHide() {
-        if (!desiredPlaying) return;
+        boolean wasHolding = holdingPausedFrame;
+        if (!desiredPlaying && !wasHolding) return;
         desiredPlaying = false;
         firstFrameRendered = false;
+        holdingPausedFrame = false;
         hideTextureImmediately();
+        if (!wasHolding) {
+            long seq = generation.get();
+            worker().post(() -> pauseOnWorker(seq));
+        }
+    }
+
+    /**
+     * Pauses decoding on the worker thread while leaving the last rendered GPU video frame visible
+     * on {@link TextureView}, preventing both main-thread {@code getBitmap()} stalls and flashing
+     * static artwork while the off-thread AOD still decodes.
+     */
+    void pauseKeepingFrame() {
+        if (!desiredPlaying) return;
+        boolean visible = firstFrameRendered && textureView != null && textureView.getAlpha() > 0.01f;
+        desiredPlaying = false;
+        firstFrameRendered = false;
+        if (visible) {
+            reveal.cancel();
+            revealMix = 1f;
+            holdingPausedFrame = true;
+            if (textureView.getAlpha() != targetOpacity) textureView.setAlpha(targetOpacity);
+            hiddenFrameTimestamp =
+                    surfaceTexture == null ? Long.MIN_VALUE : surfaceTexture.getTimestamp();
+        } else {
+            holdingPausedFrame = false;
+            hideTextureImmediately();
+        }
         long seq = generation.get();
         worker().post(() -> pauseOnWorker(seq));
+    }
+
+    void hidePausedFrame() {
+        if (!holdingPausedFrame) return;
+        holdingPausedFrame = false;
+        hideTextureImmediately();
     }
 
     void readPausedFrame(File file, Consumer<Bitmap> ready) {
@@ -282,6 +329,7 @@ final class LiveCoverPlayer implements TextureView.SurfaceTextureListener {
     private void hideTextureImmediately() {
         reveal.cancel();
         revealMix = 0f;
+        holdingPausedFrame = false;
         hiddenFrameTimestamp = surfaceTexture == null ? Long.MIN_VALUE : surfaceTexture.getTimestamp();
         if (textureView != null) {
             if (textureView.getAlpha() != 0f) textureView.setAlpha(0f);
@@ -289,8 +337,12 @@ final class LiveCoverPlayer implements TextureView.SurfaceTextureListener {
     }
 
     private void applyOpacity() {
-        if (desiredPlaying && firstFrameRendered && textureView != null)
+        if (textureView == null) return;
+        if (holdingPausedFrame) {
+            textureView.setAlpha(targetOpacity);
+        } else if (desiredPlaying && firstFrameRendered) {
             textureView.setAlpha(targetOpacity * revealMix);
+        }
     }
 
     private void markFirstFrameAndReveal(long seq) {
@@ -429,9 +481,12 @@ final class LiveCoverPlayer implements TextureView.SurfaceTextureListener {
     private void pauseOnWorker(long seq) {
         if (seq != generation.get() || workerPlayer == null || !workerPrepared) return;
         try {
-            if (workerPlaying && workerPlayer.isPlaying()) {
-                workerPlayer.pause();
-                resumePositionMs = workerPlayer.getCurrentPosition();
+            if (workerPlaying) {
+                if (workerPlayer.isPlaying()) workerPlayer.pause();
+                int pos = workerPlayer.getCurrentPosition();
+                int duration = workerPlayer.getDuration();
+                if (duration > 0 && pos >= duration) pos = pos % duration;
+                if (pos >= 0) resumePositionMs = pos;
             }
             workerPlaying = false;
         } catch (IllegalStateException ignored) {

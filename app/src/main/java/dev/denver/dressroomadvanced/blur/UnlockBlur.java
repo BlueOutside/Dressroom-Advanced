@@ -263,25 +263,7 @@ final class UnlockBlur {
     private static synchronized void installOpacityHooks(DressroomModule module) {
         if (opacityHooksInstalled) return;
         try (HookTransaction hooks = new HookTransaction()) {
-            Method viewAlpha = View.class.getDeclaredMethod("setAlpha", float.class);
-            Runnable viewUnhook =
-                    module.hook(viewAlpha)
-                                    .setId("dressroom-advanced.unlock-blur-clock-opacity")
-                                    .intercept(
-                                            chain -> {
-                                                View view = (View) chain.getThisObject();
-                                                if (clockAlpha.containsKey(view)
-                                                        && !Boolean.TRUE.equals(writing.get())) {
-                                                    float requested =
-                                                            ((Number) chain.getArg(0)).floatValue();
-                                                    clockAlpha.put(view, requested);
-                                                    if (active)
-                                                        return chain.proceed(
-                                                                new Object[] {requested * alpha});
-                                                }
-                                                return chain.proceed();
-                                            })
-                            ::unhook;
+            Runnable viewUnhook = ViewAlphaHooks.acquire(module);
             hooks.add(viewUnhook);
             Class<?> blur =
                     Class.forName("com.android.internal.graphics.drawable.BackgroundBlurDrawable");
@@ -311,7 +293,6 @@ final class UnlockBlur {
                                             })
                             ::unhook;
             hooks.add(backgroundUnhook);
-            module.deoptimize(viewAlpha);
             module.deoptimize(opacity);
             hooks.commit();
             opacityUnhooks.add(viewUnhook);
@@ -321,6 +302,31 @@ final class UnlockBlur {
         } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
             module.report("Optional live unlock blur opacity unavailable", error);
         }
+    }
+
+    static boolean tracksClockAlpha(View view) {
+        return clockAlpha.containsKey(view);
+    }
+
+    static float requestedClockAlpha(View view) {
+        if (active) {
+            Float saved = clockAlpha.get(view);
+            if (saved != null) return saved;
+        }
+        return view.getAlpha();
+    }
+
+    static float effectiveClockAlpha(View view, float candidate) {
+        return active && clockAlpha.containsKey(view) ? candidate * alpha : candidate;
+    }
+
+    static float interceptClockAlpha(View view, float nativeRequested, float afterMedia) {
+        if (clockAlpha.containsKey(view) && !Boolean.TRUE.equals(writing.get())
+                && !ViewAlphaHooks.isWriting()) {
+            clockAlpha.put(view, nativeRequested);
+            if (active) return afterMedia * alpha;
+        }
+        return afterMedia;
     }
 
     private static synchronized void hookClock(DressroomModule module, Object listener) {
@@ -401,7 +407,7 @@ final class UnlockBlur {
         }
         for (var entry : snapshot(clockAlpha.entrySet(), clockAlpha)) {
             View view = entry.getKey();
-            if (view != null) clockAlpha.put(view, view.getAlpha());
+            if (view != null) clockAlpha.put(view, MediaBlurHost.requestedAlpha(view));
         }
     }
 
@@ -444,13 +450,17 @@ final class UnlockBlur {
     private static void applyOpacity() {
         writing.set(true);
         try {
-            for (var entry : snapshot(clockAlpha.entrySet(), clockAlpha)) {
-                View view = entry.getKey();
-                if (view != null && view.isAttachedToWindow()) {
-                    LockscreenFrameBoost.pulse(view, 220L);
-                    view.setAlpha(entry.getValue() * alpha);
-                }
-            }
+            ViewAlphaHooks.runInternal(
+                    () -> {
+                        for (var entry : snapshot(clockAlpha.entrySet(), clockAlpha)) {
+                            View view = entry.getKey();
+                            if (view != null && view.isAttachedToWindow()) {
+                                LockscreenFrameBoost.pulse(view, 220L);
+                                view.setAlpha(
+                                        MediaBlurHost.effectiveAlpha(view, entry.getValue()) * alpha);
+                            }
+                        }
+                    });
             for (var entry : snapshot(backgrounds.entrySet(), backgrounds)) {
                 Background state = entry.getValue();
                 View view = state.view.get();
@@ -467,10 +477,14 @@ final class UnlockBlur {
     private static void restore() {
         writing.set(true);
         try {
-            for (var entry : snapshot(clockAlpha.entrySet(), clockAlpha)) {
-                View view = entry.getKey();
-                if (view != null) view.setAlpha(entry.getValue());
-            }
+            ViewAlphaHooks.runInternal(
+                    () -> {
+                        for (var entry : snapshot(clockAlpha.entrySet(), clockAlpha)) {
+                            View view = entry.getKey();
+                            if (view != null)
+                                view.setAlpha(MediaBlurHost.effectiveAlpha(view, entry.getValue()));
+                        }
+                    });
             for (var entry : snapshot(backgrounds.entrySet(), backgrounds)) {
                 Drawable drawable = entry.getKey();
                 if (drawable != null) drawable.setAlpha(entry.getValue().requested);
@@ -662,7 +676,7 @@ final class UnlockBlur {
             // A native clear can be immediately followed by a rebuild on the
             // same host. Retain its unfaded alpha across that handoff.
             if (!present) return;
-            clockAlpha.putIfAbsent(view, view.getAlpha());
+            clockAlpha.putIfAbsent(view, MediaBlurHost.requestedAlpha(view));
         }
         if (!present) return;
         Drawable background = view.getBackground();

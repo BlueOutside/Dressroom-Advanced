@@ -1143,6 +1143,7 @@ public final class DressroomModule extends XposedModule {
             VariableFonts.install(this, base, this::fontSettings);
             DepthEffects.install(this);
             ShadowEffects.install(this);
+            DigitAlignmentFix.install(this, loader);
             if (!binding.legacy) {
                 BlurEffects.install(this, base);
                 widgetEngine.install(loader);
@@ -1626,6 +1627,7 @@ public final class DressroomModule extends XposedModule {
                 installStretchHooks(loader);
                 if (!editorBinding.legacy) {
                     installBlurHooks(loader);
+                    ClockBlurDelays.installEditor(this, loader);
                     EditorWidgets widgets = new EditorWidgets(this);
                     editorWidgets = widgets;
                     try {
@@ -1670,6 +1672,7 @@ public final class DressroomModule extends XposedModule {
                     }
                 }
                 if (editorBinding.legacy) {
+                    ClockBlurDelays.installEditor(this, loader);
                     try {
                         EditorWidgets candidate = new EditorWidgets(this);
                         candidate.installLegacy(loader);

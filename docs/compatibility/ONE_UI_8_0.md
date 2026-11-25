@@ -56,3 +56,25 @@ Signed build: `2.0.6-8.0-attach-fix`, version code `20006018`. The build, 29 JVM
 suites (including 438 lyrics checks), repository/layout checks and diff checks
 passed. Confirmation on the reporting 8.0 device is pending; no live reproduction
 or on-device fix confirmation is claimed.
+
+## Widget positioning and depth follow-up (2026-11-25)
+
+Preview `2.0.6-widgets80` (20006037) measures the occupied widget-host group
+instead of the full-width legacy wrapper when docking or freely positioning
+widgets. Bounds include native translations/scales and exclude hidden hosts
+and non-widget decoration. This geometry path is selected by the early-provider
+shim, leaving later providers' placement behavior intact.
+
+The early depth lookup now uses KeyguardClockProvider's live ClockFontData flow,
+the same source used to construct the clock, rather than its older serialized
+ClockItem font. The query carries the font ID and file-font path; path changes
+also invalidate the cached profile. Legacy widgets use the runtime-clock read
+contract so an unavailable settings provider is distinguished from no profile.
+These changes address profile mismatch/readiness; they do not bypass widget
+depth Off, orientation selection, missing masks or detector/library requirements.
+
+Validation: signed build, all 30 JVM suites and 38 isolated Android checks
+(9 legacy geometry/profile, 5 native movement ownership, 5 placement/depth order,
+19 depth outline). The Android checks ran on the connected Android 17 reference
+phone, not an 8.0 device. Visual position and widget subject clipping on the
+reporting 8.0 lockscreen still require confirmation.

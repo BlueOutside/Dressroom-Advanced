@@ -7,7 +7,9 @@ import org.json.JSONObject;
 final class BlurAppearanceSettings {
     static final String NEUTRAL_CLOCK = "neutralClockBlur";
     static final String[] SURFACES = {"clockBlur", "widgetBlur", "nowBarBlur", AodWidgetAppearance.PROFILE};
-    static final String[] OPTIONS = {"Custom", "Radius", "Saturation", "Tint", "TintOpacity"};
+    static final String[] OPTIONS = {
+        "Custom", "Radius", "Saturation", "Contrast", "Brightness", "Tint", "TintOpacity"
+    };
 
     private BlurAppearanceSettings() {}
 
@@ -19,6 +21,8 @@ final class BlurAppearanceSettings {
             int radius = aod ? 110 : 200;
             out.putInt(surface + "Radius", clamp(input, surface + "Radius", radius, 1, 300));
             out.putInt(surface + "Saturation", clamp(input, surface + "Saturation", 0, -100, 100));
+            out.putInt(surface + "Contrast", clamp(input, surface + "Contrast", 0, -100, 100));
+            out.putInt(surface + "Brightness", clamp(input, surface + "Brightness", 0, -100, 100));
             out.putInt(surface + "Tint", clamp(input, surface + "Tint", 0, 0, aod ? 3 : 2));
             out.putInt(surface + "TintOpacity", clamp(input, surface + "TintOpacity", 20, 0, 100));
         }

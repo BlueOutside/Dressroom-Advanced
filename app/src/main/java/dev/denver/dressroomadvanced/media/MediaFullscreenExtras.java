@@ -198,6 +198,14 @@ public final class MediaFullscreenExtras {
         return p < .995f ? Math.max(live, p) : live;
     }
 
+    /** A closing cover keeps its clock renderer until the native return actually finishes. */
+    static boolean keepClockGlass(
+            float progress, boolean closing, boolean compact, boolean active) {
+        float p = clamp(progress);
+        if (p <= .005f) return false;
+        return closing || compact ? active : p >= .50f;
+    }
+
     /** Keeps the top progressive blur live through open/close motion unless the clock is disabled. */
     static float topBandOpacity(
             float progress, boolean closing, boolean compact, boolean disabled) {
@@ -444,6 +452,7 @@ public final class MediaFullscreenExtras {
 
     private static final class Saved {
         final View view;
+        final WeakReference<ViewGroup> root;
         final float alpha;
         final int imageAlpha;
         final Drawable foreground;
@@ -451,8 +460,9 @@ public final class MediaFullscreenExtras {
         EmptyBackground empty;
         boolean hidePixels, hideView, clearBackground, muteBlurHost;
 
-        Saved(View v) {
+        Saved(View v, ViewGroup owner) {
             view = v;
+            root = new WeakReference<>(owner);
             alpha = v.getAlpha();
             imageAlpha = v instanceof ImageView image ? image.getImageAlpha() : 255;
             foreground = v.getForeground();
@@ -460,7 +470,7 @@ public final class MediaFullscreenExtras {
         }
 
         void apply() {
-            if (muteBlurHost) MediaBlurHost.hold(view);
+            if (muteBlurHost) MediaBlurHost.holdForArtwork(view, root.get());
             if (hidePixels && view instanceof ImageView image && image.getImageAlpha() != 0)
                 image.setImageAlpha(0);
             if (hideView) MediaBlurHost.hold(view);
@@ -708,6 +718,8 @@ public final class MediaFullscreenExtras {
                 }
             }
             boolean fullscreenEnabled = RuntimeExtras.enabled(getContext(), "fullscreenArt");
+            MediaClockContrast.setHooksEnabled(fullscreenEnabled);
+            MediaBlurHost.setHooksEnabled(fullscreenEnabled);
             if (fullscreenEnabled
                     && liveCover.retainOnWallpaperAod(
                             showing && current != null && !current.closing ? current.bitmap() : null)) {
@@ -804,7 +816,7 @@ public final class MediaFullscreenExtras {
                     preAmbientNative = wakeHoldBitmap = wakeHoldStale = null;
                     wakeHoldUntilMs = 0L;
                     restore();
-                    MediaClockContrast.clear(parent);
+                    MediaClockContrast.clearImmediate(parent);
                     MediaStatusBarContrast.clear(parent);
                     WidgetMediaOcclusion.publish(parent, null);
                     showing = false;
@@ -978,15 +990,20 @@ public final class MediaFullscreenExtras {
                 MediaClockContrast.prefetch(image);
                 LyricsController.notifyArtworkUpdated(image);
             }
-            if (best.closing || best.small.get() != null || p < .50f) {
-                if (MediaClockContrast.isActive(parent)) MediaClockContrast.clear(parent);
-                if (MediaStatusBarContrast.isActive(parent)) MediaStatusBarContrast.clear(parent);
-            } else {
+            boolean clockActive = MediaClockContrast.isActive(parent);
+            if (keepClockGlass(p, best.closing, best.small.get() != null, clockActive)) {
                 try {
-                    MediaClockContrast.apply(parent, image, next, overlayLayer);
+                    if (best.closing) MediaClockContrast.returnToNative(parent, p);
+                    else MediaClockContrast.apply(parent, image, next, overlayLayer);
                 } catch (RuntimeException error) {
                     MediaClockContrast.clear(parent);
                 }
+            } else if (clockActive) {
+                MediaClockContrast.clearImmediate(parent);
+            }
+            if (best.closing || best.small.get() != null || p < .50f) {
+                if (MediaStatusBarContrast.isActive(parent)) MediaStatusBarContrast.clear(parent);
+            } else {
                 try {
                     MediaStatusBarContrast.apply(parent, image, next);
                 } catch (RuntimeException error) {
@@ -1238,7 +1255,7 @@ public final class MediaFullscreenExtras {
 
         private void collectAmbientArtwork(View view) {
             if (view instanceof ImageView && isArtworkImage(name(view))) {
-                Saved saved = hidden.computeIfAbsent(view, Saved::new);
+                Saved saved = hidden.computeIfAbsent(view, v -> new Saved(v, root.get()));
                 saved.hidePixels = true;
                 saved.apply();
             } else if (view instanceof ViewGroup group) {
@@ -1269,7 +1286,7 @@ public final class MediaFullscreenExtras {
                             || n.equals("nowbar_expandview_background")
                             || n.equals("nowbar_cardview_bgview_for_media_setting");
             if ((pixels || whole || bg || liveBlur) && !hidden.containsKey(view)) {
-                Saved saved = new Saved(view);
+                Saved saved = new Saved(view, root.get());
                 saved.hidePixels = pixels;
                 saved.hideView = whole;
                 saved.clearBackground = bg;
@@ -1543,9 +1560,16 @@ public final class MediaFullscreenExtras {
                                 && topBandEnd > topBandSolid
                                 && destination.top < topBandEnd;
                 boolean showClock = parent != null && !MediaClockVisibility.hidden(parent);
-                boolean glass = current != null && MediaClockContrast.hasGlass(parent);
-                if (band || topBand || glass || (showClock && (clockMaskDirty || !clockMask.isEmpty()))) {
+                boolean requestedGlass = current != null && MediaClockContrast.wantsGlass(parent);
+                boolean glass = false;
+                if (band || topBand || requestedGlass || (showClock && (clockMaskDirty || !clockMask.isEmpty()))) {
                     ensureArtworkBlurRecorded(parent);
+                    if (requestedGlass) {
+                        MediaClockContrast.artwork(
+                                parent, artworkBlur.blurred(), artworkBlur.revision(),
+                                destination, outline, current.progress());
+                        glass = MediaClockContrast.hasGlass(parent);
+                    }
                     if (showClock && clockMaskDirty) {
                         clockMask.reset();
                         maskParent.reset();
@@ -1570,15 +1594,6 @@ public final class MediaFullscreenExtras {
                         canvas.clipPath(clockMask);
                         artworkBlur.draw(canvas, destination);
                         canvas.restoreToCount(clip);
-                    }
-                    if (glass) {
-                        MediaClockContrast.artwork(
-                                parent,
-                                artworkBlur.blurred(),
-                                artworkBlur.revision(),
-                                destination,
-                                outline,
-                                current.progress());
                     }
                     if (band) {
                         artworkBlur.drawFadedBand(

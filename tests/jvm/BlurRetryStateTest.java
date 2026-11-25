@@ -34,6 +34,18 @@ public final class BlurRetryStateTest {
         retired.owner().clear();
         check(!state.accepts(retired), "Retired manager accepted retry");
         check(state.accepts(independent), "Retirement leaked into another clock");
+        check(
+                ClockBlurRetries.shouldRetainReadySurface(true, true, true),
+                "Ready live window-blur surface did not defer pre-draw submission");
+        check(
+                !ClockBlurRetries.shouldRetainReadySurface(false, true, true),
+                "Already-drawn glyphs deferred unnecessarily");
+        check(
+                !ClockBlurRetries.shouldRetainReadySurface(true, false, true),
+                "Missing retry ticket retained pre-draw skip");
+        check(
+                !ClockBlurRetries.shouldRetainReadySurface(true, true, false),
+                "Unready initial blur surface lost Samsung's initial submission");
         System.out.println("Native blur retry generations: " + checks + " checks passed");
     }
 }

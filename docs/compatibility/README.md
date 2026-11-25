@@ -26,7 +26,7 @@ The [AOD 8.9.32.95 inspection](AOD_8.9.32.95.md) maps the supplied 8.5 renderer/
 
 ## What the code audit found
 
-The generated [literal lookup inventory](reflection-inventory.json) contains 370 occurrences across 171 production Java files (originally 221 across 70 files on 2026-10-30): 187 class lookups, 102 declared-method lookups, 62 public-method lookups, 9 declared-field lookups and 10 resource lookups. These are occurrences, not unique classes or hooks. The count deliberately excludes names passed through constants, arrays, traversal and most `Reflect.call/field/set` chains. The real binding surface is larger.
+The generated [literal lookup inventory](reflection-inventory.json) contains 552 occurrences across 257 production Java files (originally 221 across 70 files on 2026-10-30): 241 class lookups, 141 declared-method lookups, 103 public-method lookups, 26 declared-field lookups and 41 resource lookups. These are occurrences, not unique classes or hooks. The count deliberately excludes names passed through constants, arrays, traversal and most `Reflect.call/field/set` chains. The real binding surface is larger.
 
 Regenerate with Python 3.10+:
 

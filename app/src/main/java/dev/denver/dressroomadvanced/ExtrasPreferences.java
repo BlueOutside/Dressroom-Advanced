@@ -19,11 +19,12 @@ public final class ExtrasPreferences {
         ClockBlurDelays.KEY, NotificationBlurOptions.COLORIZED, NotificationBlurOptions.CUSTOM,
         BlurAppearanceSettings.NEUTRAL_CLOCK, MediaWidgetFade.KEY, AodWidgetAppearance.NEUTRAL,
         NowBarGlass.KEY, ClockInlineSeconds.KEEP_OPEN, MediaClockVisibility.KEY,
-        WidgetClickBlock.KEY
+        WidgetClickBlock.KEY, LockStarClockBlur.KEY, NowBarAodOption.OVERRIDE_KEY
     };
 
     static final String[] DEFAULT_TRUE_FLAGS = {
-        ClockInlineSeconds.KEY, LiveCoverController.WIFI_ONLY, "lockscreenLyrics", "lyricsSyncedHighlight"
+        ClockInlineSeconds.KEY, LiveCoverController.WIFI_ONLY, "lockscreenLyrics",
+        "lyricsSyncedHighlight", NowBarAodOption.ENABLED_KEY
     };
 
     private ExtrasPreferences() {}

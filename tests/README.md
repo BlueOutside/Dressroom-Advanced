@@ -17,6 +17,30 @@ expiry and unavailable IDs. No wallpaper or saved app settings are modified.
 
 Tests are outside the production source tree and are not packaged in the module.
 
+`OneUi80WidgetRuntimeProbe` checks visible-host union bounds through native
+translation/scaling, excludes hidden hosts and decoration, and verifies that
+depth identity follows a replaced live font (including its file path) instead
+of a stale serialized preset. These are isolated Android contracts, not a live
+8.0 lockscreen rendering test.
+
+`ClockBlurColorProbe` exercises cached-path versus TextView ink on real Android
+views, including current palette changes, transparent ink, nested callbacks,
+exceptions, thread isolation and removal from the strategy's glyph list.
+`integration/ClockBlurColorBindingProbe` resolves each supplied APK's stale
+color writers and cached-field contracts without creating Samsung views or
+installing hooks. Its expected-writer count is explicit, including zero for
+older inherited setters and the corrected 9.5 native implementation.
+ClockBlurSyncProbe also checks that waiting for completion neither ends nor
+cancels the native animator.
+
+`MediaClockHandoffProbe` checks replacement-frame ownership with detached
+framework views and real RenderNodes. Its 42 checks cover palette-only readiness,
+the first actual glyph draw, lost frames, latest native opacity, separate roots,
+release and weather-icon cleanup. Return cases also cover dark player ink,
+translucent cached-path alpha, interrupted opening, latest native palettes,
+intermediate host opacity and late sampling cancellation. It installs no hooks
+and changes no settings.
+
 | Directory | Purpose | Command |
 | --- | --- | --- |
 | `jvm/` | Pure Java state, identity, reflection and scheduling contracts | `./test-local.ps1 -Suite Jvm` |

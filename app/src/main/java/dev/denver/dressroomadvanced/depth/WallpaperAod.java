@@ -7,21 +7,24 @@ final class WallpaperAod {
     static final String CLOCK_BLUR = "keepAodClockBlur";
     static final String MAIN = "aod_show_lockscreen_wallpaper";
     static final String COVER = "aod_show_cover_screen_wallpaper";
-    private static Boolean supported;
+    private static Boolean fullscreen;
 
     private WallpaperAod() {}
 
-    static synchronized boolean supported() {
-        if (supported != null) return supported;
+    static boolean supported() {
         int version = PlatformGate.oneUiVersion();
-        if (version < 90000 || version >= 100000) return supported = false;
+        return version >= 90000 && version < 100000 && fullscreenSupported();
+    }
+
+    static synchronized boolean fullscreenSupported() {
+        if (fullscreen != null) return fullscreen;
         try {
             Class<?> feature = Class.forName("com.samsung.android.feature.SemFloatingFeature");
             Object instance = feature.getMethod("getInstance").invoke(null);
-            return supported = (Integer) Reflect.call(
+            return fullscreen = (Integer) Reflect.call(
                     instance, "getInt", "SEC_FLOATING_FEATURE_LCD_CONFIG_AOD_FULLSCREEN") > 0;
         } catch (ReflectiveOperationException | RuntimeException | LinkageError unavailable) {
-            return supported = false;
+            return fullscreen = false;
         }
     }
 

@@ -31,7 +31,7 @@ final class BlurTintFade {
         }
     }
 
-    static void submitted(View view, int tint) {
+    static void submitted(View view, int tint, boolean animate) {
         if (setColor == null) return;
         Drawable background = view.getBackground();
         if (background == null || !setColor.getDeclaringClass().isInstance(background)) {
@@ -43,7 +43,7 @@ final class BlurTintFade {
             clear(view);
             states.put(view, new State(view, background, tint));
         } else {
-            state.update(background, tint);
+            state.update(background, tint, animate);
         }
     }
 
@@ -65,12 +65,15 @@ final class BlurTintFade {
             displayed = target = color;
         }
 
-        void update(Drawable background, int color) {
+        void update(Drawable background, int color, boolean animate) {
             View surface = view.get();
-            if (surface == null || !surface.isAttachedToWindow() || !surface.isShown()
+            if (!animate || surface == null || !surface.isAttachedToWindow() || !surface.isShown()
                     || !ValueAnimator.areAnimatorsEnabled()) {
+                boolean unfinished = displayed != color || target != color;
                 stop();
                 displayed = target = color;
+                // AOD can suspend Choreographer before a tint fade reaches its final frame.
+                if (unfinished) write(background, color);
                 return;
             }
             if (target == color) {

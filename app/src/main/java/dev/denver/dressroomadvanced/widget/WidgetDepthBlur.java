@@ -54,6 +54,7 @@ final class WidgetDepthBlur {
     static synchronized void install(DressroomModule module, ClassLoader loader, boolean early) {
         UnlockBlur.installProvider(module, loader);
         AodWidgetAppearance.install(module, loader);
+        AodWidgetBackground.install(module, loader);
         WidgetBackgroundOptions.install(module, loader);
         MediaWidgetFade.install(module, loader);
         try {

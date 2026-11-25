@@ -14,7 +14,8 @@ import java.util.WeakHashMap;
 
 /** Changes native blur parameters, never the backend, geometry or visibility policy. */
 final class BlurAppearance {
-    private record Submission(Object nativeInfo, String surface, int width, int height) {
+    private record Submission(
+            Object nativeInfo, int nativeRadius, String surface, int width, int height) {
         boolean fits(View view) {
             return width > 0 && height > 0 && view.getWidth() == width
                     && view.getHeight() == height && !view.isLayoutRequested();
@@ -174,7 +175,34 @@ final class BlurAppearance {
 
     static Object nativeRequest(View view) {
         Submission value = submissions.get(view);
-        return value == null ? null : value.nativeInfo;
+        if (value == null) return null;
+        restoreNativeRadius(value);
+        return value.nativeInfo;
+    }
+
+    private static void restoreNativeRadius(Submission submission) {
+        if (submission == null || submission.nativeInfo == null || radius == null) return;
+        try {
+            if (radius.getInt(submission.nativeInfo) != submission.nativeRadius)
+                radius.setInt(submission.nativeInfo, submission.nativeRadius);
+        } catch (ReflectiveOperationException ignored) {
+        }
+    }
+
+    /** Isolates framework in-place SemBlurInfo.scaleDownRadius() mutation from stored requests. */
+    static Object isolateSubmission(Object candidate, Object nativeInfo)
+            throws ReflectiveOperationException {
+        return candidate != null && candidate == nativeInfo && copies != null
+                ? copies.copy(candidate)
+                : candidate;
+    }
+
+    private static Object safeIsolateSubmission(Object candidate, Object nativeInfo) {
+        try {
+            return isolateSubmission(candidate, nativeInfo);
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+            return candidate;
+        }
     }
 
     static void submitClockRequest(View view, Object request) {
@@ -196,18 +224,33 @@ final class BlurAppearance {
             if (nativeInfo == null) submissions.remove(view);
             else {
                 Submission previous = submissions.get(view);
+                if (previous != null && previous.nativeInfo == nativeInfo) {
+                    restoreNativeRadius(previous);
+                    if (submitted != null && submitted != nativeInfo
+                            && radius.getInt(submitted) != previous.nativeRadius) {
+                        radius.setInt(submitted, previous.nativeRadius);
+                    }
+                }
+                int unscaledRadius =
+                        previous != null && previous.nativeInfo == nativeInfo
+                                ? previous.nativeRadius
+                                : radius.getInt(nativeInfo);
                 int width = view.getWidth(), height = view.getHeight();
                 if (previous == null || previous.nativeInfo != nativeInfo
+                        || previous.nativeRadius != unscaledRadius
                         || !previous.surface.equals(surface)
                         || previous.width != width || previous.height != height) {
-                    submissions.put(view, new Submission(nativeInfo, surface, width, height));
+                    submissions.put(
+                            view,
+                            new Submission(nativeInfo, unscaledRadius, surface, width, height));
                 }
             }
             if (submitted == null || reducedTransparency(view.getContext())
-                    || systemBlurDisabled(view.getContext())) return submitted;
+                    || systemBlurDisabled(view.getContext()))
+                return isolateSubmission(submitted, nativeInfo);
             int backend = mode.getInt(submitted);
             if (backend == 0 && !windowBlur(view.getContext()) && !hasWindowDrawable(view))
-                return submitted;
+                return isolateSubmission(submitted, nativeInfo);
             int screen = ScreenIdentity.current();
             Bundle b = previews.get(screen);
             if (b == null) {
@@ -230,23 +273,14 @@ final class BlurAppearance {
                     curve.set(input, curve.get(preset));
                 }
             }
-            Object result = custom ? styled(input, b, profile) : input;
-            boolean neutral = profile.equals("clockBlur")
-                    && b.getBoolean(BlurAppearanceSettings.NEUTRAL_CLOCK);
-            neutral |= profile.equals(AodWidgetAppearance.PROFILE)
-                    && b.getBoolean(AodWidgetAppearance.NEUTRAL);
-            if (neutral) {
-                if (!custom) result = copies.copy(submitted);
-                float saturation = custom ? b.getInt(profile + "Saturation") / 100f : 0f;
-                curve.set(result, curveConstructor.newInstance(saturation, 0f, 0f, 255f, 0f, 255f));
-            }
-            return result;
+            Object result = custom || neutral(b, profile) ? styled(input, b, profile, custom) : input;
+            return isolateSubmission(result, nativeInfo);
         } catch (ReflectiveOperationException | RuntimeException error) {
             if (!reported) {
                 reported = true;
                 android.util.Log.w(DressroomModule.TAG, "Keeping native blur appearance", error);
             }
-            return submitted;
+            return safeIsolateSubmission(submitted, nativeInfo);
         }
     }
 
@@ -255,7 +289,10 @@ final class BlurAppearance {
         try {
             if (("widgetBlur".equals(surface) || "nowBarBlur".equals(surface))
                     && request != null && mode.getInt(request) == 0)
-                BlurTintFade.submitted(view, color.getInt(request));
+                BlurTintFade.submitted(view, color.getInt(request), BlurTintPolicy.canAnimate(
+                        view.getDisplay() == null ? android.view.Display.STATE_ON
+                                : view.getDisplay().getState(),
+                        "widgetBlur".equals(surface) && AodWidgetAppearance.applies(view)));
             else BlurTintFade.clear(view);
         } catch (IllegalAccessException | RuntimeException error) {
             BlurTintFade.clear(view);
@@ -266,26 +303,43 @@ final class BlurAppearance {
 
     static Object styled(Object original, Bundle b, String surface)
             throws ReflectiveOperationException {
+        return styled(original, b, surface, true);
+    }
+
+    private static boolean neutral(Bundle b, String surface) {
+        return surface.equals("clockBlur") && b.getBoolean(BlurAppearanceSettings.NEUTRAL_CLOCK)
+                || surface.equals(AodWidgetAppearance.PROFILE) && b.getBoolean(AodWidgetAppearance.NEUTRAL);
+    }
+
+    private static Object styled(Object original, Bundle b, String surface, boolean custom)
+            throws ReflectiveOperationException {
         Object result = copies.copy(original);
-        radius.setInt(result, b.getInt(surface + "Radius", 200));
-        int adjustment = b.getInt(surface + "Saturation");
-        if (adjustment != 0) {
+        if (custom) radius.setInt(result, b.getInt(surface + "Radius", 200));
+        int adjustment = custom ? b.getInt(surface + "Saturation") : 0;
+        int contrast = custom ? b.getInt(surface + "Contrast") : 0;
+        int brightness = custom ? b.getInt(surface + "Brightness") : 0;
+        boolean neutral = neutral(b, surface);
+        int tint = b.getInt(surface + "Tint");
+        boolean ownAodTone = custom && surface.equals(AodWidgetAppearance.PROFILE) && tint != 0;
+        if (neutral || ownAodTone || adjustment != 0 || contrast != 0 || brightness != 0) {
             Object oldCurve = curve.get(original);
-            float[] values = {0, 0, 255, 0, 255};
-            if (oldCurve != null)
-                for (int i = 0; i < values.length; i++) values[i] = curveFields[i].getFloat(oldCurve);
-            float baseline =
-                    oldCurve != null && curveSaturation != null
-                            ? curveSaturation.getFloat(oldCurve) : 0f;
-            float saturation = Math.max(-1f, Math.min(1f, baseline + adjustment / 100f));
+            float[] values = {0, 0, 0, 255, 0, 255};
+            if (!neutral && oldCurve != null) {
+                if (curveSaturation != null) values[0] = curveSaturation.getFloat(oldCurve);
+                // Explicit AOD tints replace Samsung's luminance preset as well as its
+                // overlay. Otherwise None and low-opacity Dark retain a pale glass fill.
+                if (!ownAodTone)
+                    for (int i = 0; i < curveFields.length; i++)
+                        values[i + 1] = curveFields[i].getFloat(oldCurve);
+            }
+            BlurColorCurve.adjust(values, adjustment, contrast, brightness);
             curve.set(
                     result,
                     curveConstructor.newInstance(
-                            saturation, values[0], values[1], values[2], values[3], values[4]));
+                            values[0], values[1], values[2], values[3], values[4], values[5]));
         }
-        int tint = b.getInt(surface + "Tint");
         // Only window blur accepts a background tint; canvas/captured modes reject it.
-        if (tint != 0 && mode.getInt(original) == 0) {
+        if (custom && tint != 0 && mode.getInt(original) == 0) {
             int alpha = tint == 3 ? 0 : Math.round(b.getInt(surface + "TintOpacity", 20) * 2.55f);
             color.setInt(result, (alpha << 24) | (tint == 2 ? 0x00ffffff : 0));
         }
@@ -413,6 +467,12 @@ final class BlurAppearance {
         return visible;
     }
 
+    private static void replay(View view, Submission submission)
+            throws ReflectiveOperationException {
+        restoreNativeRadius(submission);
+        setter.invoke(view, submission.nativeInfo);
+    }
+
     static void recreateWindowSurface(View view, android.graphics.drawable.Drawable background)
             throws ReflectiveOperationException {
         Submission current = submissions.get(view);
@@ -426,7 +486,7 @@ final class BlurAppearance {
         // Removing the drawable makes Samsung allocate a RenderNode with a fresh position.
         view.setBackground(null);
         try {
-            setter.invoke(view, current.nativeInfo);
+            replay(view, current);
             var replacement = view.getBackground();
             if (replacement == null) view.setBackground(background);
             else replacement.setAlpha(alpha);
@@ -445,13 +505,13 @@ final class BlurAppearance {
 
     static void restoreMissingWindowSurface(View view) throws ReflectiveOperationException {
         if (view.getBackground() == null && hasLiveWindowRequest(view))
-            setter.invoke(view, submissions.get(view).nativeInfo);
+            replay(view, submissions.get(view));
     }
 
     static void refreshNativeNowBar(View view) throws ReflectiveOperationException {
         Submission current = submissions.get(view);
         if (current != null && current.surface.equals("nowBarBlur") && hasLiveWindowRequest(view))
-            setter.invoke(view, current.nativeInfo);
+            replay(view, current);
     }
 
     static void forgetNowBarRequest(View view) {
@@ -502,6 +562,7 @@ final class BlurAppearance {
         if (card == null || !liveWindowBlurAllowed(view.getContext())) return;
         try {
             AwakePill awake = awakePills.get(view);
+            if (current != null) restoreNativeRadius(current);
             Object request = current == null ? null : current.nativeInfo;
             var previous = view.getBackground();
             int opacity = hasWindowDrawable(view) && previous.getAlpha() > 0 ? previous.getAlpha() : 255;
@@ -510,6 +571,7 @@ final class BlurAppearance {
                     && awake.item.get() == Reflect.call(card, "getItem")
                     && (request == null || staleDozeTint(
                             color.getInt(request), color.getInt(awake.submission.nativeInfo)))) {
+                restoreNativeRadius(awake.submission);
                 request = awake.submission.nativeInfo;
                 opacity = awake.alpha;
                 restoredAwake = true;
@@ -544,7 +606,7 @@ final class BlurAppearance {
         Submission current = submissions.get(view);
         if (setter == null || current == null) return;
         try {
-            setter.invoke(view, current.nativeInfo);
+            replay(view, current);
         } catch (ReflectiveOperationException | RuntimeException error) {
             DressroomModule.note("GenUI blur attach refresh", error);
         }
@@ -577,7 +639,7 @@ final class BlurAppearance {
             var background = view.getBackground();
             if (current != null && background != null && background.getAlpha() > 0) continue;
             try {
-                setter.invoke(view, current == null ? saved.submission.nativeInfo : current.nativeInfo);
+                replay(view, current == null ? saved.submission : current);
                 background = view.getBackground();
                 if (background != null) background.setAlpha(saved.alpha);
             } catch (ReflectiveOperationException | RuntimeException error) {
@@ -619,7 +681,7 @@ final class BlurAppearance {
                         try {
                             if (aodProfile && AodWidgetAppearance.refresh(view)) continue;
                             if (!changed.contains(submission.surface)) continue;
-                            setter.invoke(view, submission.nativeInfo);
+                            replay(view, submission);
                             if (editorClock) updatedClockRoots.add(view.getRootView());
                         } catch (ReflectiveOperationException | RuntimeException error) {
                             android.util.Log.w(

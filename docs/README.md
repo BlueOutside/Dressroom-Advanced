@@ -23,12 +23,15 @@
 ## One UI 9 Deep Dives & Aliases
 
 - [One UI 9 clock deep dive](research/ONE_UI_CLOCK_DEEP_DIVE.md): end-to-end Samsung lockscreen clock pipeline.
+- [Clock ownership map](research/CLOCK_OWNERSHIP_MAP.md): native/module property writers, host and editor event routes, and cross-version evidence.
+- [Clock animation engines](research/CLOCK_ANIMATION_ENGINES.md): timing, cancellation/finalization, editor physics and 9.5 engine changes.
 - [One UI 9 Dressroom deep dive](research/ONE_UI_DRESSROOM_DEEP_DIVE.md): editor architecture, save pipeline and preview stack.
 - [One UI 9 SystemUI deep dive](research/ONE_UI_SYSTEMUI_DEEP_DIVE.md): wallpaper engines, ambient flags, blur and keyguard host.
 - [One UI 9 widget deep dive](research/ONE_UI_WIDGET_DEEP_DIVE.md): AOD/lockscreen widget and complication pipeline.
 - [One UI 9 depth deep dive](research/ONE_UI_DEPTH_DEEP_DIVE.md): subject/background regions and motion IPC.
 - [One UI 9 bug findings](research/ONE_UI_9_BUG_FINDINGS.md): inspected 9.0 issues and implementation fixes.
 - **Alias tables**: [One UI 9 Dressroom aliases](research/DRESSROOM_9_ALIASES.md), [One UI 9 AOD aliases](research/AOD_9_ALIASES.md).
+- [One UI 9 SystemUI aliases](research/SYSTEMUI_9_ALIASES.md): host animation and callback names verified through source and xrefs.
 
 ## Feature & Pipeline Notes
 

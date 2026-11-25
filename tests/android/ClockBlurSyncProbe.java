@@ -30,6 +30,11 @@ public final class ClockBlurSyncProbe {
 
     static void run() throws Exception {
         Looper.prepareMainLooper();
+        // This standalone process has no Xposed dispatcher. The fake Clock below
+        // invokes drawn() itself, so model an installed draw hook explicitly.
+        var installed = ClockBlurSync.class.getDeclaredField("installed");
+        installed.setAccessible(true);
+        installed.setBoolean(null, true);
         Class<?> memory = Class.forName("com.android.internal.os.ApplicationSharedMemory");
         memory.getMethod("setInstance", memory)
                 .invoke(null, memory.getMethod("create").invoke(null));
@@ -252,6 +257,8 @@ public final class ClockBlurSyncProbe {
         ClockBlurAlignment.awaitAnimator(view, nativeFade);
         ClockBlurAlignment.awaitAnimator(view, nativeFade);
         check(nativeFade.getListeners().size() == 1, "Repeated native skips added multiple listeners");
+        check(nativeFade.ends == 0 && nativeFade.cancels == 0 && nativeFade.running,
+                "Alignment committed or cancelled the native fade");
         nativeFade.finish();
         check(ClockBlurSync.pending(view), "Native fade completion did not retry the skipped alignment");
         ClockBlurSync.drawn(view);
@@ -317,7 +324,10 @@ public final class ClockBlurSyncProbe {
 
     static final class TestAnimator extends android.animation.ValueAnimator {
         boolean running = true;
+        int ends, cancels;
         @Override public boolean isRunning() { return running; }
+        @Override public void end() { ends++; }
+        @Override public void cancel() { cancels++; }
         void finish() {
             running = false;
             for (var listener : new java.util.ArrayList<>(getListeners())) listener.onAnimationEnd(this);

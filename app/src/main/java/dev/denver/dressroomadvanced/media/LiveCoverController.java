@@ -233,7 +233,6 @@ final class LiveCoverController implements LiveCoverPlayer.FrameListener {
             IntentFilter filter = new IntentFilter();
             filter.addAction(Intent.ACTION_SCREEN_OFF);
             filter.addAction(Intent.ACTION_SCREEN_ON);
-            filter.addAction(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED);
             appContext.registerReceiver(powerReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
         } catch (RuntimeException ignored) {
         }
@@ -433,14 +432,19 @@ final class LiveCoverController implements LiveCoverPlayer.FrameListener {
     boolean retainOnWallpaperAod(Bitmap staticArtwork) {
         if (isDozing() || !interactive()) {
             captureAmbientFrame();
-            if (staticArtwork != null && !staticArtwork.isRecycled() && (ambientFrame == null
-                    || (ambientAwaitingArtwork && staticArtwork != lastNativeArtwork))) {
-                lastNativeArtwork = staticArtwork;
-                ambientFrame = staticArtwork;
-                if (ambientTrackSwitched) wakeAmbientArt = staticArtwork;
-                ambientArtworkIsLive = false;
-                ambientAwaitingArtwork = false;
-                invalidateCover();
+            if (staticArtwork != null && !staticArtwork.isRecycled()) {
+                if (ambientDecodeAsset == null
+                        && (ambientFrame == null
+                                || (ambientAwaitingArtwork && staticArtwork != lastNativeArtwork))) {
+                    lastNativeArtwork = staticArtwork;
+                    ambientFrame = staticArtwork;
+                    if (ambientTrackSwitched) wakeAmbientArt = staticArtwork;
+                    ambientArtworkIsLive = false;
+                    ambientAwaitingArtwork = false;
+                    invalidateCover();
+                } else if (!ambientAwaitingArtwork) {
+                    lastNativeArtwork = staticArtwork;
+                }
             }
         } else if (staticArtwork != null) {
             lastNativeArtwork = staticArtwork;
@@ -548,10 +552,14 @@ final class LiveCoverController implements LiveCoverPlayer.FrameListener {
         ambientTrackKey = activeRequestKey;
         AnimatedCoverProvider.AnimatedCoverAsset asset = activeAsset;
         pausedForPower = true;
-        // The worker records the paused position before decoding the full-resolution still.
-        // TextureView.getBitmap() here can synchronously wait on HWUI during screen-off.
-        player.pauseAndHide();
-        if (asset == null || !asset.isPlayableLocalFile()) return;
+        // Keep the last rendered GPU frame visible on TextureView while the worker records the
+        // paused position and decodes the full-resolution AOD still off-thread.
+        if (asset != null && asset.isPlayableLocalFile()) {
+            player.pauseKeepingFrame();
+        } else {
+            player.pauseAndHide();
+            return;
+        }
         ambientCaptureAttempted = true;
         long generation = ++ambientDecodeGeneration;
         ambientDecodeAsset = asset;
@@ -561,7 +569,18 @@ final class LiveCoverController implements LiveCoverPlayer.FrameListener {
                 return;
             }
             ambientDecodeAsset = null;
-            if (decoded != null) showAmbientVideoFrame(decoded);
+            if (decoded != null) {
+                showAmbientVideoFrame(decoded);
+            } else {
+                player.hidePausedFrame();
+                if ((isDozing() || !interactive()) && ambientFrame == null
+                        && lastNativeArtwork != null && !lastNativeArtwork.isRecycled()) {
+                    ambientFrame = lastNativeArtwork;
+                    ambientArtworkIsLive = false;
+                }
+                updateAmbientDisplay();
+                invalidateCover();
+            }
         });
     }
 
@@ -570,7 +589,7 @@ final class LiveCoverController implements LiveCoverPlayer.FrameListener {
         if (ambientTrackSwitched) wakeAmbientArt = frame;
         ambientArtworkIsLive = true;
         ambientAwaitingArtwork = false;
-        if (activeWanted) showFrozenFrame(frame);
+        if (activeWanted && !player.isHoldingPausedFrame()) showFrozenFrame(frame);
         updateAmbientDisplay();
         invalidateCover();
     }
@@ -700,6 +719,12 @@ final class LiveCoverController implements LiveCoverPlayer.FrameListener {
     }
 
     void hideVideoSurface() {
+        if (player.isHoldingPausedFrame()) {
+            if (activeWanted && ambientFrame != null && ambientArtworkIsLive) {
+                showFrozenFrame(ambientFrame);
+            }
+            player.hidePausedFrame();
+        }
         if (surfaceHost.getVisibility() != View.INVISIBLE) surfaceHost.setVisibility(View.INVISIBLE);
     }
 
@@ -1263,7 +1288,7 @@ final class LiveCoverController implements LiveCoverPlayer.FrameListener {
     private boolean refreshPowerRestriction() {
         boolean restricted = false;
         try {
-            if (power != null && (!power.isInteractive() || power.isPowerSaveMode())) {
+            if (power != null && !power.isInteractive()) {
                 restricted = true;
             }
         } catch (RuntimeException ignored) {

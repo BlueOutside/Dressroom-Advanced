@@ -638,6 +638,323 @@ public final class Mod9ExtrasContractsTest {
         }
     }
 
+    private static void verifyDigitAlignmentAndLabsContracts(Path tempRoot) throws Exception {
+        check(
+                DigitAlignmentFix.ZERO_SAMPLE.equals(
+                        DigitAlignmentFix.chooseAlignmentSample(120f, 120f)),
+                "Equal digit height must keep Samsung's single-zero sample");
+        check(
+                DigitAlignmentFix.ALL_DIGITS_SAMPLE.equals(
+                        DigitAlignmentFix.chooseAlignmentSample(118f, 124f)),
+                "Taller 1..9 digits must select full 0123456789 alignment sample");
+        check(
+                ClockBlurDelays.editorSettleDelayMs(false) == ClockBlurDelays.DEFAULT_EDITOR_SETTLE_MS
+                        && ClockBlurDelays.editorSettleDelayMs(true)
+                                == ClockBlurDelays.SHORT_EDITOR_SETTLE_MS,
+                "Editor blur settle delay tiers must match configured bounds");
+        check(
+                LockStarClockBlur.effectiveSggActive(true, false)
+                        && !LockStarClockBlur.effectiveSggActive(true, true)
+                        && !LockStarClockBlur.effectiveSggActive(false, false)
+                        && !LockStarClockBlur.effectiveSggActive(false, true),
+                "LockStar SGG blocker bypass truth table incorrect");
+        check(
+                NowBarAodOption.resolveEntryValue(false, false, 1) == 1
+                        && NowBarAodOption.resolveEntryValue(false, true, 0) == 0
+                        && NowBarAodOption.resolveEntryValue(true, false, 1) == 0
+                        && NowBarAodOption.resolveEntryValue(true, true, 0) == 1,
+                "Now Bar AOD override resolution incorrect");
+
+        Map<String, String> src = new LinkedHashMap<>();
+        src.put(
+                "com/samsung/android/uniform/widget/NonePaddingTextView.java",
+                "package com.samsung.android.uniform.widget;\n"
+                        + "import android.graphics.Rect;\n"
+                        + "import android.graphics.Typeface;\n"
+                        + "import android.text.TextPaint;\n"
+                        + "public class NonePaddingTextView {\n"
+                        + "    public boolean F;\n"
+                        + "    public boolean J;\n"
+                        + "    public String K = \"0\";\n"
+                        + "    public int L = 1;\n"
+                        + "    public final Rect d(TextPaint paint, boolean precise) { return new Rect(); }\n"
+                        + "    public void setTypeface(Typeface tf) {}\n"
+                        + "}\n");
+        src.put(
+                "aod/ClockBlurStateMachine.java",
+                "package aod;\n"
+                        + "public final class ClockBlurStateMachine {\n"
+                        + "    public boolean p;\n"
+                        + "}\n");
+        src.put(
+                "com/samsung/android/app/facewidget/pages/clock/blur/ClockBlurController.java",
+                "package com.samsung.android.app.facewidget.pages.clock.blur;\n"
+                        + "import aod.ClockBlurStateMachine;\n"
+                        + "public final class ClockBlurController {\n"
+                        + "    public ClockBlurStateMachine s = new ClockBlurStateMachine();\n"
+                        + "    public final void e(boolean active) { s.p = active; }\n"
+                        + "}\n");
+        src.put(
+                "aod/SettingKeyEntry.java",
+                "package aod;\n"
+                        + "import android.net.Uri;\n"
+                        + "public final class SettingKeyEntry {\n"
+                        + "    public String a;\n"
+                        + "    public String b;\n"
+                        + "    public Uri c;\n"
+                        + "    public int a() { return 1; }\n"
+                        + "}\n");
+        src.put(
+                "aod/SettingsCache.java",
+                "package aod;\n"
+                        + "public final class SettingsCache {\n"
+                        + "    public SettingKeyEntry get(String key) { return null; }\n"
+                        + "}\n");
+        src.put(
+                "com/samsung/android/app/aodservice/common/utils/settings/SettingsHelper.java",
+                "package com.samsung.android.app.aodservice.common.utils.settings;\n"
+                        + "import aod.SettingsCache;\n"
+                        + "public final class SettingsHelper {\n"
+                        + "    public SettingsCache cache;\n"
+                        + "    public final boolean x() { return true; }\n"
+                        + "}\n");
+        src.put(
+                "kr/Continuation.java",
+                "package kr;\n"
+                        + "public interface Continuation {}\n");
+        src.put(
+                "vu/DelayHelper.java",
+                "package vu;\n"
+                        + "import kr.Continuation;\n"
+                        + "public final class DelayHelper {\n"
+                        + "    public static Object n(long ms, Continuation c) { return null; }\n"
+                        + "}\n");
+        src.put(
+                "og/Coordinator.java",
+                "package og;\n"
+                        + "public final class Coordinator {}\n");
+        src.put(
+                "og/PositionIdleLambda.java",
+                "package og;\n"
+                        + "import android.graphics.Rect;\n"
+                        + "import kr.Continuation;\n"
+                        + "public final class PositionIdleLambda implements Continuation {\n"
+                        + "    public int label;\n"
+                        + "    public Rect rect;\n"
+                        + "    public final Coordinator coord;\n"
+                        + "    public PositionIdleLambda(Coordinator c) { this.coord = c; }\n"
+                        + "    public Object invokeSuspend(Object obj) { return null; }\n"
+                        + "}\n");
+        src.put(
+                "a7/MergedLambda.java",
+                "package a7;\n"
+                        + "import kr.Continuation;\n"
+                        + "public final class MergedLambda implements Continuation {\n"
+                        + "    public final Object target;\n"
+                        + "    public MergedLambda(Object target) { this.target = target; }\n"
+                        + "}\n");
+
+        try (URLClassLoader loader = compileFixture(tempRoot.resolve("six_fixes"), src)) {
+            // 1. DigitAlignmentFix contract
+            Class<?> textClass =
+                    loader.loadClass("com.samsung.android.uniform.widget.NonePaddingTextView");
+            String textDesc = DexSignatures.descriptor(textClass);
+            Method measure = DigitAlignmentFix.findMeasureMethod(textClass);
+            check(measure != null, "NonePaddingTextView measureDigitAlignmentBounds must be found");
+            DexSignatures.Member fClip = new DexSignatures.Member(textDesc, "F", "Z");
+            DexSignatures.Member fReady = new DexSignatures.Member(textDesc, "J", "Z");
+            DexSignatures.Member fSample =
+                    new DexSignatures.Member(textDesc, "K", "Ljava/lang/String;");
+            DexSignatures.Member fLen = new DexSignatures.Member(textDesc, "L", "I");
+            DexSignatures.Body measureBody =
+                    new DexSignatures.Body(
+                            textDesc,
+                            "d",
+                            List.of("Landroid/text/TextPaint;", "Z"),
+                            "Landroid/graphics/Rect;",
+                            0x11,
+                            Map.of("0123456789", 10),
+                            List.of(
+                                    new DexSignatures.Read(1, fClip),
+                                    new DexSignatures.Read(2, fReady),
+                                    new DexSignatures.Read(8, fSample),
+                                    new DexSignatures.Read(9, fLen)),
+                            List.of(
+                                    new DexSignatures.Write(3, fReady),
+                                    new DexSignatures.Write(6, fSample),
+                                    new DexSignatures.Write(7, fLen)),
+                            List.of(
+                                    new DexSignatures.Call(
+                                            4,
+                                            "Landroid/text/TextPaint;",
+                                            "getTextPath",
+                                            List.of(
+                                                    "Ljava/lang/String;",
+                                                    "I",
+                                                    "I",
+                                                    "F",
+                                                    "F",
+                                                    "Landroid/graphics/Path;"),
+                                            "V",
+                                            false),
+                                    new DexSignatures.Call(
+                                            5,
+                                            "Landroid/graphics/RectF;",
+                                            "height",
+                                            List.of(),
+                                            "F",
+                                            false)));
+            DigitAlignmentFix.Contract digitContract =
+                    DigitAlignmentFix.resolve(textClass, measure, measureBody, loader);
+            check(
+                    digitContract != null
+                            && "F".equals(digitContract.clipDigitForAlign().getName())
+                            && "J".equals(digitContract.alignmentSampleReady().getName())
+                            && "K".equals(digitContract.alignmentSampleText().getName())
+                            && "L".equals(digitContract.alignmentSampleLength().getName())
+                            && digitContract.setTypeface() != null,
+                    "DigitAlignmentFix must resolve exact DEX read/write fields");
+
+            // 2. LockStarClockBlur contract
+            Class<?> blurController =
+                    loader.loadClass(
+                            "com.samsung.android.app.facewidget.pages.clock.blur.ClockBlurController");
+            String ctrlDesc = DexSignatures.descriptor(blurController);
+            DexSignatures.Body sggBody =
+                    new DexSignatures.Body(
+                            ctrlDesc,
+                            "e",
+                            List.of("Z"),
+                            "V",
+                            0x11,
+                            Map.of(LockStarClockBlur.ANCHOR, 8),
+                            List.of(
+                                    new DexSignatures.Read(
+                                            1,
+                                            new DexSignatures.Member(
+                                                    ctrlDesc,
+                                                    "s",
+                                                    "Laod/ClockBlurStateMachine;"))),
+                            List.of(
+                                    new DexSignatures.Write(
+                                            2,
+                                            new DexSignatures.Member(
+                                                    "Laod/ClockBlurStateMachine;", "p", "Z"))),
+                            List.of());
+            LockStarClockBlur.Contract lockStarContract =
+                    LockStarClockBlur.resolve(blurController, loader, anchors -> List.of(sggBody));
+            check(
+                    lockStarContract != null
+                            && "e".equals(lockStarContract.setSggActive().getName())
+                            && "s".equals(lockStarContract.stateMachine().getName())
+                            && "p".equals(lockStarContract.sggActive().getName()),
+                    "LockStarClockBlur must resolve controller setter and stateMachine field");
+
+            // 3. NowBarAodOption contract
+            Class<?> helperClass =
+                    loader.loadClass(
+                            "com.samsung.android.app.aodservice.common.utils.settings.SettingsHelper");
+            String helperDesc = DexSignatures.descriptor(helperClass);
+            DexSignatures.Body nowBarBody =
+                    new DexSignatures.Body(
+                            helperDesc,
+                            "x",
+                            List.of(),
+                            "Z",
+                            0x11,
+                            Map.of(NowBarAodOption.SYSTEM_SETTING, 2),
+                            List.of(),
+                            List.of(),
+                            List.of(
+                                    new DexSignatures.Call(
+                                            3,
+                                            "Laod/SettingsCache;",
+                                            "get",
+                                            List.of("Ljava/lang/String;"),
+                                            "Laod/SettingKeyEntry;",
+                                            false),
+                                    new DexSignatures.Call(
+                                            4,
+                                            "Laod/SettingKeyEntry;",
+                                            "a",
+                                            List.of(),
+                                            "I",
+                                            false)));
+            NowBarAodOption.Contract nowBarContract =
+                    NowBarAodOption.resolve(helperClass, loader, anchors -> List.of(nowBarBody));
+            check(
+                    nowBarContract != null
+                            && "a".equals(nowBarContract.getIntValue().getName())
+                            && "c".equals(nowBarContract.keyUri().getName()),
+                    "NowBarAodOption must resolve SettingKeyEntry int reader and unique Uri field");
+
+            // 4. ClockBlurDelays editor settle contract & continuation capture scoping
+            DexSignatures.Body posIdleBody =
+                    new DexSignatures.Body(
+                            "Log/PositionIdleLambda;",
+                            "invokeSuspend",
+                            List.of("Ljava/lang/Object;"),
+                            "Ljava/lang/Object;",
+                            0x11,
+                            Map.of(ClockBlurDelays.POSITION_IDLE_ANCHOR, 12),
+                            List.of(
+                                    new DexSignatures.Read(
+                                            1,
+                                            new DexSignatures.Member(
+                                                    "Log/PositionIdleLambda;", "label", "I")),
+                                    new DexSignatures.Read(
+                                            2,
+                                            new DexSignatures.Member(
+                                                    "Log/PositionIdleLambda;",
+                                                    "rect",
+                                                    "Landroid/graphics/Rect;")),
+                                    new DexSignatures.Read(
+                                            3,
+                                            new DexSignatures.Member(
+                                                    "Log/PositionIdleLambda;",
+                                                    "coord",
+                                                    "Log/Coordinator;"))),
+                            List.of(),
+                            List.of(
+                                    new DexSignatures.Call(
+                                            10,
+                                            "Lvu/DelayHelper;",
+                                            "n",
+                                            List.of("J", "Lkr/Continuation;"),
+                                            "Ljava/lang/Object;",
+                                            true)));
+            ClockBlurDelays.EditorContract editorContract =
+                    ClockBlurDelays.resolveEditorContract(loader, anchors -> List.of(posIdleBody));
+            check(
+                    editorContract != null
+                            && "og.Coordinator".equals(editorContract.coordinator().getName())
+                            && "n".equals(editorContract.delay().getName()),
+                    "ClockBlurDelays editor contract must resolve coordinator class and delay target");
+            Object coordinatorInstance =
+                    editorContract.coordinator().getDeclaredConstructor().newInstance();
+            Object directLambda =
+                    loader.loadClass("og.PositionIdleLambda")
+                            .getDeclaredConstructor(editorContract.coordinator())
+                            .newInstance(coordinatorInstance);
+            Class<?> mergedClass = loader.loadClass("a7.MergedLambda");
+            Object mergedCoordinatorLambda =
+                    mergedClass.getDeclaredConstructor(Object.class).newInstance(coordinatorInstance);
+            Object mergedUnrelatedLambda =
+                    mergedClass.getDeclaredConstructor(Object.class).newInstance("unrelated");
+            check(
+                    ClockBlurDelays.capturesCoordinator(directLambda, editorContract.coordinator()),
+                    "Direct position-idle lambda must match coordinator capture");
+            check(
+                    ClockBlurDelays.capturesCoordinator(
+                            mergedCoordinatorLambda, editorContract.coordinator()),
+                    "R8-merged Object-field lambda holding coordinator must match");
+            check(
+                    !ClockBlurDelays.capturesCoordinator(
+                            mergedUnrelatedLambda, editorContract.coordinator()),
+                    "R8-merged Object-field lambda holding unrelated target must be ignored");
+        }
+    }
+
     public static void main(String[] args) throws Exception {
         Path tempRoot = Files.createTempDirectory("mod9-extras-contracts-");
         try {
@@ -647,6 +964,7 @@ public final class Mod9ExtrasContractsTest {
             verifyNotificationBlurPolicyResolver(tempRoot);
             verifyNowBriefStyleBoxBlurContract(tempRoot);
             verifyWidgetClickBlockContracts(tempRoot);
+            verifyDigitAlignmentAndLabsContracts(tempRoot);
             System.out.println("Mod9 extras contracts: " + checks + " checks passed");
         } finally {
             deleteTree(tempRoot);

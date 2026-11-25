@@ -82,6 +82,7 @@ final class AppleHlsResolver {
         List<JsonObjectFrame> stack = new ArrayList<>();
         // Track whether each brace/bracket container is an object (true) or array (false).
         List<Boolean> containerIsObject = new ArrayList<>();
+        List<String> containerKeys = new ArrayList<>();
         String nextObjectKey = "";
         int len = json.length();
         int i = 0;
@@ -129,16 +130,25 @@ final class AppleHlsResolver {
             }
             if (c == '{') {
                 String parentKey = nextObjectKey;
+                if (parentKey.isEmpty()
+                        && !containerIsObject.isEmpty()
+                        && !containerIsObject.get(containerIsObject.size() - 1)) {
+                    parentKey = containerKeys.get(containerKeys.size() - 1);
+                }
                 nextObjectKey = "";
                 containerIsObject.add(true);
+                containerKeys.add(parentKey);
                 stack.add(new JsonObjectFrame(parentKey));
             } else if (c == '[') {
+                String arrayKey = nextObjectKey;
                 nextObjectKey = "";
                 containerIsObject.add(false);
+                containerKeys.add(arrayKey);
             } else if (c == '}') {
                 nextObjectKey = "";
                 if (!containerIsObject.isEmpty()) {
                     boolean wasObj = containerIsObject.remove(containerIsObject.size() - 1);
+                    containerKeys.remove(containerKeys.size() - 1);
                     if (wasObj && !stack.isEmpty()) {
                         JsonObjectFrame popped = stack.remove(stack.size() - 1);
                         JsonObjectFrame parent =
@@ -150,6 +160,7 @@ final class AppleHlsResolver {
                 nextObjectKey = "";
                 if (!containerIsObject.isEmpty()) {
                     containerIsObject.remove(containerIsObject.size() - 1);
+                    containerKeys.remove(containerKeys.size() - 1);
                 }
             } else if (c == ',') {
                 nextObjectKey = "";
@@ -192,6 +203,13 @@ final class AppleHlsResolver {
 
     private static void onJsonObjectPopped(
             JsonObjectFrame popped, JsonObjectFrame parent, List<SearchLockup> results) {
+        if ("subtitleLinks".equals(popped.parentKey)
+                && parent != null
+                && !popped.title.isEmpty()) {
+            if (parent.subtitle.isEmpty()) parent.subtitle = popped.title;
+            else parent.subtitle = parent.subtitle + ", " + popped.title;
+            return;
+        }
         if ("contentDescriptor".equals(popped.parentKey)
                 && parent != null
                 && parent.albumUrl.isEmpty()
@@ -202,6 +220,16 @@ final class AppleHlsResolver {
                 parent.albumUrl = stripQueryFromUrl(popped.url);
                 if (parent.kind.isEmpty()) parent.kind = popped.kind;
             }
+            return;
+        }
+        if (("destination".equals(popped.parentKey) || "segue".equals(popped.parentKey))
+                && parent != null
+                && parent.albumUrl.isEmpty()
+                && !popped.albumUrl.isEmpty()
+                && !popped.collectionId.isEmpty()) {
+            parent.collectionId = popped.collectionId;
+            parent.albumUrl = popped.albumUrl;
+            if (parent.kind.isEmpty()) parent.kind = popped.kind;
             return;
         }
         if (!popped.title.isEmpty()

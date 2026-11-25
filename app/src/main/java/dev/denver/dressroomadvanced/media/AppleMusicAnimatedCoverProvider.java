@@ -187,10 +187,10 @@ final class AppleMusicAnimatedCoverProvider implements AnimatedCoverProvider {
                 collectItunesMatches(songQuery, "song", "US", query, candidates);
             }
         }
-        if (candidates.isEmpty() && !query.album().isEmpty()) {
+        if (!query.album().isEmpty() && !hasStrongAlbumCandidate(candidates)) {
             String albumQuery = MediaTextNormalize.cleanSearchQuery(query.artist(), query.album());
             collectItunesMatches(albumQuery, "album", country, query, candidates);
-            if (candidates.isEmpty() && !"US".equalsIgnoreCase(country)) {
+            if (!hasStrongAlbumCandidate(candidates) && !"US".equalsIgnoreCase(country)) {
                 collectItunesMatches(albumQuery, "album", "US", query, candidates);
             }
         }
@@ -208,21 +208,31 @@ final class AppleMusicAnimatedCoverProvider implements AnimatedCoverProvider {
         if (candidates.isEmpty() && !"US".equalsIgnoreCase(country)) {
             collectAppleWebSearchMatches(songTerm, "US", query, candidates);
         }
-        if (candidates.isEmpty() && !query.album().isEmpty() && !query.song().isEmpty()) {
+        if (!query.album().isEmpty()
+                && !query.song().isEmpty()
+                && !hasStrongAlbumCandidate(candidates)) {
             String albumTerm = MediaTextNormalize.cleanSearchQuery(query.artist(), query.album());
             collectAppleWebSearchMatches(albumTerm, country, query, candidates);
-            if (candidates.isEmpty() && !"US".equalsIgnoreCase(country)) {
+            if (!hasStrongAlbumCandidate(candidates) && !"US".equalsIgnoreCase(country)) {
                 collectAppleWebSearchMatches(albumTerm, "US", query, candidates);
             }
         }
         return rankMatches(candidates);
     }
 
+    private static boolean hasStrongAlbumCandidate(Map<String, ScoredMatch> candidates) {
+        for (ScoredMatch match : candidates.values()) {
+            if (match.score() >= 180) return true;
+        }
+        return false;
+    }
+
     private static List<CatalogMatch> rankMatches(Map<String, ScoredMatch> candidates) {
         List<ScoredMatch> ordered = new ArrayList<>(candidates.values());
         ordered.sort(Comparator.comparingInt(ScoredMatch::score).reversed());
-        List<CatalogMatch> out = new ArrayList<>(Math.min(3, ordered.size()));
-        for (int i = 0; i < Math.min(3, ordered.size()); i++) {
+        int limit = Math.min(4, ordered.size());
+        List<CatalogMatch> out = new ArrayList<>(limit);
+        for (int i = 0; i < limit; i++) {
             out.add(ordered.get(i).match());
         }
         return out;
@@ -316,12 +326,17 @@ final class AppleMusicAnimatedCoverProvider implements AnimatedCoverProvider {
         }
     }
 
-    private static int scoreCandidate(
+    static int scoreCandidate(
             TrackQuery query, String candSong, String candAlbum, boolean isAlbum) {
         String qSong = MediaTextNormalize.normalize(query.song());
         String qAlbum = MediaTextNormalize.normalize(query.album());
         String cSong = MediaTextNormalize.normalize(candSong);
         String cAlbum = MediaTextNormalize.normalize(candAlbum);
+
+        String rawQSong = MediaTextNormalize.normalizePreservingParens(query.song());
+        String rawQAlbum = MediaTextNormalize.normalizePreservingParens(query.album());
+        String rawCSong = MediaTextNormalize.normalizePreservingParens(candSong);
+        String rawCAlbum = MediaTextNormalize.normalizePreservingParens(candAlbum);
 
         int score = 0;
         if (!qSong.isEmpty() && cSong.equals(qSong)) score += 120;
@@ -329,11 +344,23 @@ final class AppleMusicAnimatedCoverProvider implements AnimatedCoverProvider {
         if (!qAlbum.isEmpty() && cAlbum.equals(qAlbum)) score += 100;
         else if (!qAlbum.isEmpty() && !cAlbum.isEmpty()) score += 30;
         if (isAlbum) score += 10;
+        if (!isAlbum && !rawCSong.equals(cSong) && rawQSong.equals(qSong)) score -= 10;
 
-        for (String noise : new String[] {"remix", "sped up", "slowed", "instrumental"}) {
-            boolean inCand = cSong.contains(noise) || cAlbum.contains(noise);
-            boolean inQuery = qSong.contains(noise) || qAlbum.contains(noise);
-            if (inCand && !inQuery) score -= 35;
+        for (String noise :
+                new String[] {
+                    "remix",
+                    "sped up",
+                    "slowed",
+                    "instrumental",
+                    "karaoke",
+                    "tribute",
+                    "acoustic",
+                    "live",
+                    "8 bit"
+                }) {
+            boolean inCand = rawCSong.contains(noise) || rawCAlbum.contains(noise);
+            boolean inQuery = rawQSong.contains(noise) || rawQAlbum.contains(noise);
+            if (inCand && !inQuery) score -= 90;
         }
         return score;
     }

@@ -131,6 +131,7 @@ final class MediaClockContrast {
         int videoInk;
         long lastVideoSample;
         boolean returning;
+        float returnStartProgress;
         WeakReference<View> overlay = new WeakReference<>(null);
         final RectF localBounds = new RectF();
         final RectF destination = new RectF();
@@ -138,6 +139,7 @@ final class MediaClockContrast {
         RenderNode art;
         int artRevision = -1;
         float artOpacity;
+        boolean glassDrawn;
         final RectF appliedCover = new RectF();
         int appliedOriginX, appliedOriginY;
         int appliedInk;
@@ -205,7 +207,14 @@ final class MediaClockContrast {
     }
 
     private static final ThreadLocal<Work> workspace = ThreadLocal.withInitial(Work::new);
-    private static boolean installed, writing;
+    private static DressroomModule hookModule;
+    private static boolean installed, activeHooksInstalled, writing;
+    private static boolean hooksWanted = true;
+    private static final ArrayList<Runnable> activeUnhooks = new ArrayList<>();
+    private static final Set<Class<?>> hookedCustomClasses =
+            Collections.newSetFromMap(new WeakHashMap<>());
+    private static final Set<Method> deoptimizedMethods =
+            Collections.newSetFromMap(new WeakHashMap<>());
     private static Field customOutlineColor, customPathMode;
     private static final ThreadLocal<TextView> drawing = new ThreadLocal<>();
 
@@ -218,6 +227,9 @@ final class MediaClockContrast {
         ValueAnimator animator;
         boolean initialized;
         float emphasis;
+        int returnColor;
+        float returnEmphasis;
+        boolean progressReturn;
         float conflict;
         int shadowColor = 0x99000000;
         final boolean custom;
@@ -269,6 +281,9 @@ final class MediaClockContrast {
         ColorFilter nativeFilter;
         ColorFilter filter;
         float emphasis;
+        int returnColor;
+        float returnEmphasis;
+        boolean progressReturn;
         int color, target;
         float nativeAlpha;
         boolean closing;
@@ -281,12 +296,17 @@ final class MediaClockContrast {
         }
     }
 
+    static boolean hasIcons() {
+        return !icons.isEmpty();
+    }
+
     static boolean tracksWeatherAlpha(View view) {
         return !icons.isEmpty() && view instanceof ImageView && icons.containsKey(view);
     }
 
     static float weatherAlpha(View view, float alpha) {
-        if (writing || icons.isEmpty() || !(view instanceof ImageView image)) return alpha;
+        if (writing || ViewAlphaHooks.isWriting() || icons.isEmpty()
+                || !(view instanceof ImageView image)) return alpha;
         Icon saved = icons.get(image);
         if (saved == null) return alpha;
         saved.nativeAlpha = alpha;
@@ -327,109 +347,213 @@ final class MediaClockContrast {
     }
 
 
-    static void install(DressroomModule module, ClassLoader loader)
+    static Integer readDrawingColor(TextView view) {
+        if (colors.isEmpty() || drawing.get() != view) return null;
+        Saved saved = colors.get(view);
+        return saved != null && saved.custom && saved.initialized
+                ? saved.color | 0xff000000
+                : null;
+    }
+
+    static synchronized void install(DressroomModule module, ClassLoader loader)
             throws ReflectiveOperationException {
+        hookModule = module;
         try {
-            installCustomGlyphs(module, loader);
+            registerCustomGlyphClass(module, loader);
         } catch (ReflectiveOperationException | RuntimeException | LinkageError unavailable) {
             DressroomModule.note("Optional fullscreen artwork custom glyph binding", unavailable);
         }
-        if (installed) return;
-        Method textDraw = TextView.class.getDeclaredMethod("onDraw", Canvas.class);
-        module.hook(textDraw)
-                .setId("dressroom-advanced.media-clock-soft-shadow")
-                .intercept(
-                        chain -> {
-                            TextView view = (TextView) chain.getThisObject();
-                            Saved saved = colors.get(view);
-                            if (saved == null || !saved.initialized || saved.custom)
-                                return chain.proceed();
-                            android.text.TextPaint paint = view.getPaint();
-                            float radius = paint.getShadowLayerRadius();
-                            float dx = paint.getShadowLayerDx(), dy = paint.getShadowLayerDy();
-                            int color = paint.getShadowLayerColor();
-                            Shader shader = paint.getShader();
-                            int textColor = paint.getColor();
-                            try {
-                                paint.setShader(null);
-                                Canvas canvas = (Canvas) chain.getArg(0);
-                                ViewGroup root = saved.root.get();
-                                paint.setColor(saved.color | 0xff000000);
-                                if (hasArtwork(root, canvas)) paint.clearShadowLayer();
-                                else shadow(view, saved);
-                                return drawArtworkGlyph(canvas, view, root,
-                                        saved.emphasis, saved.color,
-                                        target -> chain.proceed(new Object[] {target}));
-                            } finally {
-                                paint.setShader(shader);
-                                paint.setColor(textColor);
-                                paint.setShadowLayer(radius, dx, dy, color);
-                            }
-                        });
-        module.deoptimize(textDraw);
-        Method currentColor = TextView.class.getDeclaredMethod("getCurrentTextColor");
-        module.hook(currentColor)
-                .setId("dressroom-advanced.media-clock-palette-color")
-                .intercept(
-                        chain -> {
-                            Saved saved = colors.get((TextView) chain.getThisObject());
-                            return saved != null
-                                            && saved.custom
-                                            && saved.initialized
-                                            && drawing.get() == chain.getThisObject()
-                                    ? saved.color | 0xff000000
-                                    : chain.proceed();
-                        });
-        module.deoptimize(currentColor);
-        for (Class<?> type : new Class<?>[] {int.class, ColorStateList.class}) {
-            Method setter = TextView.class.getDeclaredMethod("setTextColor", type);
-            module.hook(setter)
-                    .setId("dressroom-advanced.media-clock-contrast-" + type.getSimpleName())
-                    .intercept(
-                            chain -> {
-                                Saved saved = colors.get((TextView) chain.getThisObject());
-                                if (saved == null || saved.custom || writing)
-                                    return chain.proceed();
-                                Object value = chain.getArg(0);
-                                if (value instanceof Integer color)
-                                    saved.nativeColors = ColorStateList.valueOf(color);
-                                else if (value instanceof ColorStateList list)
-                                    saved.nativeColors = list;
-                                else return chain.proceed();
-                                Object replacement =
-                                        type == int.class
-                                                ? saved.color
-                                                : ColorStateList.valueOf(saved.color);
-                                return chain.proceed(new Object[] {replacement});
-                            });
-            module.deoptimize(setter);
-        }
-        Method filter = ImageView.class.getDeclaredMethod("setColorFilter", ColorFilter.class);
-        module.hook(filter)
-                .setId("dressroom-advanced.media-weather-palette")
-                .intercept(
-                        chain -> {
-                            Icon saved = icons.get((ImageView) chain.getThisObject());
-                            if (saved == null || writing) return chain.proceed();
-                            saved.nativeFilter = (ColorFilter) chain.getArg(0);
-                            return chain.proceed(new Object[] {saved.filter});
-                        });
-        module.deoptimize(filter);
-        Method iconDraw = ImageView.class.getDeclaredMethod("onDraw", Canvas.class);
-        module.hook(iconDraw).setId("dressroom-advanced.media-weather-artwork-blur")
-                .intercept(chain -> {
-                    ImageView view = (ImageView) chain.getThisObject();
-                    Icon saved = icons.get(view);
-                    if (saved == null) return chain.proceed();
-                    return drawArtworkGlyph((Canvas) chain.getArg(0), view, saved.root.get(),
-                            saved.emphasis, saved.color,
-                            target -> chain.proceed(new Object[] {target}));
-                });
-        module.deoptimize(iconDraw);
+        if (hooksWanted) ensureActiveHooks();
         installed = true;
     }
 
-    private static void installCustomGlyphs(DressroomModule module, ClassLoader loader)
+    static synchronized void setHooksEnabled(boolean enabled) {
+        if (hooksWanted == enabled) return;
+        hooksWanted = enabled;
+        if (enabled) ensureActiveHooks();
+        else releaseHooksIfIdle();
+    }
+
+    private static void deoptimizeOnce(DressroomModule module, Method method) {
+        if (deoptimizedMethods.add(method)) module.deoptimize(method);
+    }
+
+    private static synchronized void ensureActiveHooks() {
+        if (activeHooksInstalled || hookModule == null) return;
+        DressroomModule module = hookModule;
+        try (HookTransaction hooks = new HookTransaction()) {
+            ArrayList<Runnable> unhooks = new ArrayList<>();
+            Method textDraw = TextView.class.getDeclaredMethod("onDraw", Canvas.class);
+            Runnable textDrawUnhook =
+                    module.hook(textDraw)
+                                    .setId("dressroom-advanced.media-clock-soft-shadow")
+                                    .intercept(
+                                            chain -> {
+                                                if (colors.isEmpty()) return chain.proceed();
+                                                TextView view = (TextView) chain.getThisObject();
+                                                Saved saved = colors.get(view);
+                                                if (saved == null || !saved.initialized || saved.custom)
+                                                    return chain.proceed();
+                                                android.text.TextPaint paint = view.getPaint();
+                                                float radius = paint.getShadowLayerRadius();
+                                                float dx = paint.getShadowLayerDx(),
+                                                        dy = paint.getShadowLayerDy();
+                                                int color = paint.getShadowLayerColor();
+                                                Shader shader = paint.getShader();
+                                                int textColor = paint.getColor();
+                                                try {
+                                                    paint.setShader(null);
+                                                    Canvas canvas = (Canvas) chain.getArg(0);
+                                                    ViewGroup root = saved.root.get();
+                                                    paint.setColor(saved.color | 0xff000000);
+                                                    if (hasArtwork(root, canvas))
+                                                        paint.clearShadowLayer();
+                                                    else shadow(view, saved);
+                                                    return drawArtworkGlyph(
+                                                            canvas,
+                                                            view,
+                                                            root,
+                                                            saved.emphasis,
+                                                            saved.color,
+                                                            target ->
+                                                                    chain.proceed(
+                                                                            new Object[] {target}));
+                                                } finally {
+                                                    paint.setShader(shader);
+                                                    paint.setColor(textColor);
+                                                    paint.setShadowLayer(radius, dx, dy, color);
+                                                }
+                                            })
+                            ::unhook;
+            hooks.add(textDrawUnhook);
+            unhooks.add(textDrawUnhook);
+            deoptimizeOnce(module, textDraw);
+
+            Runnable colorLease = TextColorHooks.acquire(module);
+            hooks.add(colorLease);
+            unhooks.add(colorLease);
+
+            for (Class<?> type : new Class<?>[] {int.class, ColorStateList.class}) {
+                Method setter = TextView.class.getDeclaredMethod("setTextColor", type);
+                Runnable setterUnhook =
+                        module.hook(setter)
+                                        .setId(
+                                                "dressroom-advanced.media-clock-contrast-"
+                                                        + type.getSimpleName())
+                                        .intercept(
+                                                chain -> {
+                                                    if (writing || colors.isEmpty())
+                                                        return chain.proceed();
+                                                    Saved saved =
+                                                            colors.get(
+                                                                    (TextView)
+                                                                            chain.getThisObject());
+                                                    if (saved == null || saved.custom)
+                                                        return chain.proceed();
+                                                    Object value = chain.getArg(0);
+                                                    if (value instanceof Integer color)
+                                                        saved.nativeColors =
+                                                                ColorStateList.valueOf(color);
+                                                    else if (value instanceof ColorStateList list)
+                                                        saved.nativeColors = list;
+                                                    else return chain.proceed();
+                                                    Object replacement =
+                                                            type == int.class
+                                                                    ? saved.color
+                                                                    : ColorStateList.valueOf(
+                                                                            saved.color);
+                                                    return chain.proceed(
+                                                            new Object[] {replacement});
+                                                })
+                                ::unhook;
+                hooks.add(setterUnhook);
+                unhooks.add(setterUnhook);
+                deoptimizeOnce(module, setter);
+            }
+            Method filter = ImageView.class.getDeclaredMethod("setColorFilter", ColorFilter.class);
+            Runnable filterUnhook =
+                    module.hook(filter)
+                                    .setId("dressroom-advanced.media-weather-palette")
+                                    .intercept(
+                                            chain -> {
+                                                if (writing || icons.isEmpty())
+                                                    return chain.proceed();
+                                                Icon saved =
+                                                        icons.get((ImageView) chain.getThisObject());
+                                                if (saved == null) return chain.proceed();
+                                                saved.nativeFilter = (ColorFilter) chain.getArg(0);
+                                                return chain.proceed(new Object[] {saved.filter});
+                                            })
+                            ::unhook;
+            hooks.add(filterUnhook);
+            unhooks.add(filterUnhook);
+            deoptimizeOnce(module, filter);
+
+            Method iconDraw = ImageView.class.getDeclaredMethod("onDraw", Canvas.class);
+            Runnable iconDrawUnhook =
+                    module.hook(iconDraw)
+                                    .setId("dressroom-advanced.media-weather-artwork-blur")
+                                    .intercept(
+                                            chain -> {
+                                                if (icons.isEmpty()) return chain.proceed();
+                                                ImageView view = (ImageView) chain.getThisObject();
+                                                Icon saved = icons.get(view);
+                                                if (saved == null) return chain.proceed();
+                                                return drawArtworkGlyph(
+                                                        (Canvas) chain.getArg(0),
+                                                        view,
+                                                        saved.root.get(),
+                                                        saved.emphasis,
+                                                        saved.color,
+                                                        target ->
+                                                                chain.proceed(
+                                                                        new Object[] {target}));
+                                            })
+                            ::unhook;
+            hooks.add(iconDrawUnhook);
+            unhooks.add(iconDrawUnhook);
+            deoptimizeOnce(module, iconDraw);
+
+            hookedCustomClasses.clear();
+            for (Class<?> custom : new ArrayList<>(customClasses)) {
+                Runnable customUnhook = hookCustomGlyphDraw(module, custom);
+                hooks.add(customUnhook);
+                unhooks.add(customUnhook);
+                hookedCustomClasses.add(custom);
+            }
+            hooks.commit();
+            activeUnhooks.clear();
+            activeUnhooks.addAll(unhooks);
+            activeHooksInstalled = true;
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+            module.report("Media clock contrast hooks unavailable", error);
+        }
+    }
+
+    private static synchronized void releaseHooksIfIdle() {
+        MediaBlurHost.syncHook();
+        if (!activeHooksInstalled || hooksWanted) return;
+        if (!colors.isEmpty()
+                || !icons.isEmpty()
+                || !samples.isEmpty()
+                || !pendingSamples.isEmpty()) return;
+        Throwable failure = null;
+        for (int i = activeUnhooks.size() - 1; i >= 0; i--) {
+            try {
+                activeUnhooks.get(i).run();
+            } catch (RuntimeException | LinkageError error) {
+                if (failure == null) failure = error;
+                else if (failure != error) failure.addSuppressed(error);
+            }
+        }
+        activeUnhooks.clear();
+        hookedCustomClasses.clear();
+        activeHooksInstalled = false;
+        if (failure != null && hookModule != null)
+            hookModule.report("Media clock contrast hook cleanup failed", failure);
+    }
+
+    private static void registerCustomGlyphClass(DressroomModule module, ClassLoader loader)
             throws ReflectiveOperationException {
         Class<?> custom =
                 Class.forName(
@@ -441,50 +565,81 @@ final class MediaClockContrast {
             final Field pathMode = resolvePathModeField(custom.getSuperclass());
             if (outlineColor != null) customOutlineColor = outlineColor;
             if (pathMode != null) customPathMode = pathMode;
-            Method draw = custom.getDeclaredMethod("onDraw", Canvas.class);
-            module.hook(draw)
-                    .setId("dressroom-advanced.media-clock-palette-draw")
-                    .intercept(
-                            chain -> {
-                                TextView view = (TextView) chain.getThisObject();
-                                Saved saved = colors.get(view);
-                                if (saved == null || !saved.initialized) return chain.proceed();
-                                android.text.TextPaint paint = view.getPaint();
-                                Shader shader = paint.getShader();
-                                int color = paint.getColor();
-                                int nativeOutline =
-                                        outlineColor == null ? 0 : outlineColor.getInt(view);
-                                float radius = paint.getShadowLayerRadius();
-                                float dx = paint.getShadowLayerDx(), dy = paint.getShadowLayerDy();
-                                int shadow = paint.getShadowLayerColor();
-                                TextView previous = drawing.get();
-                                try {
-                                    drawing.set(view);
-                                    paint.setShader(null);
-                                    Canvas canvas = (Canvas) chain.getArg(0);
-                                    ViewGroup root = saved.root.get();
-                                    boolean glass = hasArtwork(root, canvas);
-                                    int drawColor = glass ? saved.color | 0xff000000 : saved.color;
-                                    paint.setColor(drawColor);
-                                    if (outlineColor != null) outlineColor.setInt(view, drawColor);
-                                    if (glass) paint.clearShadowLayer();
-                                    else shadow(view, saved);
-                                    return drawArtworkGlyph(canvas, view, root,
-                                            saved.emphasis, saved.color,
-                                            target -> chain.proceed(new Object[] {target}));
-                                } finally {
-                                    paint.setShader(shader);
-                                    paint.setColor(color);
-                                    if (outlineColor != null)
-                                        outlineColor.setInt(view, nativeOutline);
-                                    paint.setShadowLayer(radius, dx, dy, shadow);
-                                    if (previous == null) drawing.remove();
-                                    else drawing.set(previous);
-                                }
-                            });
-            module.deoptimize(draw);
             customClasses.add(custom);
+            if (activeHooksInstalled && module != null && !hookedCustomClasses.contains(custom)) {
+                Runnable unhook = hookCustomGlyphDraw(module, custom);
+                activeUnhooks.add(unhook);
+                hookedCustomClasses.add(custom);
+            }
         }
+    }
+
+    private static Runnable hookCustomGlyphDraw(DressroomModule module, Class<?> custom)
+            throws ReflectiveOperationException {
+        final Field outlineColor =
+                customOutlineColor != null
+                        ? customOutlineColor
+                        : resolveOutlineField(custom.getSuperclass());
+        Method draw = custom.getDeclaredMethod("onDraw", Canvas.class);
+        Runnable unhook =
+                module.hook(draw)
+                                .setId("dressroom-advanced.media-clock-palette-draw")
+                                .intercept(
+                                        chain -> {
+                                            if (colors.isEmpty()) return chain.proceed();
+                                            TextView view = (TextView) chain.getThisObject();
+                                            Saved saved = colors.get(view);
+                                            if (saved == null || !saved.initialized)
+                                                return chain.proceed();
+                                            android.text.TextPaint paint = view.getPaint();
+                                            Shader shader = paint.getShader();
+                                            int color = paint.getColor();
+                                            int nativeOutline =
+                                                    outlineColor == null
+                                                            ? 0
+                                                            : outlineColor.getInt(view);
+                                            float radius = paint.getShadowLayerRadius();
+                                            float dx = paint.getShadowLayerDx(),
+                                                    dy = paint.getShadowLayerDy();
+                                            int shadow = paint.getShadowLayerColor();
+                                            TextView previous = drawing.get();
+                                            try {
+                                                drawing.set(view);
+                                                paint.setShader(null);
+                                                Canvas canvas = (Canvas) chain.getArg(0);
+                                                ViewGroup root = saved.root.get();
+                                                boolean glass = hasArtwork(root, canvas);
+                                                int drawColor =
+                                                        glass
+                                                                ? saved.color | 0xff000000
+                                                                : saved.color;
+                                                paint.setColor(drawColor);
+                                                if (outlineColor != null)
+                                                    outlineColor.setInt(view, drawColor);
+                                                if (glass) paint.clearShadowLayer();
+                                                else shadow(view, saved);
+                                                return drawArtworkGlyph(
+                                                        canvas,
+                                                        view,
+                                                        root,
+                                                        saved.emphasis,
+                                                        saved.color,
+                                                        target ->
+                                                                chain.proceed(
+                                                                        new Object[] {target}));
+                                            } finally {
+                                                paint.setShader(shader);
+                                                paint.setColor(color);
+                                                if (outlineColor != null)
+                                                    outlineColor.setInt(view, nativeOutline);
+                                                paint.setShadowLayer(radius, dx, dy, shadow);
+                                                if (previous == null) drawing.remove();
+                                                else drawing.set(previous);
+                                            }
+                                        })
+                        ::unhook;
+        deoptimizeOnce(module, draw);
+        return unhook;
     }
 
     static Palette computePalette(ArtworkSamples.Stats stats) {
@@ -512,10 +667,40 @@ final class MediaClockContrast {
         return Math.round(255f * clamp(mix) * clamp(artOpacity) * GLASS_ART_BLEND);
     }
 
-    static boolean hasGlass(ViewGroup root) {
+    static boolean wantsGlass(ViewGroup root) {
         if (root == null || MediaClockVisibility.hidden(root)) return false;
         Snapshot snapshot = samples.get(root);
         return snapshot != null && snapshot.spec != null && !snapshot.localBounds.isEmpty();
+    }
+
+    static boolean hasGlass(ViewGroup root) {
+        if (!wantsGlass(root)) return false;
+        Snapshot snapshot = samples.get(root);
+        return artworkReady(snapshot) && snapshot.glassDrawn;
+    }
+
+    /** Crossfade the native host with actual player ink, including interrupted returns. */
+    static float glassWeight(ViewGroup root) {
+        if (!hasGlass(root)) return 0f;
+        float weight = 0f;
+        boolean found = false;
+        for (Saved saved : colors.values()) {
+            if (saved.root.get() != root || !saved.initialized) continue;
+            found = true;
+            weight = Math.max(weight, saved.emphasis);
+        }
+        for (Icon saved : icons.values()) {
+            if (saved.root.get() != root) continue;
+            found = true;
+            weight = Math.max(weight, saved.emphasis);
+        }
+        return found ? clamp(weight) : 1f;
+    }
+
+    private static boolean artworkReady(Snapshot snapshot) {
+        return snapshot != null && snapshot.art != null && snapshot.art.hasDisplayList()
+                && snapshot.artOpacity > .005f && !snapshot.destination.isEmpty()
+                && !snapshot.cover.isEmpty();
     }
 
     /** Copies the cached clock/weather bounds in {@code root} coordinates, returning whether available. */
@@ -643,6 +828,7 @@ final class MediaClockContrast {
                 pendingSamples.remove(root);
             }
         }
+        releaseHooksIfIdle();
     }
 
     private static void onSamplesReady(Bitmap image, int generation, ArtworkSamples computed) {
@@ -678,7 +864,14 @@ final class MediaClockContrast {
             float opacity) {
         if (root == null || MediaClockVisibility.hidden(root)) return;
         Snapshot snapshot = samples.get(root);
-        if (snapshot == null || !blurredArt.hasDisplayList()) return;
+        if (snapshot == null) return;
+        if (blurredArt == null || !blurredArt.hasDisplayList()) {
+            snapshot.art = null;
+            snapshot.glassDrawn = false;
+            MediaBlurHost.refreshArtwork(root);
+            return;
+        }
+        if (!artworkReady(snapshot) || snapshot.art != blurredArt) snapshot.glassDrawn = false;
         boolean changed =
                 snapshot.art != blurredArt
                         || snapshot.artRevision != artRevision
@@ -691,6 +884,7 @@ final class MediaClockContrast {
         if (cover == null) snapshot.cover.addRect(destination, Path.Direction.CW);
         else snapshot.cover.set(cover);
         snapshot.artOpacity = opacity;
+        MediaBlurHost.refreshArtwork(root);
         if (changed) {
             for (var entry : colors.entrySet())
                 if (entry.getKey() != null && entry.getValue().root.get() == root)
@@ -704,8 +898,7 @@ final class MediaClockContrast {
     private static boolean hasArtwork(ViewGroup root, Canvas canvas) {
         if (root == null || !canvas.isHardwareAccelerated()) return false;
         Snapshot snapshot = samples.get(root);
-        return snapshot != null && snapshot.art != null && snapshot.art.hasDisplayList()
-                && snapshot.artOpacity > .005f;
+        return artworkReady(snapshot);
     }
 
     @FunctionalInterface
@@ -725,7 +918,13 @@ final class MediaClockContrast {
         int glassAlpha = glassBlendAlpha(mix, snapshot.artOpacity);
         int layer = canvas.saveLayer(0, 0, width, height, null);
         try {
-            snapshot.ink.setColor(tint | 0xff000000);
+            // Cached clock paths supply an opaque mask, so their return alpha
+            // belongs in the fill. TextView/native icon masks already carry ink
+            // alpha; applying it again here would fade those glyphs twice.
+            Saved savedText = view instanceof TextView text ? colors.get(text) : null;
+            boolean maskHasInkAlpha = savedText != null && !savedText.custom
+                    || view instanceof ImageView image && icons.containsKey(image);
+            snapshot.ink.setColor(maskHasInkAlpha ? tint | 0xff000000 : tint);
             canvas.drawRect(0, 0, width, height, snapshot.ink);
             int transform = canvas.save();
             canvas.concat(snapshot.transform);
@@ -752,7 +951,12 @@ final class MediaClockContrast {
             Paint maskPaint = snapshot.maskFor(view);
             int mask = canvas.saveLayer(0, 0, width, height, maskPaint);
             try {
-                return glyph.draw(canvas);
+                Object result = glyph.draw(canvas);
+                if (overArtwork && glassAlpha > 0 && !snapshot.glassDrawn) {
+                    snapshot.glassDrawn = true;
+                    MediaBlurHost.refreshArtwork(root);
+                }
+                return result;
             } finally {
                 canvas.restoreToCount(mask);
             }
@@ -766,6 +970,7 @@ final class MediaClockContrast {
         pendingSamples.remove(root);
         Snapshot snapshot = samples.remove(root);
         if (snapshot != null) snapshot.settled = false;
+        MediaBlurHost.refreshArtwork(root);
         if (!colors.isEmpty()) {
             for (TextView view : new ArrayList<>(colors.keySet())) {
                 Saved saved = colors.get(view);
@@ -795,6 +1000,7 @@ final class MediaClockContrast {
                 }
             }
         }
+        releaseHooksIfIdle();
     }
 
     static void clear(ViewGroup root) {
@@ -834,12 +1040,83 @@ final class MediaClockContrast {
         }
     }
 
+    private static final class ReturnColors {
+        static final android.animation.ArgbEvaluator MIX = new android.animation.ArgbEvaluator();
+    }
+
+    /** Restore current native ink with cover motion, rather than keeping player tint until the end. */
+    static void returnToNative(ViewGroup root, float progress) {
+        pendingSamples.remove(root);
+        Snapshot snapshot = samples.get(root);
+        if (snapshot == null) return;
+        float remaining = clamp(progress);
+        if (remaining <= .005f) {
+            clearImmediate(root);
+            return;
+        }
+        if (!snapshot.returning || snapshot.returnStartProgress <= 0f)
+            snapshot.returnStartProgress = remaining;
+        snapshot.returning = true;
+        snapshot.settled = false;
+        float fraction = 1f - clamp(remaining / snapshot.returnStartProgress);
+        for (var entry : colors.entrySet()) {
+            TextView view = entry.getKey();
+            Saved saved = entry.getValue();
+            if (saved.root.get() != root || !saved.initialized) continue;
+            if (!saved.progressReturn) {
+                if (saved.animator != null) {
+                    ValueAnimator animation = saved.animator;
+                    saved.animator = null;
+                    animation.cancel();
+                }
+                saved.returnColor = saved.color;
+                saved.returnEmphasis = saved.emphasis;
+                saved.closing = true;
+                saved.progressReturn = true;
+            }
+            saved.color = (Integer) ReturnColors.MIX.evaluate(fraction, saved.returnColor,
+                    nativeDisplayColor(view, saved.custom, saved.nativeColors));
+            saved.emphasis = saved.returnEmphasis * (1f - fraction);
+            if (!saved.custom) write(view, ColorStateList.valueOf(saved.color));
+            view.invalidate();
+        }
+        for (var entry : icons.entrySet()) {
+            ImageView view = entry.getKey();
+            Icon saved = entry.getValue();
+            if (saved.root.get() != root) continue;
+            if (!saved.progressReturn) {
+                if (saved.animator != null) {
+                    ValueAnimator animation = saved.animator;
+                    saved.animator = null;
+                    animation.cancel();
+                }
+                saved.returnColor = saved.color;
+                saved.returnEmphasis = saved.emphasis;
+                saved.closing = true;
+                saved.progressReturn = true;
+            }
+            Integer nativeColor = nativeTint(saved.nativeFilter);
+            saved.color = (Integer) ReturnColors.MIX.evaluate(fraction, saved.returnColor,
+                    nativeColor == null ? saved.returnColor : nativeColor);
+            saved.emphasis = saved.returnEmphasis * (1f - fraction);
+            saved.filter = new PorterDuffColorFilter(saved.color, PorterDuff.Mode.SRC_IN);
+            writeIcon(view, saved.filter);
+            writeIconAlpha(view, iconAlpha(saved));
+            view.invalidate();
+        }
+        MediaBlurHost.refreshArtwork(root);
+    }
+
     private static void pruneSnapshot(ViewGroup root) {
         Snapshot snapshot = samples.get(root);
         if (snapshot == null || !snapshot.returning) return;
         for (Saved saved : colors.values())
             if (saved.root.get() == root && saved.initialized) return;
+        for (Icon saved : icons.values())
+            if (saved.root.get() == root) return;
         samples.remove(root);
+        MediaBlurHost.refreshArtwork(root);
+        releaseHooksIfIdle();
     }
 
     static int videoInk(double luma, int prior) {
@@ -964,6 +1241,7 @@ final class MediaClockContrast {
                 next.art = snapshot.art;
                 next.artRevision = snapshot.artRevision;
                 next.artOpacity = snapshot.artOpacity;
+                next.glassDrawn = snapshot.glassDrawn;
             }
             snapshot = next;
             samples.put(root, snapshot);
@@ -1021,6 +1299,7 @@ final class MediaClockContrast {
             }
         }
         snapshot.returning = false;
+        snapshot.returnStartProgress = 0f;
         snapshot.settled = false;
 
         Set<TextView> visible = work.visible;
@@ -1072,6 +1351,7 @@ final class MediaClockContrast {
             }
         }
         if (snapshot.spec == null) return;
+        if (!visible.isEmpty() || !weather.isEmpty()) ensureActiveHooks();
         int ink = snapshot.videoInk == 0 ? snapshot.spec.textColor() : snapshot.videoInk;
         int playerColor = ink | 0xff000000;
         float conflict = snapshot.spec.conflict();
@@ -1121,6 +1401,7 @@ final class MediaClockContrast {
             if (saved == null) {
                 saved = new Icon(root, view);
                 icons.put(view, saved);
+                MediaBlurHost.syncHook();
             }
             int color = playerColor;
             if (saved.filter == null || color != saved.target || saved.closing)
@@ -1177,6 +1458,7 @@ final class MediaClockContrast {
         }
         saved.target = target;
         saved.closing = closing;
+        saved.progressReturn = false;
         ValueAnimator animator = ValueAnimator.ofArgb(saved.color, target);
         saved.animator = animator;
         animator.setDuration(220);
@@ -1233,6 +1515,7 @@ final class MediaClockContrast {
         }
         saved.target = target;
         saved.closing = closing;
+        saved.progressReturn = false;
         float start = saved.emphasis;
         ValueAnimator animator = ValueAnimator.ofArgb(saved.color, target);
         saved.animator = animator;
@@ -1319,7 +1602,7 @@ final class MediaClockContrast {
         boolean old = writing;
         writing = true;
         try {
-            view.setAlpha(alpha);
+            ViewAlphaHooks.write(view, alpha);
         } finally {
             writing = old;
         }
@@ -1329,6 +1612,8 @@ final class MediaClockContrast {
         icons.remove(view);
         writeIcon(view, saved.nativeFilter);
         writeIconAlpha(view, saved.nativeAlpha);
+        pruneSnapshot(saved.root.get());
+        releaseHooksIfIdle();
     }
 
     private static Integer nativeTint(ColorFilter filter) {

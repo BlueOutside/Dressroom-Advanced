@@ -10,12 +10,34 @@ import java.util.WeakHashMap;
 
 final class ClockBlurRetries {
     private final ClockBlurRetryBinding binding;
+    private final java.lang.reflect.Method blurHost;
+    private final boolean forceRefresh;
     private final BlurRetryState requests = new BlurRetryState();
     private final Map<Object, BlurRetryState.Ticket> tasks =
             Collections.synchronizedMap(new WeakHashMap<>());
 
     private ClockBlurRetries(ClockBlurRetryBinding binding) {
         this.binding = binding;
+        java.lang.reflect.Method host;
+        try {
+            host = NativeContract.findMethod(binding.render.getDeclaringClass(), null,
+                    android.view.ViewGroup.class);
+        } catch (ReflectiveOperationException unavailable) {
+            host = null;
+        }
+        blurHost = host;
+        boolean supportsForce = false;
+        try {
+            String skip = "applyTextBlurInner was skipped by blurOnAnimator is running";
+            var body = DexSignatures.body(binding.submit, java.util.Set.of(skip));
+            supportsForce = body.anchors().containsKey(skip) && body.calls().stream().anyMatch(call ->
+                    call.owner().equals("Landroid/animation/ValueAnimator;")
+                            && call.name().equals("isRunning") && call.parameters().isEmpty()
+                            && call.result().equals("Z"));
+        } catch (ReflectiveOperationException | java.io.IOException ignored) {
+            // Unfamiliar force semantics keep native timing and the completion refresh.
+        }
+        forceRefresh = supportsForce;
     }
 
     static void install(DressroomModule module, Class<?> base)
@@ -57,18 +79,18 @@ final class ClockBlurRetries {
                                 Object strategy = binding.strategy.get(manager);
                                 if (strategy != null && binding.textViews.get(strategy) instanceof List<?> views) {
                                     UnlockBlur.glyphs(clock, views);
-                                    if (canQueue && glyph != null)
+                                    if (glyph != null)
                                         needsDraw |= GlyphBlurReadiness.needsDraw(views, glyph);
                                 }
                             } catch (ReflectiveOperationException ignored) {
                             }
-                            if (canQueue && needsDraw && ticket != null) {
+                            boolean retain = shouldRetainReadySurface(
+                                    needsDraw, ticket != null, lifecycle.keepReadySurface(manager));
+                            if ((canQueue || retain) && needsDraw && ticket != null) {
                                 WeakReference<Object> reference = new WeakReference<>(manager);
                                 int color = ((Number) chain.getArg(0)).intValue();
                                 boolean force = (Boolean) chain.getArg(2);
-                                // Keep Samsung's initial submission and its timer retries.
-                                // A display-list draw is only an extra chance after layout.
-                                ClockBlurSync.defer(clock, target -> {
+                                boolean queued = ClockBlurSync.defer(clock, target -> {
                                     Object current = reference.get();
                                     if (!lifecycle.requests.accepts(ticket)
                                             || !lifecycle.active(target, current)) return;
@@ -78,8 +100,21 @@ final class ClockBlurRetries {
                                         module.report("Native blur redraw resume unavailable", error);
                                     }
                                 });
+                                // A live window-blur matte already exists. Rendering before the new
+                                // glyph draw can submit stale outlines or briefly apply Samsung's
+                                // failed-readiness alpha (127), then snap to the final alpha.
+                                // Rebuild after this draw instead; first render and unsupported
+                                // backends retain Samsung's initial submission and timer retries.
+                                if (queued && retain) return null;
                             }
                         }
+                        // Samsung's explicit force argument permits a geometry refresh during
+                        // reveal without ending the animator (and running its finalizer early).
+                        // Only use it after our draw barrier on an already live native surface.
+                        if (Boolean.FALSE.equals(chain.getArg(2))
+                                && lifecycle.forceAfterDraw(clock, manager))
+                            return chain.proceed(new Object[] {
+                                    chain.getArg(0), chain.getArg(1), true});
                         return chain.proceed();
                     })::unhook);
 
@@ -154,6 +189,41 @@ final class ClockBlurRetries {
         try {
             return binding.manager.get(clock) == manager;
         } catch (IllegalAccessException error) {
+            return false;
+        }
+    }
+
+    static boolean shouldRetainReadySurface(
+            boolean needsDraw, boolean hasTicket, boolean readySurface) {
+        return needsDraw && hasTicket && readySurface;
+    }
+
+    private boolean keepReadySurface(Object manager) {
+        return readySurface(manager);
+    }
+
+    private boolean forceAfterDraw(View clock, Object manager) {
+        if (!forceRefresh || !ClockBlurSync.rebuilding(clock) || !active(clock, manager)
+                || binding.animator == null || !readySurface(manager)) return false;
+        try {
+            return binding.animator.get(manager) instanceof android.animation.ValueAnimator fade
+                    && fade.isRunning();
+        } catch (IllegalAccessException | RuntimeException unavailable) {
+            return false;
+        }
+    }
+
+    private boolean readySurface(Object manager) {
+        if (blurHost == null || binding.enabled == null) return false;
+        try {
+            Object strategy = binding.strategy.get(manager);
+            if (strategy == null || !Boolean.TRUE.equals(binding.enabled.invoke(manager))) return false;
+            Object value = blurHost.invoke(strategy);
+            if (!(value instanceof View host) || !host.isShown() || host.getAlpha() <= 0f
+                    || !BlurAppearance.hasWindowDrawable(host) || host.getBackground().getAlpha() <= 0)
+                return false;
+            return BlurAppearance.visibleWindowRequest(BlurAppearance.nativeRequest(host));
+        } catch (ReflectiveOperationException | RuntimeException unavailable) {
             return false;
         }
     }

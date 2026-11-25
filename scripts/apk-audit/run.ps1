@@ -2,10 +2,13 @@ param(
     [Parameter(Mandatory)][string[]]$Apk,
     [Parameter(Mandatory)][string]$JadxJar,
     [string]$AndroidSdk = "$env:USERPROFILE/AppData/Local/Android/Sdk",
+    [string]$Rules = '',
     [string]$OutputDir = ''
 )
 $ErrorActionPreference = 'Stop'
 $project = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
+if (!$Rules) { $Rules = Join-Path $PSScriptRoot 'rules.tsv' }
+$Rules = (Resolve-Path -LiteralPath $Rules).Path
 $module = Join-Path $project '.build/module.jar'
 if (!(Test-Path -LiteralPath $module)) { throw 'Build the module once to produce .build/module.jar.' }
 $sdk = (Join-Path $AndroidSdk 'platforms/android-36/android.jar')
@@ -49,9 +52,9 @@ foreach ($group in ($inputs | Group-Object sha256)) {
     $scope = $scopes[$item.package]
     & java -Xint -Xms16m -Xmx192m -XX:+UseSerialGC -XX:ReservedCodeCacheSize=8m `
         -cp "$classes;$classpath" dev.denver.dressroomadvanced.Scan `
-        (Join-Path $PSScriptRoot 'rules.tsv') $scope $item.path (Join-Path $work "$id.tsv")
+        $Rules $scope $item.path (Join-Path $work "$id.tsv")
     if ($LASTEXITCODE -ne 0) { throw "Scan failed: $($item.package) $($item.version) $id" }
     Write-Output "$scope $($item.version) $id"
 }
-& python (Join-Path $PSScriptRoot 'report.py') $manifest $work $OutputDir
+& python (Join-Path $PSScriptRoot 'report.py') $manifest $work $OutputDir --rules $Rules
 if ($LASTEXITCODE -ne 0) { throw 'Audit report generation failed.' }

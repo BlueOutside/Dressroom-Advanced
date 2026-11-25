@@ -897,6 +897,22 @@ public final class MediaContractsTest {
     }
 
     private static void verifyClockGlassContrastPolicy() {
+        check(!MediaFullscreenExtras.keepClockGlass(.49f, false, false, false),
+                "Opening must retain native clock glass before the player reaches it");
+        check(MediaFullscreenExtras.keepClockGlass(.5f, false, false, false),
+                "Player glass must start at its opening boundary");
+        for (float progress : new float[] {1f, .8f, .49f, .08f, .006f}) {
+            check(MediaFullscreenExtras.keepClockGlass(progress, true, false, true),
+                    "Closing removed player glass before native return: " + progress);
+            check(MediaFullscreenExtras.keepClockGlass(progress, false, true, true),
+                    "Thumbnail return removed player glass before completion: " + progress);
+        }
+        check(!MediaFullscreenExtras.keepClockGlass(.8f, true, false, false),
+                "Closing must not resurrect a player clock that never became active");
+        check(!MediaFullscreenExtras.keepClockGlass(0f, true, false, true),
+                "Completed return retained player clock overrides");
+        check(!MediaFullscreenExtras.keepClockGlass(Float.NaN, true, false, true),
+                "Invalid progress retained player glass");
         var black = MediaClockContrast.computePalette(new ArtworkSamples.Stats(0d, 0d, 0d));
         var white = MediaClockContrast.computePalette(new ArtworkSamples.Stats(1d, 1d, 1d));
         var mixed = MediaClockContrast.computePalette(new ArtworkSamples.Stats(.50d, 0d, 1d));

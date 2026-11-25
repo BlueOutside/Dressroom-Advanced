@@ -43,6 +43,15 @@ public final class ExtrasContractProbe {
         check(clean.getBoolean("keepCharging") && clean.getBoolean("keepStretch"));
         check(clean.getBoolean("fullscreenArt") && clean.getBoolean("textCard"));
         check(clean.getBoolean(WidgetClickBlock.KEY));
+        check(!clean.getBoolean(LockStarClockBlur.KEY) && !clean.getBoolean(NowBarAodOption.OVERRIDE_KEY));
+        check(clean.getBoolean(NowBarAodOption.ENABLED_KEY));
+        Bundle aodOverride = new Bundle();
+        NowBarAodOption.setInEditor(aodOverride, false);
+        aodOverride.putBoolean(LockStarClockBlur.KEY, true);
+        Bundle cleanedAod = ExtrasPreferences.clean(aodOverride);
+        check(cleanedAod.getBoolean(NowBarAodOption.OVERRIDE_KEY)
+                && !cleanedAod.getBoolean(NowBarAodOption.ENABLED_KEY)
+                && cleanedAod.getBoolean(LockStarClockBlur.KEY));
         check(!clean.containsKey("forceNowBarBlur") && !clean.containsKey("forceWidgetBlur"));
         check(
                 !clean.containsKey("wallpaperId")

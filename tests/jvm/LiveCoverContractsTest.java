@@ -65,11 +65,14 @@ public final class LiveCoverContractsTest {
                         + "{\"subtitle\":\"Morceau\u202f\u00b7\u202fTkay Maidza\",\"itemKind\":\"songs\","
                         + "\"title\":\"High Beams\","
                         + "\"contentDescriptor\":{\"kind\":\"song\",\"url\":\"https://music.apple.com/fr/album/high-beams/1569896693?i=1569897308\"},"
-                        + "\"segue\":{\"destination\":{\"contentDescriptor\":{\"kind\":\"album\",\"url\":\"https://music.apple.com/fr/album/high-beams/1569896693\"}}}}"
+                        + "\"segue\":{\"destination\":{\"contentDescriptor\":{\"kind\":\"album\",\"url\":\"https://music.apple.com/fr/album/high-beams/1569896693\"}}}},"
+                        + "{\"itemKind\":\"trackLockup\",\"title\":\"2 Die 4\","
+                        + "\"subtitleLinks\":[{\"title\":\"Tove Lo\",\"segue\":{\"destination\":{\"contentDescriptor\":{\"kind\":\"artist\",\"url\":\"https://music.apple.com/fr/artist/tove-lo/570136838\"}}}}],"
+                        + "\"contentDescriptor\":{\"kind\":\"song\",\"url\":\"https://music.apple.com/fr/album/2-die-4/1694799311?i=1694799576\"}}"
                         + "]}]}}</script></body></html>";
         List<AppleHlsResolver.SearchLockup> lockups =
                 AppleHlsResolver.extractSearchCandidatesFromHtml(searchHtml);
-        check(lockups.size() == 2, "Expected 2 search lockups from SSR HTML, got " + lockups.size());
+        check(lockups.size() == 3, "Expected 3 search lockups from SSR HTML, got " + lockups.size());
         AppleHlsResolver.SearchLockup epTrack = lockups.get(1);
         check(
                 "High Beams".equals(epTrack.title())
@@ -79,6 +82,12 @@ public final class LiveCoverContractsTest {
                         && "Tkay Maidza"
                                 .equals(AppleHlsResolver.artistFromSearchSubtitle(epTrack.subtitle())),
                 "Failed to extract exact song/album metadata from Apple Music search SSR");
+        AppleHlsResolver.SearchLockup shelfTrack = lockups.get(2);
+        check(
+                "2 Die 4".equals(shelfTrack.title())
+                        && "1694799311".equals(shelfTrack.collectionId())
+                        && "Tove Lo".equals(AppleHlsResolver.artistFromSearchSubtitle(shelfTrack.subtitle())),
+                "Failed to extract artist from subtitleLinks in Apple Music trackLockup SSR");
     }
 
     private static void verifyMasterPlaylistAndVariantSelection() {
@@ -279,6 +288,31 @@ public final class LiveCoverContractsTest {
                         "High Beams (Explicit)",
                         "Last Year Was Weird, Vol. 3 - EP"),
                 "Track matching should tolerate release suffixes and parentheticals");
+
+        var toveQuery =
+                new AnimatedCoverProvider.TrackQuery(
+                        "Tove Lo", "2 Die 4", "Dirt Femme (Extended Cut)", "pkg", "", 1080);
+        int cleanSongScore =
+                AppleMusicAnimatedCoverProvider.scoreCandidate(
+                        toveQuery, "2 Die 4", "Dirt Femme", false);
+        int remixSingleScore =
+                AppleMusicAnimatedCoverProvider.scoreCandidate(
+                        toveQuery,
+                        "2 Die 4 (Jax Jones Midnight Snacks Remix)",
+                        "2 Die 4 (Jax Jones Midnight Snacks Remix) - Single",
+                        false);
+        int albumOnlyScore =
+                AppleMusicAnimatedCoverProvider.scoreCandidate(
+                        toveQuery, "", "Dirt Femme", true);
+        check(
+                cleanSongScore > albumOnlyScore && albumOnlyScore > remixSingleScore,
+                "Expected clean song ("
+                        + cleanSongScore
+                        + ") > album ("
+                        + albumOnlyScore
+                        + ") > parenthetical remix single ("
+                        + remixSingleScore
+                        + ")");
 
         check(
                 Arrays.asList(ExtrasPreferences.FLAGS).contains(LiveCoverController.KEY),

@@ -19,6 +19,18 @@ final class OneUi80WidgetRuntime {
             "com.samsung.android.app.facewidget.complication.ComplicationWidgetHostViewContainer";
     private OneUi80WidgetRuntime() {}
 
+    /** Use the font flow which feeds getClockView, not the older serialized ClockItem. */
+    static android.os.Bundle clockIdentity(Object provider) throws ReflectiveOperationException {
+        Object font = Reflect.call(provider, "getClockFontData");
+        android.os.Bundle identity = new android.os.Bundle();
+        identity.putInt("type", ((Number) Reflect.call(provider, "getClockTypeInternal")).intValue());
+        identity.putInt("font", font == null ? 0
+                : ((Number) Reflect.call(font, "getFontType")).intValue());
+        if (font != null && Reflect.call(font, "getFontPath") instanceof String path && !path.isEmpty())
+            identity.putString("fontPath", path);
+        return identity;
+    }
+
     private static final ClassValue<Grid> grids = new ClassValue<>() {
         @Override
         protected Grid computeValue(Class<?> type) {

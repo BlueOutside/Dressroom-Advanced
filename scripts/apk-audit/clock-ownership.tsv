@@ -1,0 +1,37 @@
+# role	package scope	kind	owner	name	prototype	anchor / call / library
+clock_base	provider	class	Lcom/samsung/android/uniform/widget/clock/AbsClockView;	*	*	
+clock_tick	provider	method	Lcom/samsung/android/uniform/widget/clock/AbsClockView;	refresh	()V	
+clock_doze	provider	method	Lcom/samsung/android/uniform/widget/clock/AbsClockView;	setDozing	(Z)V	
+clock_doze_fraction	provider	method	Lcom/samsung/android/uniform/widget/clock/AbsClockView;	setDozeAmount	(F)V	
+clock_media	provider	method	Lcom/samsung/android/uniform/widget/clock/AbsClockView;	setMediaExpanded	(Z)V	
+clock_axis_fraction	provider	call	Lcom/samsung/android/uniform/widget/clock/AbsClockView;	*	(FZ)V	Lcom/samsung/android/clockpack/plugins/clock/ClockFontData;->copy$default*
+clock_blur_entry	provider	method	Lcom/samsung/android/uniform/widget/clock/AbsClockView;	setClockTextBlur	()V	
+clock_blur_enable	provider	method	Lcom/samsung/android/uniform/widget/clock/AbsClockView;	setBlurEffectEnabled	(Z)V	
+clock_blur_clear	provider	method	Lcom/samsung/android/uniform/widget/clock/AbsClockView;	removeBlur	()V	
+clock_blur_host	provider	anchor	*	*	()Landroid/view/ViewGroup;	lock_clock_blur
+clock_blur_retry	provider	anchor	*	*	(IIZ)V	applyTextBlurInner: Blur failed - isReady=
+clock_blur_collect	provider	anchor	*	*	(Ljava/util/ArrayList;IF)V	forwardCollectedViews size 
+clock_ink_alpha	provider	anchor	*	*	(I)V	applyAnimatedAlpha: alpha 
+clock_blur_reveal	provider	anchor	*	*	()V	startBlurAnimation: Starting blur animation
+clock_dashboard_reveal	provider	anchor	*	*	()V	startDashBoardBlurOnAnimation: Starting blur animation
+clock_none_draw	provider	call	Lcom/samsung/android/uniform/widget/ClockNonePaddingTextView;	onDraw	(Landroid/graphics/Canvas;)V	Lcom/samsung/android/uniform/widget/NonePaddingTextView;->onDraw(Landroid/graphics/Canvas;)V
+clock_none_outline	provider	method	Lcom/samsung/android/uniform/widget/ClockNonePaddingTextView;	getPathForBlur	()Landroid/graphics/Path;	
+clock_path_color	provider	method	Lcom/samsung/android/uniform/widget/NonePaddingTextView;	setTextColor	(I)V	
+clock_text_draw	provider	method	Lcom/samsung/android/uniform/widget/ClockTextView;	onDraw	(Landroid/graphics/Canvas;)V	
+clock_text_outline	provider	method	Lcom/samsung/android/uniform/widget/ClockTextView;	getPathForBlur	()Landroid/graphics/Path;	
+clock_palette_shader	provider	call	*	*	(Landroid/content/Context;FLcom/samsung/android/clockpack/plugins/clock/PaletteItem;Landroid/widget/TextView;)V	Landroid/graphics/LinearGradient;-><init>(FFFF[I[FLandroid/graphics/Shader$TileMode;)V
+clock_grade_worker	provider	anchor	*	setPreprocessingThread	(Z)V	setPreprocessingThread: starting
+clock_axis_spring	provider	anchor	*	*	*	startSpringAnimation: axis=
+clock_host_alpha	systemui	call	Lcom/android/systemui/facewidget/plugin/FaceWidgetContainerWrapper;	setAlpha	(F)V	Lcom/android/systemui/facewidget/plugin/KeyguardStatusViewAlphaChangeControllerWrapper;->updateAlpha(F)V
+clock_host_dark	systemui	call	Lcom/android/systemui/facewidget/plugin/FaceWidgetContainerWrapper;	setDarkAmounts	(FF)V	Lcom/android/systemui/plugins/keyguardstatusview/PluginKeyguardStatusView;->setDarkAmounts(FF)V
+clock_host_aod_container	systemui	call	Lcom/android/systemui/facewidget/plugin/PluginFaceWidgetManager;	getAODClockView	(Z)Landroid/view/View;	Lcom/android/systemui/plugins/aod/PluginAOD;->getAODClockContainer(Z)Landroid/view/View;
+clock_host_swipe_alpha	systemui	call	Lcom/android/systemui/keyguard/animator/ActionMoveHandler;	handleMotionEvent	(Landroid/view/MotionEvent;)Z	Lcom/android/systemui/facewidget/plugin/KeyguardStatusViewAlphaChangeControllerWrapper;->updateAlpha(F)V
+clock_host_media	systemui	anchor	Lcom/android/systemui/facewidget/plugin/FaceWidgetKeyguardStatusCallbackWrapper;	onMusicItemExpaned	(Z)V	onMusicItemExpaned() isExpanded = 
+clock_host_shade_alpha	systemui	call	Lcom/android/systemui/shade/NotificationPanelViewController;	*	()V	Lcom/android/systemui/facewidget/plugin/FaceWidgetContainerWrapper;->setAlpha(F)V
+clock_host_doze	systemui	call	Lcom/android/systemui/doze/PluginAODManager;	setIsDozing	(ZZ)V	Lcom/android/systemui/plugins/aod/PluginAOD;->setIsDozing(ZZ)V
+clock_editor_available	editor	call	*	isClockBlurAvailable	()Z	Lcom/samsung/android/lockscreen/editor/item/domain/entity/item/clock/ClockData;->getIdleBlur()Z
+clock_editor_idle_write	editor	call	*	*	(Z)V	Lcom/samsung/android/lockscreen/editor/item/domain/entity/item/clock/ClockData;->setIdleBlur(Z)V
+clock_editor_animation_idle	editor	anchor	*	onClockInternalAnimationStateChanged	(Z)V	notifyAnimationState: isRunning=
+clock_editor_position_idle	editor	anchor	*	invokeSuspend	(Ljava/lang/Object;)Ljava/lang/Object;	clockPositionRect idle -> emit true
+clock_editor_item_blur	editor	call	*	*	(Landroid/view/View;Lcom/samsung/android/lockscreen/editor/item/domain/entity/blur/BlurItemData;)V	Landroid/view/View;->semSetBlurInfo(Landroid/view/SemBlurInfo;)V
+clock_editor_custom_blur	editor	call	*	*	(FILcom/samsung/android/lockscreen/editor/item/domain/entity/blur/CustomBlurSet;)Landroid/view/SemBlurInfo;	Landroid/view/SemBlurInfo$Builder;->setColorCurve(FFFFFF)Landroid/view/SemBlurInfo$Builder;

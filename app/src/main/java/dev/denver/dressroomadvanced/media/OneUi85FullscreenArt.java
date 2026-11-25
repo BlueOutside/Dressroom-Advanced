@@ -587,7 +587,7 @@ public final class OneUi85FullscreenArt {
                 liveCover.beginCollapse();
                 liveCover.update(enabled, false, true, 0f, 0f, getWidth(), getHeight(),
                         0f, nativeAlpha);
-                MediaClockContrast.clear(parent);
+                MediaClockContrast.returnToNative(parent, nativeAlpha);
                 MediaStatusBarContrast.clear(parent);
                 paletteBounds.set(0, 0, parent.getWidth(), parent.getHeight());
                 if (updateTopBand(parent, paletteBounds, nativeAlpha, true)) {
@@ -706,7 +706,9 @@ public final class OneUi85FullscreenArt {
             }
             paletteBounds.set(0, 0, parent.getWidth(), parent.getHeight());
             try {
-                MediaClockContrast.apply(parent, bitmap, paletteBounds, blurOverlay);
+                if (!nativeExpanded && MediaClockContrast.isActive(parent))
+                    MediaClockContrast.returnToNative(parent, alpha);
+                else MediaClockContrast.apply(parent, bitmap, paletteBounds, blurOverlay);
             } catch (RuntimeException error) {
                 MediaClockContrast.clear(parent);
             }
@@ -1132,7 +1134,7 @@ public final class OneUi85FullscreenArt {
             }
             if (bitmap == null || bitmap.isRecycled()) return;
             bounds.set(0, 0, getWidth(), getHeight());
-            boolean clock = MediaClockContrast.hasGlass(parent);
+            boolean clock = MediaClockContrast.wantsGlass(parent);
             boolean banner = bannerBlur == null && !bannerBounds.isEmpty();
             boolean topBand =
                     !topBlurDisabled

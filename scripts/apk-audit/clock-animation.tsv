@@ -1,0 +1,23 @@
+# role	package scope	kind	owner	name	prototype	anchor / call / library
+axis_start	provider	anchor	*	*	*	startSpringAnimation: axis=
+axis_timed_start	provider	call	*	*	(Lcom/samsung/android/clockpack/plugins/clock/ClockFontData;Ljava/util/List;)V	Landroid/animation/ValueAnimator;->ofFloat([F)Landroid/animation/ValueAnimator;
+axis_fraction	provider	call	Lcom/samsung/android/uniform/widget/clock/AbsClockView;	*	(FZ)V	Lcom/samsung/android/clockpack/plugins/clock/ClockFontData;->copy$default*
+axis_fraction95	provider	method	Lcom/samsung/android/uniform/widget/clock/AbsClockView;	*	(FFZ)V	
+axis_shrink95	provider	anchor	*	*	(F)V	startShrinkAnimation: start=
+axis_running	provider	anchor	*	*	(Z)V	setSpringAnimationRunning: 
+stretch_running	provider	anchor	*	*	(Z)V	setStretchAnimationRunning: 
+stretch_install	provider	method	Lcom/samsung/android/uniform/widget/clock/AbsClockView;	setStretchAnimator	(Z)V	
+stretch_frame_request	provider	anchor	*	*	()V	invalidate: req: 
+stretch_config	provider	anchor	*	toString	()Ljava/lang/String;	StretchAnimationConfig(accelerationUp=
+stretch_draw	provider	anchor	*	draw	(Landroid/graphics/Canvas;)V	doFrame : stretchHeights is null
+palette_start	provider	call	*	*	(Lcom/samsung/android/clockpack/plugins/clock/PaletteItem;Z)V	Landroid/animation/ValueAnimator;->cancel()V
+palette_frame	provider	call	*	onAnimationUpdate	(Landroid/animation/ValueAnimator;)V	Lcom/samsung/android/clockpack/plugins/clock/PaletteItem;->getDiffWithTarget*
+blur_ink	provider	anchor	*	*	(I)V	applyAnimatedAlpha: alpha 
+blur_reveal	provider	anchor	*	*	()V	startBlurAnimation: Starting blur animation
+blur_dashboard	provider	anchor	*	*	()V	startDashBoardBlurOnAnimation: Starting blur animation
+blur_transition	provider	anchor	*	*	(ILandroid/widget/ImageView;)V	triggerBlurTransitionAnimation: Animation started with duration 300ms, targetAlpha=
+grade_color	provider	anchor	*	*	(I)V	startColorTransition: mTextColorStartTime: 
+grade_worker	provider	anchor	*	setPreprocessingThread	(Z)V	setPreprocessingThread: starting
+page_cancel	provider	anchor	*	*	()V	Canceled. 
+page_finish	provider	anchor	*	*	()V	handleTransitionFinished()
+page_options	provider	anchor	*	toString	()Ljava/lang/String;	TransitionOption (ty=

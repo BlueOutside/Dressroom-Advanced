@@ -220,3 +220,33 @@ verification for each provider.
 The ownership traces are static. The open issue is which of these routes
 produces each remaining flash. No device trace was collected in this
 pass.
+
+
+## Complete ownership audit continuation (2026-11-24)
+
+The reference AOD/SystemUI/Dressroom ownership pass and per-role cross-version
+results are in [CLOCK_OWNERSHIP_MAP.md](CLOCK_OWNERSHIP_MAP.md). The table below
+records the starting questions; use the new map for current evidence and gaps.
+
+The existing inventories cover many classes, but they do not yet establish a
+frame-by-frame contract between every native and module writer. Do not describe
+them as complete RE of the rendering lifecycle. Start with reference One UI 9
+AOD, then trace the matching SystemUI bridge and Dressroom. Record aliases and
+xrefs before comparing the equivalent signatures in other APKs.
+
+| Phase | What must be established | Current evidence / gap |
+| --- | --- | --- |
+| Instance ownership | Visible page clock, nested clock, dashboard source/target, AOD instance and detached measurement instance; attach/detach and active profile identity | Existing inventory; still need one event timeline relating actual instances to the shared blur host and module artwork renderer. |
+| Glyph production | Font data/axes, layout, path cache invalidation, onDraw offsets, text/weather paint alpha and RGB | Cached getter returns a copy; minute-change draw deferral is confirmed. End-of-morph palette/opacity ownership remains unresolved. |
+| Native blur | Eligibility, enabled/active/configured flags, blockers/debouncers, submit/readiness, reveal animators, host bounds/clip/alpha and compositor registration | Native manager and state machine are substantially mapped. A successful request alone does not establish the visual result. |
+| Module compositing | Every writer in ClockBlurMotion, ClockBlurContinuity, ClockBlurRetries, UnlockBlur, MediaClockContrast, MediaBlurHost and both fullscreen artwork paths | Focused trace shows blur succeeds during player movement while its host alpha is 0. Opaque player glyph overrides and cached-outline fallback also exist. No single complete ownership contract yet. |
+| Event timelines | First SystemUI frame, minute tick, stretch start/frame/end, media open/close, seconds open/return, AOD enter/wake/suspend/resume, unlock/cancel, shade return, style/profile switch | For each boundary, record source and destination view identities, text/weather paint, clip generation, native-host alpha, artwork-renderer ownership and the final draw order. Avoid changing one flag without tracing its downstream callbacks. |
+| Version comparison | Stable named contracts and exact DEX call/field shapes across 8.0/8.5/9.0/9.5 AOD and Clock Style | Existing APK scans are binding evidence. Recheck each newly established writer/handoff on every known input before backporting. |
+
+The next actionable question is which layer paints the final visible clock at
+**each** opening/closing step in Natural mode, including the last frame and doze.
+The failed experiments are documented in CLOCK_RENDERING.md; their behavior is
+not part of the restored baseline. Use small, targeted runtime traces only for
+ordering that static xrefs/smali cannot establish. Do not repeatedly change
+animation durations or relax blocker sets as a substitute for identifying the
+actual owner.

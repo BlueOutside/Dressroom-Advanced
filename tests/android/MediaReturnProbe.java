@@ -225,9 +225,17 @@ public final class MediaReturnProbe {
         Class<?> art = Class.forName("dev.denver.dressroomadvanced.MediaFullscreenExtras$Art");
         var artCtor =
                 art.getDeclaredConstructor(
-                        View.class, android.widget.ImageView.class, Object.class);
+                        View.class, android.widget.ImageView.class, Object.class,
+                        OneUi9MediaBinding.HolderContract.class);
         artCtor.setAccessible(true);
-        Object state = artCtor.newInstance(image, image, holder);
+        var bitmapField = Holder.class.getDeclaredField("G0");
+        var controlsField = Holder.class.getDeclaredField("t0");
+        var containerField = Holder.class.getDeclaredField("o0");
+        var contract = new OneUi9MediaBinding.HolderContract(
+                Holder.class, bitmapField, controlsField, containerField, null,
+                containerField, containerField, null, null, containerField,
+                null, null, null);
+        Object state = artCtor.newInstance(image, image, holder, contract);
         Reflect.set(state, "small", new java.lang.ref.WeakReference<>(image));
         Reflect.set(backdrop, "current", state);
         var corner = type.getDeclaredMethod("coverCorner");

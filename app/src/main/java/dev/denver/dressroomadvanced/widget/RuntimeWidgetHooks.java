@@ -44,6 +44,7 @@ final class RuntimeWidgetHooks {
         boolean dozing, aodRequested;
         Bundle depthProfile;
         Boolean depthEnabled, maskReady;
+        String fontPath = "";
         String layout = "";
         float scale = 1f;
     }
@@ -746,21 +747,27 @@ final class RuntimeWidgetHooks {
                         false,
                         grid.getClass().getClassLoader());
         if (DepthBinding.provider(base)) {
-            Object item = Reflect.field(provider, "clockItem");
-            if (item != null) {
-                int type = ((Number) Reflect.call(item, "getClockType")).intValue();
-                Object preset = Reflect.call(Reflect.call(item, "getFont"), "getPresetFontIndex");
-                int font = preset instanceof Number ? ((Number) preset).intValue() : 0;
+            boolean early = earlyControllers.contains(controller.getClass());
+            Object item = early ? null : Reflect.field(provider, "clockItem");
+            if (early || item != null) {
+                Bundle query = early ? OneUi80WidgetRuntime.clockIdentity(provider) : new Bundle();
+                if (!early) {
+                    query.putInt("type", ((Number) Reflect.call(item, "getClockType")).intValue());
+                    Object preset = Reflect.call(Reflect.call(item, "getFont"), "getPresetFontIndex");
+                    query.putInt("font", preset instanceof Number ? ((Number) preset).intValue() : 0);
+                }
+                int type = query.getInt("type"), font = query.getInt("font");
+                String path = query.getString("fontPath", "");
                 if (force
                         || type != state.type
                         || font != state.font
+                        || !path.equals(state.fontPath)
                         || state.depthProfile == null) {
-                    Bundle query = new Bundle();
-                    query.putInt("type", type);
-                    query.putInt("font", font);
-                    state.depthProfile = SettingsBridge.read(root.getContext(), query);
+                    // Read the committed profile with the runtime clock's identity.
+                    state.depthProfile = SettingsBridge.readRuntimeClock(root.getContext(), query);
                     state.type = type;
                     state.font = font;
+                    state.fontPath = path;
                 }
                 boolean enabled = WidgetPreferences.depth(settings, state.depthProfile);
                 boolean hideOnAod = WidgetPreferences.depthOffAod(settings, state.depthProfile);
@@ -793,7 +800,7 @@ final class RuntimeWidgetHooks {
                 DepthEffects.applyWidgetRoot(root, false, null);
             }
         }
-        WidgetPlacement.apply(root, settings, provider);
+        WidgetPlacement.apply(root, settings, provider, earlyControllers.contains(controller.getClass()));
     }
 
     private void watchLayout(Object controller, ViewGroup root) {

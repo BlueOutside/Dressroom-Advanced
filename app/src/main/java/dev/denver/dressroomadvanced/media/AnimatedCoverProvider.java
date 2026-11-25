@@ -126,6 +126,11 @@ interface AnimatedCoverProvider {
             return normalizeAscii(input);
         }
 
+        static String normalizePreservingParens(String input) {
+            if (input == null || input.isEmpty()) return "";
+            return normalizeAscii(input);
+        }
+
         static boolean matchesTrack(
                 String queryArtist,
                 String querySong,

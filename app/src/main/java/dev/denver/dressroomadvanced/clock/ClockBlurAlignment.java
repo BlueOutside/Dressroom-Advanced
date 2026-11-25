@@ -106,6 +106,7 @@ final class ClockBlurAlignment {
     }
 
     static void awaitAnimator(View clock, android.animation.ValueAnimator animator) {
+        if (clock == null) return;
         State state = states.get(clock);
         if (state == null
                 || animator == null

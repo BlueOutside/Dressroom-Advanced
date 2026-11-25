@@ -165,6 +165,7 @@ final class ClockBlurMotion {
         try (HookTransaction hooks = new HookTransaction()) {
             hooks.add(module.hook(apply).setId("dressroom-advanced.clock-motion-blur-state")
                     .intercept(chain -> {
+                        LockStarClockBlur.observeController(chain.getThisObject());
                         View clock = (View) chain.getArg(1);
                         if (clock == null) return chain.proceed();
                         State state = states.computeIfAbsent(clock, key -> new State(binding, enable, configured));
@@ -283,6 +284,7 @@ final class ClockBlurMotion {
         } catch (ReflectiveOperationException | java.io.IOException | RuntimeException error) {
             module.report("Optional clock blur delay controls unavailable", error);
         }
+        LockStarClockBlur.install(module, base.getClassLoader());
     }
 
     private static AodFields aodFields(DressroomModule module, Class<?> base, Method amount,

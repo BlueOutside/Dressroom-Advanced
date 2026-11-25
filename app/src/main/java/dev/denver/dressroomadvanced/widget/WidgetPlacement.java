@@ -23,6 +23,7 @@ final class WidgetPlacement {
         View.OnLayoutChangeListener layoutListener;
         Bundle settings;
         boolean useNativePage;
+        boolean legacyHostBounds;
         final RectF lastClockRect = new RectF();
         float deltaX, deltaY, appliedX, appliedY;
 
@@ -56,7 +57,7 @@ final class WidgetPlacement {
             RectF screen = rect(window, inverse);
             // The runtime root can fill the screen even when its widget grid is narrower.
             // Dock the visible group, not that full-width wrapper.
-            RectF current = rect(placementContent(view), inverse);
+            RectF current = placementBounds(view, inverse, legacyHostBounds);
             RectF clockRect;
             if (time != null) {
                 clockRect = rect(time, inverse);
@@ -117,6 +118,10 @@ final class WidgetPlacement {
     }
 
     static void apply(View root, Bundle settings, Object provider) {
+        apply(root, settings, provider, false);
+    }
+
+    static void apply(View root, Bundle settings, Object provider, boolean legacyHostBounds) {
         if (settings == null) {
             clear(root);
             return;
@@ -130,6 +135,7 @@ final class WidgetPlacement {
         }
         State state = states.computeIfAbsent(root, State::new);
         state.settings = new Bundle(settings);
+        state.legacyHostBounds = legacyHostBounds;
         state.settings.putInt("anchor", anchor);
         state.useNativePage = provider != null && PlatformGate.oneUiVersion() >= 90500;
         if (state.useNativePage) state.clock.clear();
@@ -205,6 +211,39 @@ final class WidgetPlacement {
             }
         }
         return root;
+    }
+
+    static RectF placementBounds(View root, Matrix inverse, boolean legacyHostBounds) {
+        if (legacyHostBounds) {
+            RectF occupied = occupiedBounds(root, inverse, WidgetPlacement::isWidgetHost);
+            if (!occupied.isEmpty()) return occupied;
+        }
+        return rect(placementContent(root), inverse);
+    }
+
+    static RectF occupiedBounds(View root, Matrix inverse, java.util.function.Predicate<View> host) {
+        RectF occupied = new RectF();
+        collectHostBounds(root, inverse, occupied, host);
+        return occupied;
+    }
+
+    private static boolean isWidgetHost(View root) {
+        for (Class<?> type = root.getClass(); type != null; type = type.getSuperclass())
+            if (type.getName().equals("com.samsung.android.app.facewidget.complication.ComplicationWidgetHostViewContainer"))
+                return true;
+        return false;
+    }
+
+    private static void collectHostBounds(View root, Matrix inverse, RectF occupied,
+            java.util.function.Predicate<View> host) {
+        if (root.getVisibility() != View.VISIBLE || root.getAlpha() <= 0f) return;
+        if (host.test(root)) {
+            if (root.getWidth() > 0 && root.getHeight() > 0) occupied.union(rect(root, inverse));
+            return;
+        }
+        if (root instanceof ViewGroup group)
+            for (int i = 0; i < group.getChildCount(); i++)
+                collectHostBounds(group.getChildAt(i), inverse, occupied, host);
     }
 
     private static View findClock(View root) {

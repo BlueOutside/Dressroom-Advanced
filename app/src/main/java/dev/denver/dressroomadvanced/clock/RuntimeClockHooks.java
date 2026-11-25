@@ -148,9 +148,13 @@ final class RuntimeClockHooks {
                         | LinkageError error) {
                     module.report("8.0 media clock state unavailable", error);
                 }
-            } else NowBarGlass.install(module, loader);
+            } else {
+                NowBarGlass.install(module, loader);
+                NowBarAodOption.install(module, loader);
+            }
             DiyNowBarEffects.install(module, loader, !binding.early);
             ShadowEffects.install(module);
+            DigitAlignmentFix.install(module, loader);
             if (!binding.legacy) {
                 if (!binding.clockStyle) {
                     ClockBlurSync.install(module);

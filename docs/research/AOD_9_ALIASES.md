@@ -535,3 +535,385 @@ comparison between Samsung's `semGetWallpaperBackgroundRegion` / `stretch_ui` /
 `aod_erase_background` / SelfMove stack and Dressroom Advanced's live subject
 depth, `SharedMemory` motion IPC, clock/widget/media occlusion hooks, and
 ranked improvement opportunities.
+
+## Widget tint follow-up (2026-11-24)
+
+The loaded reference remains AOD 8.9.66.1. Added method aliases while following
+`ComplicationWidgetHostViewContainer.refreshBlur` and the preview background path:
+
+| Original method | Alias | Evidence |
+| --- | --- | --- |
+| `aod.AbstractC0537ln.m7538o` | `resolveWidgetBlurType` | Selects the clock-color/wallpaper-brightness `WidgetBlurType` used by `addBgViews`. |
+| `aod.AbstractC0537ln.m7537n` | `resolveWidgetPreviewBackgroundColor` | Returns the resource passed to preview/dim background creation. |
+
+These aliases are analysis aids. Production code continues to use validated named
+native contracts and signature discovery, without the original obfuscated names.
+
+Additional handoff aliases: `ModuleClockView.m17026W0` → `initializeWidgetManagers`,
+`aod.sl7` → `aod.SubLauncherClockActions`, and `aod.w02` →
+`aod.LockscreenEditTransitionState`. The manager initializer forwards seamless-AOD
+visibility; the sublauncher coroutine distinguishes cover editing from AOD.
+
+### Blur lifecycle / readiness batch
+
+| Original | Alias | Evidence |
+| --- | --- | --- |
+| `aod.pv2` | `ClockBlurApplyResult` | Native render result base. |
+| `aod.xb0` | `ClockBlurParameters` | Constructor and toString name brightness, scale, window backend and saturation. |
+| `aod.ac0` | `ClockBlurNotReady` | Holds glyph/weather readiness and path count. |
+| `aod.bc0` | `ClockBlurSuccess` | Successful path count. |
+| `aod.zb0` | `ClockBlurFailure` | Exception result. |
+| `aod.mb0` | `ClockBlurBlockReason` | State machine's named blocker constants. |
+
+Parameter fields are now `wallpaperBrightness`, `blurScale`, `useWindowBlur`,
+`saturation`; result fields are `glyphPathsReady`, `weatherPathReady`, `pathCount`,
+`exception`. ClockBlurManager's `f5372g/f5373h/f5378m/f5384s/f5370e` are now
+`weatherIconView/weatherInfo/useWindowBlur/blurScale/currentClockColor`.
+The alpha-change listener's smali identifies controller field `D` as the last
+status-view alpha (already aliased `keyguardAlpha`). It marks ALPHA_ANIMATING whenever alpha
+leaves 1 and clears it through the native 50ms debouncer on returning to 1.
+
+`AbsClockView.m16926R0(int)` → `updateClockShadowStyle`: selects the external or
+wallpaper-derived shadow only when glass blur is disabled; it is not a blur submit.
+
+## Clock ownership batch (2026-11-24)
+
+These are JADX display aliases verified in this pass. The previous-name
+column can contain JADX-generated identifiers; compare raw DEX descriptors
+and call/field contracts before using any result in a runtime shim.
+
+| Kind | JADX owner / previous name | Alias |
+| --- | --- | --- |
+| class | `com.samsung.android.uniform.widget.text.AbstractC1525a` | `com.samsung.android.uniform.widget.text.StateAnimatedClockTextView` |
+| class | `aod.i67` | `aod.ClockTextState` |
+| class | `aod.k67` | `aod.ClockTextTransitionSpec` |
+| class | `aod.g67` | `aod.ClockTextAnimatedValue` |
+| field | `aod.ClockFontAxisAnimator.f21175a` | `context` |
+| field | `aod.ClockFontAxisAnimator.f21176b` | `useSpringAnimation` |
+| field | `aod.ClockFontAxisAnimator.f21177c` | `ownerClock` |
+| field | `aod.ClockFontAxisAnimator.f21178d` | `isDozing` |
+| field | `aod.ClockFontAxisAnimator.f21179e` | `baseFontData` |
+| field | `aod.ClockFontAxisAnimator.f21180f` | `clockScale` |
+| field | `aod.ClockFontAxisAnimator.f21181g` | `density` |
+| field | `aod.ClockFontAxisAnimator.f21182h` | `isMediaExpanded` |
+| field | `aod.ClockFontAxisAnimator.f21183i` | `axisAnimatorSet` |
+| field | `aod.ClockFontAxisAnimator.f21184j` | `animatedAxisNames` |
+| field | `aod.ClockFontAxisAnimator.f21186l` | `springTransitionStarted` |
+| field | `aod.PaletteItemTransitionController.f9600a` | `defaultPalette` |
+| field | `aod.PaletteItemTransitionController.f9601b` | `oldPalette` |
+| field | `aod.PaletteItemTransitionController.f9602c` | `currentPalette` |
+| field | `aod.PaletteItemTransitionController.f9603d` | `newPalette` |
+| field | `aod.PaletteItemTransitionController.f9604e` | `transitionAnimator` |
+| field | `aod.PaletteItemTransitionController.f9605f` | `ownerClock` |
+| field | `aod.PaletteItemTransitionController.f9607h` | `colorStops` |
+| field | `aod.PaletteItemTransitionController.f9611l` | `paletteLock` |
+| field | `com.samsung.android.uniform.widget.clock.AbsClockView.f43107x` | `blurTextAlpha` |
+| field | `com.samsung.android.uniform.widget.clock.AbsClockView.f43100t0` | `dozeAmount` |
+| field | `com.samsung.android.uniform.widget.clock.AbsClockView.f43077f0` | `lockscreenPalette` |
+| field | `com.samsung.android.uniform.widget.clock.AbsClockView.f43079g0` | `aodPalette` |
+| method | `aod.ClockAnimationStateManager.m6681c` | `notifyAnimationStateChanged` |
+| method | `aod.ClockAnimationStateManager.m6683e` | `setSpringAnimationRunning` |
+| method | `aod.ClockAnimationStateManager.m6684f` | `setStretchAnimationRunning` |
+| method | `aod.PaletteItemTransitionController.m4403a` | `setPaletteItem` |
+| method | `aod.PaletteItemTransitionController.m4404b` | `ensureEndpointColors` |
+| method | `aod.PaletteItemTransitionController.m4405c` | `compactColorWindow` |
+| method | `com.samsung.android.uniform.widget.clock.AbsClockView.mo1631Z` | `onDozingChanged` |
+| method | `com.samsung.android.uniform.widget.clock.AbsClockView.mo1732w` | `rebuildBlurTextViews` |
+| method | `com.samsung.android.uniform.widget.ClockTextView.m16832a` | `fixFontType` |
+| method | `com.samsung.android.uniform.widget.ClockTextView.m16833b` | `updateTypeface` |
+| method | `com.samsung.android.uniform.widget.text.AbstractC1525a.m17106l` | `getStateTextColor` |
+| method | `com.samsung.android.uniform.widget.text.AbstractC1525a.m17107m` | `requestTextPreprocessing` |
+| method | `com.samsung.android.uniform.widget.text.AbstractC1525a.m17108n` | `setStateTextColor` |
+| method | `com.samsung.android.uniform.widget.text.AbstractC1525a.m17109o` | `updateStateColor` |
+| method | `com.samsung.android.uniform.widget.text.AbstractC1525a.m17110p` | `startStateTransition` |
+| method | `aod.g67.m4968a` | `setAnimationTarget` |
+| method | `aod.g67.m4969b` | `sampleFraction` |
+| method | `com.samsung.android.uniform.widget.clock.AbsClockView.m16908I` | `blendPaletteColor` |
+| method | `com.samsung.android.uniform.widget.clock.AbsClockView.m16910J` | `blendPaletteColors` |
+| method | `aod.cj1.m2849r0` | `applyGradientToTextView` |
+
+## Blur pipeline continuation (2026-11-24, later pass)
+
+Continuation of the clock-blur apply pipeline in AOD 8.9.66.1. Full
+chronological detail with evidence is in `JADX_RENAME_LOG.md`; the entries
+below are the new analysis aliases. As before, original names apply only to
+this reference build and the module keeps signature-based resolution.
+
+| Kind | Original | Alias | Evidence |
+| --- | --- | --- | --- |
+| field | `aod.CombinedBlurStrategy.f29391a` | `logTag` | ctor `"tag"` arg, AODLogger tag |
+| field | `aod.CombinedBlurStrategy.f29392b` | `clockHost` | `aod.p67` holder exposing `clockView` |
+| field | `aod.CombinedBlurStrategy.f29393c` | `blurDebugHelper` | debug-only `aod.w06` helper |
+| field | `aod.p67.f22785o` | `clockView` | cast to `AbsClockView` at all use sites |
+| method | `aod.w06.m12636A` | `initializeDebugOverlay` | "ClockBlurDebugHelper" overlay setup |
+| method | `aod.w06.m12653R` | `updateDebugOverlayWithPath` | "ClockBlurDebugHelper" path update |
+| field | `aod.w06.f32096p` / `f32097q` | `debugOverlayView` / `debugRootView` | overlay view / host root |
+| class | `aod.aj1` | `aod.ClockBlurDebugOverlayView` | View drawing debug path; `f2474o` → `debugPath` |
+| method | `aod.gv8.m5413w` | `getViewOrigin` | screen vs window origin `PointF` |
+| field | `aod.bj1.f3756v` | `clockBlurDebugOverlayEnabled` | gates debug helper creation |
+| field | `aod.ClockBlurManager.f5366a` / `f5367b` | `clockHost` / `logTag` | p67 holder / logger tag |
+| field | `aod.ClockBlurManager.f5368c` | `lastKnownIsShown` | isShown mirror; false→true triggers blur apply |
+| field | `aod.ClockBlurManager.f5369d` | `globalLayoutListener` | `aod.xp0` OnGlobalLayoutListener |
+| field | `aod.ClockBlurManager.f5380o` | `blurDebugHelper` | debug helper instance |
+| field | `aod.ClockBlurManager.f5382q` | `unsupportedBlurClockDelegate` | KProperty idx 0 "unsupportedBlurClock" |
+| field | `aod.ClockBlurManager.f5383r` | `blurEffectEnabledDelegate` | idx 1 "blurEffectEnabled" |
+| field | `aod.ClockBlurManager.f5385t` | `weatherInfoEnabledDelegate` | idx 2 "weatherInfoEnabled" |
+| field | `aod.ClockBlurManager.f5386u` | `collectedViewsLogDelegate` | idx 3 "collectedTextViewLogMsg" |
+| method | `aod.ClockBlurManager.m2925f` | `formatColorDebug` | ARGB → "Color R.. G.. B.. A.." |
+| field | `aod.ClockBlurStateMachine.f7198b` | `logTag` | ctor tag |
+| field | `aod.ClockBlurStateInfo.f8153c` | `timestampMillis` | currentTimeMillis, printed as timestamp |
+| field | `aod.sx0.f28030o` / `f28031p` / `f28032q` | `listenerMode` / `targetAlpha` / `target` | animator listener switch/args |
+| class | `aod.l49` | `aod.WallpaperBrightnessInfo` | toString label; `f17619a`/`f17620b` → `brightness`/`saturation` |
+| class | `aod.pb0` | `aod.ColorCurveParams` | toString label; fields → `x1,y1,x2,y2,minY,maxY` |
+| field | `aod.ClockBlurPropertyDelegate.f2673p` / `f2674q` | `propertyIndex` / `ownerManager` | delegate index / owning manager |
+| method | `AbsClockView.m16905G` | `getAdjustedAodPaletteItem` | "getAdjustedAODColorItem" log |
+| method | `AbsClockView.mo16917M0` | `updatePaletteAndPrimaryColor` | log label |
+| method | `AbsClockView.mo16921O0` | `updatePaletteOnAnimation` | log label |
+| method | `AbsClockView.mo1634d0` | `applyShadowStyle` | abstract ShadowStyle hook |
+| field | `AbsClockView.f43076e1` / `f43069b0` / `f43083i0` | `hasFrame` / `paletteStyle` / `paletteIndex` | setHasFrame / EnumC0303fb / preset index |
+| field | `AbsClockView.f43086l0` / `f43089o` | `customColor` / `logTag` | setCustomColorInternal / logger tag |
+| field | `AbsClockView.f43075e0` / `f43081h0` | `presetPaletteItem` / `paletteCode` | preset clone source / getPaletteCode |
+| field | `AbsClockView.f43110y0` / `f43112z0` | `externalShadowStyle` / `currentShadowStyle` | external vs effective shadow |
+| field | `AbsClockView.f43072c1` | `weatherInfo` | WeatherInfo holder |
+| field | `aod.PersistentBlurReasonMapping.f20671a` | `persistentReasonKindByOrdinal` | ordinal→kind table for hasPersistentBlockReason |
+
+## Animation-state / sublauncher / layout-listener pass (2026-11-24, later pass 2)
+
+| Kind | Original | Alias | Evidence |
+| --- | --- | --- | --- |
+| field | `aod.ClockAnimationStateManager.f15995o` | `containerMode` | ctor switch picks callback container type |
+| field | `...f15996p` / `f15997q` | `stretchAnimationRunning` / `springAnimationRunning` | set by the two setters, OR'd by `isClockInternalAnimationRunning` |
+| field | `...f15998r` | `lastNotifiedRunningState` | notify-state compare in `notifyAnimationStateChanged` |
+| field | `...f15999s` | `callbackContainer` | ArrayDeque / rp4 / CopyOnWriteArrayList per mode |
+| method | `aod.ClockAnimationStateManager.m6679a` / `m6682d` | `drainPendingRunnables` / `clearCallbackStore` | queue drain / store clear |
+| field | `aod.SubLauncherClockActions.f27645o` / `f27646p` | `coroutineState` / `ownerController` | Function2 state index / captured controller |
+| field | `aod.xp0.f34554o` / `f34555p` / `f34556q` | `listenerMode` / `clockBlurManager` / `clockViewFrame` | onGlobalLayout switch + case-0 casts |
+
+## Stretch measure + Now Bar callbacks pass (2026-11-24, later pass 3)
+
+| Kind | Original | Alias | Evidence |
+| --- | --- | --- | --- |
+| field | `aod.RunStretchMeasureProcessUseCase.f9742a..f9746e` | `clockPositionCalculator` / `clockStretchDataRepository` / `clockDataRepository` / `stretchMeasureProcessRunner` / `logTag` | ctor param names + tag string |
+| method | `aod.RunStretchMeasureProcessUseCase.m4462b` | `computeStretchContentRect` | rect copy minus stretch offset |
+| field | `aod.SetNowBarMediaExpandStateUseCase.f4330a` / `f4331b` | `nowBarMediaExpandStateRepository` / `statusCallback` | ctor param names |
+| method | `aod.SetNowBarMediaExpandStateUseCase.m2426a` / `m2427b` | `setMediaExpandedState` / `updateExpandStateLiveData` | repo write + `onMusicItemExpaned` / LiveData-only post |
+| field | `aod.ClockStretchPhysicsAnimator.f4736n` / `f4749m` | `debugLogEnabled` / `profiler` | `bj1.f3760z` debug gate / String[100]+long[100] recorder |
+| field | `aod.NowBarStackCardCallbacks.f2395o` / `f2396p` | `callbackMode` / `callbackTarget` | dispatcher switch + per-interface casts |
+| method | `aod.NowBarStackCardCallbacks.m1389v0` / `m1391A0` / `m1393B0` / `m1454t0` / `m1460x0` / `m1462y0` / `m1464z0` | `loadCoverKeyguardImage` / `onExpandVIStarted` / `onExternalNowbarExpandCardAttached` / `createBottomMarginAnimator` / `notifyViewVisibilityChanged` / `onCollapsedTouchFromCard` / `onExpandCardInflatedFromCardView` | SystemUI cover-image URI, log labels, delegated calls |
+
+## ModuleClockView pass (2026-11-24, later pass 4)
+
+| Kind | Original | Alias | Evidence |
+| --- | --- | --- | --- |
+| field | `ModuleClockView.f43476l1` / `f43477m1` | `frameWidgetTypeProvider` / `settingsHelper` | `sn2.getFrameWidgetType` / `SettingsHelper` |
+| field | `ModuleClockView.f43478n1` / `f43479o1` | `briefWidgetComponent` / `briefWidgetManager` | created in `createBriefWidgetComponent` / `IBriefWidgetManager` |
+| field | `ModuleClockView.f43480p1` / `f43481q1` | `briefWidgetContainer` / `clockWidgetContainer` | `brief_widget_container` / `basic_clock_widget_clock_container` view ids |
+| field | `ModuleClockView.f43482r1` / `f43483s1` | `clockView` / `moduleInfo` | inner `AbsClockView` / `setModuleData` string |
+| field | `ModuleClockView.f43484t1` | `currentFrameWidgetType` | `updateWidgetType` compare |
+| field | `ModuleClockView.f43485u1` / `f43486v1` / `f43487w1` | `positionX` / `positionY` / `clockScale` | `ek4` position-data args |
+| field | `ModuleClockView.f43488x1` / `f43489y1` / `f43490z1` | `previewMode` / `editable` / `frameDecorator` | `setPreviewMode`/`setEditable`/`C0663p1` wrapper |
+| method | `ModuleClockView.m17024U0` / `m17025V0` | `hasWidgetManagers` / `updatePositionData` | readiness check / position controller write |
+
+## Clock view subclasses pass (2026-11-24, later pass 5)
+
+| Kind | Original | Alias | Evidence |
+| --- | --- | --- | --- |
+| method | `ClockFaceView.m16976U0` / `m16985d1` | `requestClockFaceInfoOnFontChanged` / `requestClockFaceInfo` | "requestClockFaceInfo ..." log labels |
+| method | `ClockFaceView.m16978W0` / `ClockFaceCustomView.m16955V0` | `changeToDefaultClockType` | log label |
+| method | `ClockFaceView.m16979X0` | `captureViewBitmap` | measures view, draws to Bitmap |
+| method | `ClockFaceView.m16981Z0` / `ClockFaceCustomView.m16957X0` | `applyBatteryActions` | iterates `BatteryAction` list |
+| method | `ClockFaceView.m16982a1` | `applyMinSize` | log label |
+| method | `ClockFaceView.m16983b1` / `ClockFaceCustomView.m16959Z0` | `getLinearGradientDrawable` | log label |
+| method | `ClockFaceView.m16984c1` | `createClockFaceRequest` | builds Bundle + ClockFaceRequest |
+| method | `ClockFaceCustomView.m16958Y0` | `applyColorFilter` | log label |
+| method | `ClockFaceCustomView.m16960a1` | `applyHoneyFaceRule` | applies `HoneyFaceRule` |
+| method | `ClockFaceCustomView.m16961b1` | `readStreamBytes` | InputStream→byte[] loop |
+| method | `ClockFaceCustomView.m16962c1` | `isMainScreenCategory` | LOCK_SCREEN/SUB_LAUNCHER/SUB_UI |
+| method | `ClockFaceCustomView.m16963d1` | `loadWatchFaceSurface` | WatchfaceSurfaceView "load:" |
+| method | `DigitalDualClockView.m16989W0` / `m16991V0` / `m16992X0` / `m16994Z0` | `setImageViewsColorFilter` / `setTimeAndSpaceVisibility` / `updateAreaVisibility` / `applyDateTimeTexts` | view-binding bodies |
+| method | `DigitalHorizontalClockView.m16996W0` / `m16997X0` | `onFontStyleUpdated` / `showNormalTimeArea` | log label / normal-vs-stretch area switch |
+| method | `AnalogClockView.m16951V0` | `applyScalePivotToView` | `getScalePivot()` |
+| method | `CityClockView.m16953a1` | `setTextSizeScaled` | setTextSize wrapper |
+
+Area notes: `common.grid.rule`, `common.provider.p003DB`, and
+`facewidget.complication` are Samsung-named at class and member level
+(sampled: 0 raw members)  -  no renames needed there.
+
+## Debug flags + settings-key infrastructure pass (2026-11-24, later pass 6)
+
+| Kind | Original | Alias | Evidence |
+| --- | --- | --- | --- |
+| class | `aod.xi1` | `aod.BuildTypeFlags` | `isNonShipBuild` (`!ro.product_ship`), `isEngOrUserdebugBuild` |
+| class | `aod.bj1` | `aod.AodDebugFlags` | 28 flags mapped to `debug.aod.*` / `persist.debug.*` SemSystemProperties (e.g. `debugTapToShow`, `debugClockMovableArea`, `clockBlurStateDebugEnabled`, `debugPreviewSaveBitmap`, 7 `logModule*` filters) |
+| class | `aod.rt6` | `aod.SettingKeyEntry` | `settingsTable`/`key`/`keyUri`/`dataType`/`defaultIntValue`/`userSuffix`/`cachedIntValue`/`cachedStringValue`; `getIntValue`/`getStringValue`/`buildKeyUri`/`loadValueFromResolver` |
+| method | `aod.z82.m14360M` / `m14362O` | `registerSettingEntry` / `getSettingEntry` | settings cache on mega class |
+| field | `SettingsHelper.f39619e` | `settingsCache` | z82 cache of 227 registered keys |
+| method | `SettingsHelper.m15243x` | `isNowBarAodEnabled` | `now_bar_aod_enabled==1` + fullscreen-AOD/media-card check |
+| method | `SettingsHelper.m15244y` / `m15245z` / `m15200B` | `isLockscreenWallpaperTransparent` / `isRemoveAnimationsEnabled` / `isCoverScreenShowNotificationEnabled` | |
+
+See `HIDDEN_FEATURES.md` for the full hidden-settings inventory and the
+Now Bar on AOD flow (`now_bar_aod_enabled`, backup key `/AOD/ShowNowBarEnabled`).
+
+## Device feature wall pass (2026-11-24, later pass 7)
+
+| Kind | Original | Alias | Evidence |
+| --- | --- | --- | --- |
+| class | `aod.ha6` | `aod.DeviceFeatureFlags` | 135-flag clinit over SamsungFeatureReader / SemSystemProperties / CSC / sysfs |
+| field | `aod.DeviceFeatureFlags.f12824J0` | `aodFullscreenLevel` | `SEC_FLOATING_FEATURE_LCD_CONFIG_AOD_FULLSCREEN`, consumed by `cj1.isFullScreenAODSupported` |
+| field | `f12845U` / `f12847V` / `f12866g0` | `supportsLockscreenTile` / `supportsAodTile` / `supportsVirtualDisplay` | tile config contains checks |
+| field | `f12865g` / `f12899x` / `f12871j` / `f12873k` / `f12867h` | `isChinaDevice` / `isIranDevice` / `isUsDevice` / `isKoreaDevice` / `isChinaCarrier` | country ISO / sales code |
+| field | `f12829M` / `f12817G` | `isE5SeriesDevice` / `isB4qE4qDevice` | `ro.product.vendor.device` |
+| field | `f12813E` / `f12828L0` | `nativeAiEnabled` / `nativeAiDisabled` | `SEC_FLOATING_FEATURE_COMMON_DISABLE_NATIVE_AI` |
+| field | `f12898w0` / `f12900x0` / `f12902y0` | `aiBriefSupported` / `aiConfigVersionGte20263` / `aiConfigVersionLt20263` | AI version + AI Brief feature |
+| field | `f12878m0` | `selfPokeDrawLockEnabled` | `persist.enable.self.poke.draw_lock` |
+| field | `f12848V0` | `foldPerformanceDebug` | `debug.aod.fold_performance` |
+| field | `f12808B0` / `f12897w` | `defaultClockPackage` / `hasClockPackVersionOverride` | ClockPack vs AOD / clockpackversion config |
+| field | `f12854a0` / `f12856b0` / `f12858c0` | `hasBatteryTimeToFull` / `hasLedPattern` / `isAmoledDisplay` | sysfs + AMOLED feature |
+| field | `f12831N` / `f12850X` / `f12876l0` / `f12886q0` | `supportsDisabledMenuN40` / `frameworkVersionGte110500` / `semVersionGte50000` / `semVersionGte80000` | feature/version gates |
+
+Full hidden inventory (providers, receivers, SCPM policies, Rubin feeds,
+NHN Now Bar provider, Dressroom provider): `HIDDEN_FEATURES.md`.
+
+## SCPM / per-app Now Bar pass (2026-11-24, later pass 8)
+
+| Kind | Original | Alias | Evidence |
+| --- | --- | --- | --- |
+| class | `aod.df6` | `aod.ScpmAodPolicyManager` | "ScpmManager_AOD"; SCPM provider registration + policy write to `Secure/scpm_aod_common_policy` |
+| class | `aod.AbstractC0814t1` | `aod.AodCommonSettingsUtils` | "AODCommonSettingsUtils"; parses SCPM XML (`nowbar_commute`, device_policy) |
+| method | `m11184A`..`m11187D` | `isNowBarCommutePolicyEnabled` / `isGoogleMapsNowBarCommuteEnabled` / `isGoogleFinanceNowBarEnabled` / `isGoogleQuickSearchBoxNowBarEnabled` | policy contains-check + per-app `key_now_bar_*` System keys |
+
+Hidden settings/policy inventory: `HIDDEN_FEATURES.md` (SCPM flow, `key_now_bar_*`
+family, `dls_state` bitmask, all 107 registered keys, search-exposed subset).
+
+## Settings consumer map pass (2026-11-24, later pass 9)
+
+| Kind | Original | Alias | Evidence |
+| --- | --- | --- | --- |
+| class | `aod.C0336g7` | `aod.AODSettingsMainPrefsFragment` | "AODSettingsMainPrefsFragment"; erase-background toggle + preview |
+| class | `aod.iz6` | `aod.SleepStateManager` | "SleepStateManager"; sleep/fence state writes |
+| class | `aod.C0409i6` | `aod.RunestoneManagerDump` | RunestoneManager dump incl. fence status |
+| method | `SettingsHelper.m15241v` | `isMultipleLockscreenEnabled` | kg_multiple_lockscreen observer |
+
+20 hidden keys traced to their driving feature  -  see `HIDDEN_FEATURES.md` consumer map.
+
+## Hidden test UI pass (2026-11-24, later pass 10)
+
+| Kind | Original | Alias | Evidence |
+| --- | --- | --- | --- |
+| class | `aod.ti8` | `aod.TestModeSettingFragment` | hosted by `aod.setting.TestModeSettingActivity`; 14 hidden test keys + `fix_aod_position`/`aod_clock_type`/`locale_index`/`calendar_index` extras |
+
+Hidden activities, Knox-AI (`SemEnterpriseDeviceManager` app restrictions for
+`com.samsung.android.knox.galaxyai`), and test knobs: `HIDDEN_FEATURES.md` §I-K.
+
+## Test-mode gate + Rubin pass (2026-11-24, later pass 11)
+
+| Kind | Original | Alias | Evidence |
+| --- | --- | --- | --- |
+| method | `aod.wt6.m12972e` | `isAodTestModeEnabled` | `Settings.System "aod_test_mode_only"==1` |
+| method | `aod.wt6.m12975h` | `isHijriTestModeEnabled` | test mode + `aod_hijri_test_mode` |
+
+Rubin = on-device AI ("Runestone"): persona/context content providers feed Now Bar;
+`RunestoneSleepApi` context fences drive AOD sleep/wake (`AODFenceReceiver` →
+`aod_sleep_state` / `aod_context_fence_not_working`). Details: `HIDDEN_FEATURES.md`.
+
+## Settings UI / helper class pass (2026-11-24, later pass 12)
+
+| Kind | Original | Alias | Evidence |
+| --- | --- | --- | --- |
+| class | `aod.nb2` | `aod.FaceWidgetSettingsMainPrefFragment` | log tag; where_to_show switch |
+| class | `aod.ga2` | `aod.FaceWidgetMusicSettingsPrefFragment` | log tag; music transparency |
+| class | `aod.tn1` | `aod.DimAnimationHelper` | "DimAnimationHelper" |
+| class | `aod.s66` | `aod.ResetUtils` | "ResetUtils"; CMF color-area reset |
+| class | `aod.la2` | `aod.ExternalFileReader` | "ExternalFileReader" |
+| class | `aod.C0372h6` | `aod.SleepStateSettingObserver` | sleep/fence key observer |
+| class | `aod.jz6` | `aod.SleepStateObserverRegistrar` | observer registration |
+
+Session summary: `AOD_9_EXPLORATION_SUMMARY.md` (273 renames, 17 batches).
+
+## Key-trace helper pass (2026-11-24, later pass 13)
+
+| Kind | Original | Alias | Evidence |
+| --- | --- | --- | --- |
+| class | `aod.v10` | `aod.ScpmSubscreenPolicyHandler` | "ScpmSubscr" log; SCPM subscreen preload policy JSON |
+| class | `aod.rv2` | `aod.MultiFoldSubDisplayModeController` | writes `aod_multi_fold_sub_display_mode` |
+
+16 more settings keys traced + Rubin→Now Bar wiring: `HIDDEN_FEATURES.md` §L-M.
+
+
+## Animation engine contract pass (2026-11-24)
+
+62 successful rename operations are recorded for this pass: 58 from the first
+animation trace and four palette callback aliases on continuation. Three failed
+synthetic-capture field attempts were excluded. Some captures became inlined
+in JADX after decompilation; an alias does not imply a separate visible field
+in every decompiler view. Identifiers are the pre-rename JADX presentation,
+not reusable runtime hook keys.
+
+See [animation engine audit](CLOCK_ANIMATION_ENGINES.md) for the source/smali
+contracts, timings, version boundaries and outstanding proof. R8-merged
+callback classes were not renamed wholesale.
+
+| Kind | Before | Alias | Evidence |
+| --- | --- | --- | --- |
+| field | `aod.c97.f4737a` | `slotCount` | Constructor and frame/state reads/writes |
+| field | `aod.c97.f4738b` | `requestedHeights` | Constructor and frame/state reads/writes |
+| field | `aod.c97.f4739c` | `slotEngine` | Constructor and frame/state reads/writes |
+| field | `aod.c97.f4740d` | `frameCallback` | Constructor and frame/state reads/writes |
+| field | `aod.c97.f4741e` | `physicsConfig` | Constructor and frame/state reads/writes |
+| field | `aod.c97.f4742f` | `maxHeightRatio` | Constructor and frame/state reads/writes |
+| field | `aod.c97.f4743g` | `mainHandler` | Constructor and frame/state reads/writes |
+| field | `aod.c97.f4744h` | `started` | Constructor and frame/state reads/writes |
+| field | `aod.c97.f4745i` | `running` | Constructor and frame/state reads/writes |
+| field | `aod.c97.f4746j` | `continueFrames` | Constructor and frame/state reads/writes |
+| field | `aod.c97.f4747k` | `frameRequested` | Constructor and frame/state reads/writes |
+| field | `aod.c97.f4748l` | `lastFrameNanos` | Constructor and frame/state reads/writes |
+| field | `aod.z87.f36713a` | `accelerationUp` | Constructor and frame/state reads/writes |
+| field | `aod.z87.f36714b` | `accelerationDown` | Constructor and frame/state reads/writes |
+| field | `aod.z87.f36715c` | `maxSpeed` | Constructor and frame/state reads/writes |
+| field | `aod.z87.f36716d` | `speedScale` | Constructor and frame/state reads/writes |
+| field | `aod.z87.f36717e` | `restitution` | Constructor and frame/state reads/writes |
+| field | `aod.z87.f36718f` | `nominalFrameNanos` | Constructor and frame/state reads/writes |
+| field | `aod.z87.f36719g` | `minTimeDeltaScale` | Constructor and frame/state reads/writes |
+| field | `aod.z87.f36720h` | `maxTimeDeltaScale` | Constructor and frame/state reads/writes |
+| field | `aod.b97.f3287a` | `maxHeightRatio` | Constructor and frame/state reads/writes |
+| field | `aod.b97.f3288b` | `currentHeight` | Constructor and frame/state reads/writes |
+| field | `aod.b97.f3289c` | `targetHeight` | Constructor and frame/state reads/writes |
+| field | `aod.b97.f3290d` | `initialDelta` | Constructor and frame/state reads/writes |
+| field | `aod.b97.f3291e` | `velocity` | Constructor and frame/state reads/writes |
+| field | `aod.b97.f3292f` | `acceleration` | Constructor and frame/state reads/writes |
+| field | `aod.b97.f3293g` | `restitution` | Constructor and frame/state reads/writes |
+| field | `aod.b97.f3294h` | `speedScale` | Constructor and frame/state reads/writes |
+| field | `aod.mr0.f19882o` | `phase` | Constructor and frame/state reads/writes |
+| field | `aod.mr0.f19883p` | `axisAnimator` | Constructor and frame/state reads/writes |
+| field | `aod.PaletteItemTransitionController.f9606g` | `animationFraction` | Constructor and frame/state reads/writes |
+| field | `aod.PaletteItemTransitionController.f9608i` | `targetOffset` | Constructor and frame/state reads/writes |
+| field | `aod.PaletteItemTransitionController.f9609j` | `windowTransitionLength` | Constructor and frame/state reads/writes |
+| field | `aod.PaletteItemTransitionController.f9610k` | `windowOffset` | Constructor and frame/state reads/writes |
+| field | `aod.ClockFontAxisAnimator.f21185k` | `animationStateListener` | Constructor and frame/state reads/writes |
+| method | `aod.ClockFontAxisAnimator.m8609c` | `hasStretchedHeights` | Body, callers and completion/clip semantics |
+| method | `aod.ClockFontAxisAnimator.m8610a` | `resolveClockType` | Body, callers and completion/clip semantics |
+| method | `aod.ClockFontAxisAnimator.m8611b` | `getAnimationLogTag` | Body, callers and completion/clip semantics |
+| method | `aod.c97.m2585a` | `requestAnimationFrame` | Body, callers and completion/clip semantics |
+| method | `aod.c97.m2586b` | `updateMaxHeightForFont` | Body, callers and completion/clip semantics |
+| method | `aod.c97.m2587c` | `seedStretchHeights` | Body, callers and completion/clip semantics |
+| method | `aod.c97.m2588d` | `setRunning` | Body, callers and completion/clip semantics |
+| method | `aod.b97.m1961a` | `applyPhysicsConfig` | Body, callers and completion/clip semantics |
+| method | `aod.z87.m14369a` | `accelerationForDelta` | Body, callers and completion/clip semantics |
+| method | `aod.FaceWidgetTransition.m9763a` | `applyPropertyAnimationOptions` | Body, callers and completion/clip semantics |
+| method | `aod.FaceWidgetTransition.m9774m` | `applyTransitionClipping` | Body, callers and completion/clip semantics |
+| method | `aod.FaceWidgetTransition.m9775n` | `clearDescendantTransitionClips` | Body, callers and completion/clip semantics |
+| method | `aod.FaceWidgetTransition.m9776o` | `clearAncestorTransitionClips` | Body, callers and completion/clip semantics |
+| method | `aod.CombinedBlurStrategy.m11663a` | `finishBlurTransitionAlpha` | Body, callers and completion/clip semantics |
+| method | `aod.ub2.m11827a` | `setTransitionMonitor` | Body, callers and completion/clip semantics |
+| class | `aod.c97` | `ClockStretchPhysicsAnimator` | Construction, frame ownership and xrefs |
+| class | `aod.b97` | `ClockStretchSlotState` | Construction, frame ownership and xrefs |
+| class | `aod.z87` | `ClockStretchPhysicsConfig` | Construction, frame ownership and xrefs |
+| class | `aod.C0230db` | `ClockStretchFrameDrawable` | Construction, frame ownership and xrefs |
+| class | `aod.mr0` | `ClockFontAxisFrame` | Construction, frame ownership and xrefs |
+| class | `aod.a97` | `ClockStretchHeightsFrame` | Construction, frame ownership and xrefs |
+| class | `aod.rb2` | `ClockPageTransitionOptions` | Construction, frame ownership and xrefs |
+| class | `aod.ub2` | `ClockPageTransitionSynchronizer` | Construction, frame ownership and xrefs |
+| class | `aod.e95` | `ClockPaletteTransitionCallbacks` | Interface plus palette/ModuleClockView xrefs |
+| method | `aod.e95.mo1632a` | `onPaletteTransitionFrame` | Palette frame/start/end callers |
+| method | `aod.e95.mo1635e` | `onPaletteTransitionFinished` | Palette frame/start/end callers |
+| method | `aod.e95.mo1641m` | `onPaletteTransitionStarted` | Palette frame/start/end callers |

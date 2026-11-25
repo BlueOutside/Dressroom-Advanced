@@ -99,12 +99,11 @@ public final class UnlockBlurProbe {
             @Override public void onAnimationEnd(android.animation.Animator animation) { completed[0]++; }
         });
         reveal.start();
-        ClockBlurContinuity.settle(reveal);
-        check(!reveal.isStarted() && ((Number) reveal.getAnimatedValue()).floatValue() == 1,
-                "Clock transition did not apply its native final values");
-        check(completed[0] == 1, "Clock transition completion callback lost");
-        ClockBlurContinuity.settle(reveal);
-        check(completed[0] == 1, "Finished clock transition was completed twice");
+        ClockBlurAlignment.awaitAnimator(clock, reveal);
+        check(reveal.isStarted() && completed[0] == 0,
+                "Clock transition committed its native endpoint early");
+        ClockBlurContinuity.forget(clock);
+        reveal.cancel();
         drawable.setAlpha(180);
         Method begin = UnlockBlur.class.getDeclaredMethod("begin"); begin.setAccessible(true);
         Method visible = UnlockBlur.class.getDeclaredMethod("restoreVisible"); visible.setAccessible(true);
@@ -161,6 +160,33 @@ public final class UnlockBlurProbe {
                 "Disable leaves a gesture active");
         uninstall.invoke(null);
         check(removed[0] == 2, "Repeated disable unhooks twice");
+        // Verify MediaBlurHost + UnlockBlur compose cleanly without poisoning each other's baselines.
+        View sharedHost = new AttachedView(context);
+        sharedHost.setAlpha(.8f);
+        MediaBlurHost.fade(sharedHost, .25f);
+        clocks.put(sharedHost, MediaBlurHost.requestedAlpha(sharedHost));
+        check(Math.abs(clocks.get(sharedHost) - .8f) < .00001f,
+                "UnlockBlur captured MediaBlurHost's held opacity as native baseline");
+        field("active").setBoolean(null, true);
+        field("alpha").setFloat(null, .5f);
+        apply.invoke(null);
+        check(Math.abs(sharedHost.getAlpha() - .1f) < .00001f,
+                "UnlockBlur overwrote MediaBlurHost factor during swipe");
+        check(Math.abs(MediaBlurHost.requestedAlpha(sharedHost) - .8f) < .00001f,
+                "UnlockBlur internal write poisoned MediaBlurHost nativeAlpha");
+        float composed = ViewAlphaHooks.dispatch(sharedHost, .6f);
+        check(Math.abs(composed - .075f) < .00001f,
+                "Shared View.setAlpha dispatch failed to compose media and unlock factors");
+        check(Math.abs(clocks.get(sharedHost) - .6f) < .00001f
+                        && Math.abs(MediaBlurHost.requestedAlpha(sharedHost) - .6f) < .00001f,
+                "Native View.setAlpha write corrupted either baseline");
+        MediaBlurHost.release(sharedHost);
+        check(Math.abs(sharedHost.getAlpha() - .3f) < .00001f,
+                "Releasing MediaBlurHost during active swipe skipped UnlockBlur factor");
+        field("active").setBoolean(null, false);
+        restore.invoke(null);
+        check(Math.abs(sharedHost.getAlpha() - .6f) < .00001f,
+                "Completed swipe failed to restore latest native alpha");
         covers.clear();
         clocks.clear(); backgrounds.clear();
     }

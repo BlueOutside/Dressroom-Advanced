@@ -8,7 +8,7 @@ import java.lang.reflect.Method;
 import java.util.Map;
 import java.util.Set;
 
-/** Reusing a visible window blur doesn't need another native zero-to-one fade. */
+/** Keep geometry fresh without committing native animation endpoints early. */
 final class ClockBlurContinuity {
     private ClockBlurContinuity() {}
 
@@ -39,13 +39,6 @@ final class ClockBlurContinuity {
             }
         }
         if (fades.isEmpty() || fades.size() > 2) throw new NoSuchMethodException("Ambiguous blur fade entries");
-        if (binding.animator == null) throw new NoSuchFieldException("Native blur reveal animator");
-        Class<?> strategy = binding.strategy.getType();
-        Method transition =
-                NativeContract.findMethod(
-                        strategy, null, void.class, int.class, android.widget.ImageView.class);
-        Field transitionAnimator =
-                NativeContract.findField(strategy, null, android.animation.ValueAnimator.class);
         Field dashboardAnimator = fades.values().stream().filter(Fade::dashboard)
                 .map(Fade::animator).findFirst().orElse(null);
         if (dashboardAnimator != null) {
@@ -63,50 +56,32 @@ final class ClockBlurContinuity {
                 hooks.add(module.hook(fade).setId("dressroom-advanced.clock-continuous-blur")
                         .intercept(chain -> {
                             Object source = chain.getThisObject();
-                            boolean returning = false;
                             if (state.dashboard) {
                                 try {
-                                    returning = ClockBlurMotion.returning(binding.clock(source));
-                                    if (state.animator.get(source) instanceof ValueAnimator previous
+                                    if (ClockBlurMotion.returning(binding.clock(source))
+                                            && state.animator.get(source) instanceof ValueAnimator previous
                                             && previous.isStarted()) return null;
                                 } catch (ReflectiveOperationException | RuntimeException error) {
                                     DressroomModule.note("Seconds-view blur fade state", error);
                                 }
                             }
                             Object result = chain.proceed();
-                            if (!returning) {
-                                try {
-                                    settle((ValueAnimator) state.animator.get(source));
-                                } catch (ReflectiveOperationException | RuntimeException error) {
-                                    DressroomModule.note("Native clock reveal completion", error);
-                                }
+                            try {
+                                ClockBlurAlignment.awaitAnimator(binding.clock(source),
+                                        (ValueAnimator) state.animator.get(source));
+                            } catch (ReflectiveOperationException | RuntimeException error) {
+                                DressroomModule.note("Native clock fade alignment", error);
                             }
                             return result;
                         })::unhook);
                 module.deoptimize(fade);
             }
-            hooks.add(
-                    module.hook(transition)
-                                    .setId("dressroom-advanced.clock-blur-transition-final-state")
-                                    .intercept(
-                                            chain -> {
-                                                Object result = chain.proceed();
-                                                try {
-                                                    settle(
-                                                            (android.animation.ValueAnimator)
-                                                                    transitionAnimator.get(
-                                                                            chain.getThisObject()));
-                                                } catch (ReflectiveOperationException
-                                                        | RuntimeException error) {
-                                                    DressroomModule.note(
-                                                            "Native clock transition completion",
-                                                            error);
-                                                }
-                                                return result;
-                                            })
-                            ::unhook);
-            module.deoptimize(transition);
             hooks.commit();
+        }
+        try {
+            ClockBlurColors.install(module, binding);
+        } catch (ReflectiveOperationException | RuntimeException | java.io.IOException | LinkageError error) {
+            module.report("Optional native clock path-color correction unavailable", error);
         }
         try {
             ClockBlurMotion.install(module, binding);
@@ -151,10 +126,6 @@ final class ClockBlurContinuity {
                             : chain.proceed(new Object[] {value});
                 })::unhook);
         module.deoptimize(alpha);
-    }
-
-    static void settle(android.animation.ValueAnimator animation) {
-        if (animation != null && animation.isStarted()) animation.end();
     }
 
     static void beforeDraw(View clock) {

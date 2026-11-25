@@ -27,12 +27,10 @@ final class AodWidgetAppearance {
     private AodWidgetAppearance() {}
 
     static synchronized void install(DressroomModule module, ClassLoader loader) {
-        if (module.inEditorProcess() || !WallpaperAod.supported()) return;
+        if (module.inEditorProcess() || !WallpaperAod.fullscreenSupported()) return;
         try (HookTransaction hooks = new HookTransaction()) {
             Class<?> owner = Class.forName(WIDGETS + "ComplicationWidgetHostViewContainer", false, loader);
             if (installed.containsKey(owner) || !View.class.isAssignableFrom(owner)) return;
-            Class<?> preset = Class.forName(WIDGETS + "WidgetBlurType", false, loader);
-            Class<?> curves = Class.forName(WIDGETS + "WidgetBlurTypeKt", false, loader);
             Field wallpaper = NativeContract.field(owner, "showWallpaperOnAOD", boolean.class);
             Field reduceTransparency;
             try {
@@ -44,8 +42,18 @@ final class AodWidgetAppearance {
             Method darkAmount = NativeContract.method(owner, "setDarkAmount", void.class, float.class);
             Method update = NativeContract.method(owner, "changeBlurBgByDarkAmount", void.class, float.class);
             if (!Modifier.isFinal(refresh.getModifiers())) return;
-            List<Method> directional = directionalCurves(refresh, curves, preset);
-            for (Method method : directional) {
+            List<Method> found;
+            try {
+                Class<?> preset = Class.forName(WIDGETS + "WidgetBlurType", false, loader);
+                Class<?> curves = Class.forName(WIDGETS + "WidgetBlurTypeKt", false, loader);
+                found = directionalCurves(refresh, curves, preset);
+            } catch (ReflectiveOperationException | java.io.IOException | RuntimeException | LinkageError unavailable) {
+                // Custom AOD tint/radius must not depend on the optional native-preset override.
+                module.report("Optional AOD widget lockscreen color curves unavailable", unavailable);
+                found = null;
+            }
+            final List<Method> directional = found;
+            for (Method method : directional == null ? List.<Method>of() : directional) {
                 hooks.add(module.hook(method).setId("dressroom-advanced.aod-widget-appearance-" + method.getName())
                         .intercept(chain -> {
                             Frame frame = submitting.get();
@@ -62,7 +70,7 @@ final class AodWidgetAppearance {
                     .intercept(chain -> {
                         View view = (View) chain.getThisObject();
                         float amount = (Float) chain.getArg(0);
-                        boolean keep = useLockscreenPreset(view, amount, binding);
+                        boolean keep = directional != null && useLockscreenPreset(view, amount, binding);
                         Frame previous = submitting.get();
                         submitting.set(new Frame(view, amount, keep));
                         try {
@@ -80,7 +88,7 @@ final class AodWidgetAppearance {
             module.deoptimize(darkAmount);
             hooks.commit();
             installed.put(owner, binding);
-        } catch (ReflectiveOperationException | java.io.IOException | RuntimeException | LinkageError unavailable) {
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError unavailable) {
             module.report("Optional wallpaper AOD widget blur unavailable", unavailable);
         }
     }
