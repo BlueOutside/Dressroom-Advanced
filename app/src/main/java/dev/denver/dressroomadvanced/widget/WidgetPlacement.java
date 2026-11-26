@@ -25,6 +25,16 @@ final class WidgetPlacement {
         boolean useNativePage;
         boolean legacyHostBounds;
         final RectF lastClockRect = new RectF();
+        final Matrix parentGlobal = new Matrix();
+        final Matrix inverse = new Matrix();
+        final Matrix scratchMatrix = new Matrix();
+        final RectF screenRect = new RectF();
+        final RectF currentRect = new RectF();
+        final RectF clockRect = new RectF();
+        final RectF hostRect = new RectF();
+        final float[] unitVec = new float[4];
+        final float[] targetPos = new float[2];
+        WeakReference<View> contentChild = new WeakReference<>(null);
         float deltaX, deltaY, appliedX, appliedY;
 
         State(View root) {
@@ -50,47 +60,51 @@ final class WidgetPlacement {
                 clock = new WeakReference<>(time);
             }
             if (time == null && lastClockRect.isEmpty() && settings.getInt("anchor") != 5) return true;
-            Matrix parentGlobal = new Matrix();
+            parentGlobal.reset();
             parent.transformMatrixToGlobal(parentGlobal);
-            Matrix inverse = new Matrix();
             if (!parentGlobal.invert(inverse)) return true;
-            RectF screen = rect(window, inverse);
+            rect(window, inverse, scratchMatrix, screenRect);
             // The runtime root can fill the screen even when its widget grid is narrower.
             // Dock the visible group, not that full-width wrapper.
-            RectF current = placementBounds(view, inverse, legacyHostBounds);
-            RectF clockRect;
+            placementBounds(
+                    view, inverse, legacyHostBounds, scratchMatrix, hostRect, this, currentRect);
             if (time != null) {
-                clockRect = rect(time, inverse);
-                clockRect.offset(-screen.left, -screen.top);
+                rect(time, inverse, scratchMatrix, clockRect);
+                clockRect.offset(-screenRect.left, -screenRect.top);
                 lastClockRect.set(clockRect);
             } else if (!lastClockRect.isEmpty()) {
-                clockRect = new RectF(lastClockRect);
+                clockRect.set(lastClockRect);
             } else {
-                clockRect = new RectF();
+                clockRect.setEmpty();
             }
             float density = view.getResources().getDisplayMetrics().density;
-            float[] unit = {density, 0, 0, density};
-            inverse.mapVectors(unit);
-            float gap = settings.getFloat("gap", 8) * (float) Math.hypot(unit[0], unit[1]);
+            unitVec[0] = density;
+            unitVec[1] = 0;
+            unitVec[2] = 0;
+            unitVec[3] = density;
+            inverse.mapVectors(unitVec);
+            float unitScale = (float) Math.hypot(unitVec[0], unitVec[1]);
+            float gap = settings.getFloat("gap", 8) * unitScale;
             float[] target =
-                    WidgetLayout.place(
+                    WidgetLayout.placeInto(
+                            targetPos,
                             settings.getInt("anchor"),
                             clockRect.left,
                             clockRect.top,
                             clockRect.right,
                             clockRect.bottom,
-                            current.width(),
-                            current.height(),
-                            screen.width(),
-                            screen.height(),
+                            currentRect.width(),
+                            currentRect.height(),
+                            screenRect.width(),
+                            screenRect.height(),
                             gap,
                             settings.getFloat("freeX", .5f),
                             settings.getFloat("freeY", .4f),
-                            settings.getFloat("dockOffset") * (float) Math.hypot(unit[0], unit[1]));
-            float baseLeft = current.left - view.getTranslationX();
-            float baseTop = current.top - view.getTranslationY();
-            float targetTx = target[0] + screen.left - baseLeft;
-            float targetTy = target[1] + screen.top - baseTop;
+                            settings.getFloat("dockOffset") * unitScale);
+            float baseLeft = currentRect.left - view.getTranslationX();
+            float baseTop = currentRect.top - view.getTranslationY();
+            float targetTx = target[0] + screenRect.left - baseLeft;
+            float targetTy = target[1] + screenRect.top - baseTop;
             float tx = view.getTranslationX(), ty = view.getTranslationY();
             // A native animation can replace either translation between frames.
             // Our previous delta no longer belongs to an axis it has overwritten.
@@ -146,7 +160,7 @@ final class WidgetPlacement {
             } catch (ReflectiveOperationException ignored) {
             }
         ViewTreeObserver observer = root.getViewTreeObserver(), old = state.observer.get();
-        if (old != observer) {
+        if (old != observer || (old != null && !old.isAlive())) {
             if (old != null && old.isAlive()) old.removeOnPreDrawListener(state);
             state.observer = new WeakReference<>(observer);
             observer.addOnPreDrawListener(state);
@@ -176,54 +190,110 @@ final class WidgetPlacement {
     }
 
     static boolean isCustomPlacement(View root) {
-        if (root == null) return false;
+        if (root == null || states.isEmpty()) return false;
         for (View current = root; current != null; ) {
-            State state = states.get(current);
-            if (state != null && state.settings != null && state.settings.getInt("anchor") != 0)
-                return true;
+            if (hasActivePlacement(states.get(current))) return true;
             Object parent = current.getParent();
             current = parent instanceof View view ? view : null;
         }
-        if (root instanceof ViewGroup group) {
-            for (int i = 0; i < group.getChildCount(); i++) {
-                if (isCustomPlacement(group.getChildAt(i))) return true;
+        synchronized (states) {
+            for (var entry : states.entrySet()) {
+                if (!hasActivePlacement(entry.getValue())) continue;
+                for (View current = entry.getKey(); current != null; ) {
+                    if (current == root) return true;
+                    Object parent = current.getParent();
+                    current = parent instanceof View view ? view : null;
+                }
             }
         }
         return false;
     }
 
-    private static RectF rect(View view, Matrix inverse) {
-        Matrix transform = new Matrix();
-        view.transformMatrixToGlobal(transform);
-        RectF rect = new RectF(0, 0, view.getWidth(), view.getHeight());
-        transform.mapRect(rect);
-        inverse.mapRect(rect);
-        return rect;
+    private static boolean hasActivePlacement(State state) {
+        return state != null && state.settings != null && state.settings.getInt("anchor") != 0;
     }
 
-    private static View placementContent(View root) {
+    private static RectF rect(View view, Matrix inverse) {
+        RectF out = new RectF();
+        rect(view, inverse, new Matrix(), out);
+        return out;
+    }
+
+    private static void rect(View view, Matrix inverse, Matrix scratch, RectF out) {
+        scratch.reset();
+        view.transformMatrixToGlobal(scratch);
+        out.set(0, 0, view.getWidth(), view.getHeight());
+        scratch.mapRect(out);
+        inverse.mapRect(out);
+    }
+
+    private static void contentRect(View view, Matrix inverse, Matrix scratch, RectF out) {
+        scratch.reset();
+        view.transformMatrixToGlobal(scratch);
+        int left = view.getPaddingLeft();
+        int top = view.getPaddingTop();
+        int right = view.getWidth() - view.getPaddingRight();
+        int bottom = view.getHeight() - view.getPaddingBottom();
+        if (right <= left) {
+            left = 0;
+            right = view.getWidth();
+        }
+        if (bottom <= top) {
+            top = 0;
+            bottom = view.getHeight();
+        }
+        out.set(left, top, right, bottom);
+        scratch.mapRect(out);
+        inverse.mapRect(out);
+    }
+
+    private static View placementContent(View root, State state) {
+        if (state != null) {
+            View cached = state.contentChild.get();
+            if (cached != null
+                    && cached.getParent() == root
+                    && cached.getWidth() > 0
+                    && cached.getHeight() > 0) return cached;
+        }
         if (root instanceof ViewGroup group) {
             for (int i = 0; i < group.getChildCount(); i++) {
                 View child = group.getChildAt(i);
                 if (child.getClass().getName().equals(
                                 "com.samsung.android.app.facewidget.complication.KeyguardComplicationWidgetContainer")
-                        && child.getWidth() > 0 && child.getHeight() > 0) return child;
+                        && child.getWidth() > 0 && child.getHeight() > 0) {
+                    if (state != null) state.contentChild = new WeakReference<>(child);
+                    return child;
+                }
             }
         }
         return root;
     }
 
     static RectF placementBounds(View root, Matrix inverse, boolean legacyHostBounds) {
+        RectF out = new RectF();
+        placementBounds(root, inverse, legacyHostBounds, new Matrix(), new RectF(), null, out);
+        return out;
+    }
+
+    private static void placementBounds(
+            View root,
+            Matrix inverse,
+            boolean legacyHostBounds,
+            Matrix scratch,
+            RectF hostRect,
+            State state,
+            RectF out) {
         if (legacyHostBounds) {
-            RectF occupied = occupiedBounds(root, inverse, WidgetPlacement::isWidgetHost);
-            if (!occupied.isEmpty()) return occupied;
+            out.setEmpty();
+            collectHostBounds(root, inverse, scratch, hostRect, out, WidgetPlacement::isWidgetHost);
+            if (!out.isEmpty()) return;
         }
-        return rect(placementContent(root), inverse);
+        contentRect(placementContent(root, state), inverse, scratch, out);
     }
 
     static RectF occupiedBounds(View root, Matrix inverse, java.util.function.Predicate<View> host) {
         RectF occupied = new RectF();
-        collectHostBounds(root, inverse, occupied, host);
+        collectHostBounds(root, inverse, new Matrix(), new RectF(), occupied, host);
         return occupied;
     }
 
@@ -234,16 +304,24 @@ final class WidgetPlacement {
         return false;
     }
 
-    private static void collectHostBounds(View root, Matrix inverse, RectF occupied,
+    private static void collectHostBounds(
+            View root,
+            Matrix inverse,
+            Matrix scratch,
+            RectF hostRect,
+            RectF occupied,
             java.util.function.Predicate<View> host) {
         if (root.getVisibility() != View.VISIBLE || root.getAlpha() <= 0f) return;
         if (host.test(root)) {
-            if (root.getWidth() > 0 && root.getHeight() > 0) occupied.union(rect(root, inverse));
+            if (root.getWidth() > 0 && root.getHeight() > 0) {
+                rect(root, inverse, scratch, hostRect);
+                occupied.union(hostRect);
+            }
             return;
         }
         if (root instanceof ViewGroup group)
             for (int i = 0; i < group.getChildCount(); i++)
-                collectHostBounds(group.getChildAt(i), inverse, occupied, host);
+                collectHostBounds(group.getChildAt(i), inverse, scratch, hostRect, occupied, host);
     }
 
     private static View findClock(View root) {

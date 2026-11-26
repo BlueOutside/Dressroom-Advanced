@@ -44,7 +44,11 @@ final class OneUi80WidgetRuntime {
 
     record Grid(Method manager, Field id, Method find, Method items, Method arrange) {
         boolean reflow(Object grid) throws ReflectiveOperationException {
-            Object key = id.get(grid);
+            Object key = id != null
+                    ? id.get(grid)
+                    : Reflect.call(
+                            RuntimeWidgetHooks.widgetMember(grid, "containerManager"),
+                            "getContainerId");
             Object owner = manager.invoke(grid);
             if (key == null || !find.getDeclaringClass().isInstance(owner)) return true;
             Object container = find.invoke(owner, key);
@@ -65,8 +69,14 @@ final class OneUi80WidgetRuntime {
         try {
             var body = DexSignatures.body(each);
             ClassLoader loader = grid.getClassLoader();
-            Field id = body.uniqueRead(DexSignatures.descriptor(grid), "Ljava/lang/String;", null)
-                    .field(loader);
+            Field id;
+            try {
+                id = body.uniqueRead(DexSignatures.descriptor(grid), "Ljava/lang/String;", null)
+                        .field(loader);
+            } catch (NoSuchFieldException modernContainerManager) {
+                Reflect.findField(grid, "containerManager");
+                id = null;
+            }
             var matches = new LinkedHashMap<Method, Integer>();
             for (var call : body.calls()) {
                 if (call.isStatic() || !call.parameters().equals(List.of("Ljava/lang/String;"))

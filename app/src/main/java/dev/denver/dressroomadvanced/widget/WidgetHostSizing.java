@@ -14,6 +14,7 @@ final class WidgetHostSizing {
 
     private static final String CONTAINER =
             "com.samsung.android.app.facewidget.complication.ComplicationWidgetHostViewContainer";
+    static final ThreadLocal<Boolean> unscaled = ThreadLocal.withInitial(() -> false);
     private static final Map<AppWidgetHostView, Float> appliedZoom =
             Collections.synchronizedMap(new java.util.WeakHashMap<>());
     private static final Map<AppWidgetHostView, Integer> savedIds =
@@ -149,8 +150,10 @@ final class WidgetHostSizing {
         // Its viewport must be refreshed even when the user's zoom is exactly 100%.
         if (!force && zoom == 1 && !appliedZoom.containsKey(host)) return;
         float scaled = ((Number) Reflect.field(manager, "_scaleFactor")).floatValue();
+        boolean wasUnscaled = unscaled.get();
         Object spec;
         try {
+            unscaled.set(true);
             Reflect.set(manager, "_scaleFactor", scaled / zoom);
             if (early) {
                 spec = earlyViewport(host, manager, columns, rows);
@@ -187,6 +190,7 @@ final class WidgetHostSizing {
             }
         } finally {
             Reflect.set(manager, "_scaleFactor", scaled);
+            unscaled.set(wasUnscaled);
         }
         spec =
                 Reflect.call(
@@ -196,8 +200,10 @@ final class WidgetHostSizing {
                         number(spec, "getPxHeight"),
                         number(spec, "getScaleX") * zoom,
                         number(spec, "getScaleY") * zoom);
+        refreshHostSizeManager(host, manager.getClass());
         if (hasNativeResize(host, spec)) {
             Reflect.call(host, "setResizeScale", spec);
+            host.requestLayout();
         } else {
             ViewGroup.LayoutParams params = host.getLayoutParams();
             params.width = (int) number(spec, "getPxWidth");
@@ -251,6 +257,25 @@ final class WidgetHostSizing {
                                 false,
                                 loader))
                 .legacy;
+    }
+
+    private static void refreshHostSizeManager(View host, Class<?> managerType)
+            throws ReflectiveOperationException {
+        for (Class<?> cursor = host.getClass();
+                cursor != null && cursor != Object.class;
+                cursor = cursor.getSuperclass()) {
+            try {
+                Object hostManager = NativeContract.findField(cursor, null, managerType).get(host);
+                if (hostManager != null) {
+                    Reflect.call(
+                            hostManager,
+                            "init",
+                            Reflect.call(hostManager, "getWidgetDisplayType"));
+                }
+                return;
+            } catch (NoSuchFieldException ignored) {
+            }
+        }
     }
 
     private static boolean hasNativeResize(View host, Object spec) {

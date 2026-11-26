@@ -2,6 +2,7 @@ package dev.denver.dressroomadvanced;
 
 import android.graphics.Matrix;
 import android.graphics.Path;
+import android.graphics.RectF;
 import android.view.View;
 import android.view.ViewGroup;
 
@@ -60,10 +61,20 @@ final class WidgetMediaOcclusion {
         view.transformMatrixToGlobal(global);
         if (!global.invert(inverse)) return null;
         Local old = local.get(view);
-        if (old != null && old.source == source && old.inverse.equals(inverse)) return old.path;
-        Path result = new Path();
-        source.transform(inverse, result);
-        local.put(view, new Local(source, new Matrix(inverse), result));
+        Path result;
+        if (old != null && old.source == source && old.inverse.equals(inverse)) {
+            result = old.path;
+        } else {
+            result = new Path();
+            source.transform(inverse, result);
+            local.put(view, new Local(source, new Matrix(inverse), result));
+        }
+        if (view.getWidth() > 0 && view.getHeight() > 0) {
+            RectF bounds = new RectF();
+            result.computeBounds(bounds, true);
+            if (result.isEmpty() || !bounds.intersects(0, 0, view.getWidth(), view.getHeight()))
+                return null;
+        }
         return result;
     }
 

@@ -35,6 +35,8 @@ final class WidgetDepthBlur {
             Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
     private static final Set<View> previewLayout =
             Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
+    private static final Set<View> clippedBlur =
+            Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
     private static final Set<ClassLoader> deoptimized =
             Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
     private static boolean installed;
@@ -123,9 +125,12 @@ final class WidgetDepthBlur {
                                         UnlockBlur.submitted(view, styled != null, surface);
                                         return result;
                                     }
-                                    if (original == null) originals.remove(view);
-                                    else originals.put(view, original);
+                                    if (original == null) {
+                                        originals.remove(view);
+                                        clippedBlur.remove(view);
+                                    } else originals.put(view, original);
                                     Object submitted = original;
+                                    boolean depthClipped = false;
                                     try {
                                         Path subject =
                                                 original == null || separateSurfaces
@@ -149,6 +154,7 @@ final class WidgetDepthBlur {
                                                 visible = DepthGeometry.subtract(visible, cover);
                                             if (visible != null) {
                                                 submitted = copies.submission(original, visible);
+                                                depthClipped = true;
                                                 if (submitted == null && hidden.add(view))
                                                     android.util.Log.i(
                                                             DressroomModule.TAG,
@@ -164,6 +170,8 @@ final class WidgetDepthBlur {
                                     } catch (Exception error) {
                                         module.report("Widget final blur clip unavailable", error);
                                     }
+                                    if (depthClipped) clippedBlur.add(view);
+                                    else clippedBlur.remove(view);
                                     if (blurOff(view)) submitted = null;
                                     submitted = BlurAppearance.submit(view, submitted, original, surface);
                                     if (submitted != null && module.inEditorProcess()
@@ -399,21 +407,39 @@ final class WidgetDepthBlur {
         if (isBackground(view)) {
             boolean active =
                     !clear && (DepthEffects.hasVisibleSubject(view) || WidgetMediaOcclusion.active(view));
-            boolean outlineChanged = WidgetContentClip.apply(view, active);
+            boolean outlineChanged = !separateSurfaces && WidgetContentClip.apply(view, active);
             Object original = originals.get(view);
-            if (view.getWidth() > 0 && view.getHeight() > 0)
-                try {
-                    if (clear) {
-                        if (geometry.remove(view) == null) return;
-                    } else {
-                        if (!geometryChanged(view) && !outlineChanged) return;
-                        WidgetContentClip.refresh(view);
+            if (clear) {
+                clippedBlur.remove(view);
+                if (geometry.remove(view) != null
+                        && original != null
+                        && view.getWidth() > 0
+                        && view.getHeight() > 0) {
+                    try {
+                        Reflect.call(view, "semSetBlurInfo", original);
+                    } catch (Exception error) {
+                        android.util.Log.w(
+                                DressroomModule.TAG,
+                                "Complication depth resubmit unavailable",
+                                error);
                     }
+                }
+            } else if (view.getWidth() > 0 && view.getHeight() > 0) {
+                try {
+                    if (!geometryChanged(view) && !outlineChanged) return;
+                    boolean intersects =
+                            (!separateSurfaces && DepthEffects.localSubjectPath(view) != null)
+                                    || WidgetMediaOcclusion.localPath(view) != null;
+                    if (!outlineChanged && !intersects && !clippedBlur.contains(view)) return;
+                    if (!separateSurfaces) WidgetContentClip.refresh(view);
                     if (original != null) Reflect.call(view, "semSetBlurInfo", original);
                 } catch (Exception error) {
                     android.util.Log.w(
-                            DressroomModule.TAG, "Complication depth resubmit unavailable", error);
+                            DressroomModule.TAG,
+                            "Complication depth resubmit unavailable",
+                            error);
                 }
+            }
         }
         if (view instanceof ViewGroup group)
             for (int i = 0; i < group.getChildCount(); i++) refreshTree(group.getChildAt(i), clear);

@@ -448,13 +448,11 @@ final class WidgetPanel {
                         "Depth requires a still-image wallpaper. Gyro, video and live wallpapers"
                                 + " are not supported.");
 
-            if (!editor.legacy()) {
-                toggle(
-                        "Live background blur",
-                        !b.getBoolean("blurOff"),
-                        next -> next.putBoolean("blurOff", !b.getBoolean("blurOff")),
-                        false);
-            }
+            toggle(
+                    "Live background blur",
+                    !b.getBoolean("blurOff"),
+                    next -> next.putBoolean("blurOff", !b.getBoolean("blurOff")),
+                    false);
         }
         section("Reset");
         TextView reset = label("Reset widget adjustments");

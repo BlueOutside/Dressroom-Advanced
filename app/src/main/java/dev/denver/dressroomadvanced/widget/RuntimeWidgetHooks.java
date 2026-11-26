@@ -122,6 +122,7 @@ final class RuntimeWidgetHooks {
                 hooks.add(changed::unhook);
                 module.deoptimize(method);
             }
+            installPlacementGuards(loader, type, hooks);
             hooks.commit();
             legacyControllers.add(type);
             if (early) earlyControllers.add(type);
@@ -152,6 +153,7 @@ final class RuntimeWidgetHooks {
     }
 
     private void schedule(Object controller, boolean force) {
+        if (!needsRefresh(controller, force)) return;
         WeakReference<Object> reference = new WeakReference<>(controller);
         if (Looper.myLooper() != Looper.getMainLooper()) {
             main.post(
@@ -162,6 +164,21 @@ final class RuntimeWidgetHooks {
             return;
         }
         pending.offer(controller, force);
+    }
+
+    private boolean needsRefresh(Object controller, boolean force) {
+        if (force || controller == null) return true;
+        State state = controllers.get(controller);
+        if (state == null || !state.loaded) return true;
+        ViewGroup root = state.root.get();
+        if (root == null) return true;
+        try {
+            if (Reflect.field(controller, "container") != root) return true;
+        } catch (ReflectiveOperationException | RuntimeException error) {
+            return true;
+        }
+        return state.orientation != LayoutOrientation.current(root.getContext())
+                || state.screen != ScreenIdentity.current();
     }
 
     synchronized void install(ClassLoader loader) {
@@ -179,28 +196,6 @@ final class RuntimeWidgetHooks {
                 String name = method.getName();
                 if (tracksCompletion && (name.equals("refreshComplicationGridAndWidgets")
                         || name.equals("updateWidgetLayout"))) continue;
-                if (name.equals("updateClockGravity")) {
-                    hooks.add(
-                            module.hook(method)
-                                    .setId("dressroom-advanced.prevent-plugin-gravity-reset")
-                                    .intercept(
-                                            chain -> {
-                                                Object controllerObj = chain.getThisObject();
-                                                ViewGroup container =
-                                                        (ViewGroup)
-                                                                Reflect.field(
-                                                                        controllerObj, "container");
-                                                if (container != null
-                                                        && WidgetPlacement.isCustomPlacement(
-                                                                container)) {
-                                                    return null;
-                                                }
-                                                return chain.proceed();
-                                            })
-                                    ::unhook);
-                    module.deoptimize(method);
-                    continue;
-                }
                 if (!((name.equals("initialize")
                                 && method.getParameterCount() == 1
                                 && method.getParameterTypes()[0] == ViewGroup.class)
@@ -265,77 +260,7 @@ final class RuntimeWidgetHooks {
                                 ::unhook);
                 module.deoptimize(method);
             }
-            try (HookTransaction optional = new HookTransaction()) {
-                Class<?> containerClass =
-                        Class.forName(
-                                "com.samsung.android.app.facewidget.complication.KeyguardComplicationWidgetContainer",
-                                false,
-                                loader);
-                for (Method m : containerClass.getDeclaredMethods()) {
-                    if (m.getName().equals("applyComplicationX")
-                            || m.getName().equals("updateClockGravity")) {
-                        optional.add(
-                                module.hook(m)
-                                        .setId(
-                                                "dressroom-advanced.prevent-widget-snap-"
-                                                        + m.getName())
-                                        .intercept(
-                                                chain -> {
-                                                    View target = (View) chain.getThisObject();
-                                                    if (WidgetPlacement.isCustomPlacement(target)) {
-                                                        return null;
-                                                    }
-                                                    return chain.proceed();
-                                                })
-                                        ::unhook);
-                        module.deoptimize(m);
-                    }
-                }
-                optional.commitTo(hooks);
-            } catch (Exception | LinkageError e) {
-                module.report("KeyguardComplicationWidgetContainer hook unavailable", e);
-            }
-            try (HookTransaction optional = new HookTransaction()) {
-                Class<?> compManagerClass =
-                        Class.forName(
-                                "com.samsung.android.app.facewidget.complication.ComplicationManager",
-                                false,
-                                loader);
-                for (Method m : compManagerClass.getDeclaredMethods()) {
-                    if (m.getName().equals("onClockTransitionEnded")
-                            || m.getName().equals("onClockTransitionStarted")) {
-                        final boolean starting = m.getName().equals("onClockTransitionStarted");
-                        optional.add(
-                                module.hook(m)
-                                        .setId(
-                                                "dressroom-advanced.prevent-widget-transition-"
-                                                        + m.getName())
-                                        .intercept(
-                                                chain -> {
-                                                    Object manager = chain.getThisObject();
-                                                    ViewGroup container =
-                                                            (ViewGroup)
-                                                                    Reflect.field(
-                                                                            manager, "container");
-                                                    if (container != null
-                                                            && WidgetPlacement.isCustomPlacement(
-                                                                    container)) {
-                                                        Reflect.call(
-                                                                manager,
-                                                                "updateContainerAlpha",
-                                                                starting);
-                                                        return null;
-                                                    }
-                                                    return chain.proceed();
-                                                })
-                                        ::unhook);
-                        module.deoptimize(m);
-                    }
-                }
-                optional.commitTo(hooks);
-            } catch (Exception | LinkageError e) {
-                module.report("ComplicationManager transition hook unavailable", e);
-            }
+            installPlacementGuards(loader, controller, hooks);
             hooks.commit();
             installed.add(loader);
             WidgetClickBlock.install(module, loader);
@@ -343,6 +268,113 @@ final class RuntimeWidgetHooks {
                     DressroomModule.TAG, "Native complication controller owns runtime widgets");
         } catch (Exception | LinkageError error) {
             module.report("Native complication ownership hooks unavailable", error);
+        }
+    }
+
+    private void installPlacementGuards(
+            ClassLoader loader, Class<?> controller, HookTransaction hooks) {
+        for (Method method : controller.getDeclaredMethods()) {
+            if (method.isBridge() || !method.getName().equals("updateClockGravity")) continue;
+            hooks.add(
+                    module.hook(method)
+                            .setId("dressroom-advanced.prevent-plugin-gravity-reset")
+                            .intercept(
+                                    chain -> {
+                                        Object controllerObj = chain.getThisObject();
+                                        ViewGroup container =
+                                                (ViewGroup)
+                                                        Reflect.field(controllerObj, "container");
+                                        if (container != null
+                                                && WidgetPlacement.isCustomPlacement(container)) {
+                                            return null;
+                                        }
+                                        return chain.proceed();
+                                    })
+                            ::unhook);
+            module.deoptimize(method);
+        }
+        try (HookTransaction optional = new HookTransaction()) {
+            Class<?> containerClass =
+                    Class.forName(
+                            "com.samsung.android.app.facewidget.complication.KeyguardComplicationWidgetContainer",
+                            false,
+                            loader);
+            for (Method m : containerClass.getDeclaredMethods()) {
+                if (m.getName().equals("applyComplicationX")
+                        || m.getName().equals("updateClockGravity")) {
+                    optional.add(
+                            module.hook(m)
+                                    .setId("dressroom-advanced.prevent-widget-snap-" + m.getName())
+                                    .intercept(
+                                            chain -> {
+                                                View target = (View) chain.getThisObject();
+                                                if (WidgetPlacement.isCustomPlacement(target)) {
+                                                    return null;
+                                                }
+                                                return chain.proceed();
+                                            })
+                                    ::unhook);
+                    module.deoptimize(m);
+                }
+            }
+            optional.commitTo(hooks);
+        } catch (Exception | LinkageError e) {
+            module.report("KeyguardComplicationWidgetContainer hook unavailable", e);
+        }
+        try (HookTransaction optional = new HookTransaction()) {
+            Class<?> compManagerClass =
+                    Class.forName(
+                            "com.samsung.android.app.facewidget.complication.ComplicationManager",
+                            false,
+                            loader);
+            for (Method m : compManagerClass.getDeclaredMethods()) {
+                if (m.getName().equals("onClockTransitionEnded")
+                        || m.getName().equals("onClockTransitionStarted")) {
+                    final boolean starting = m.getName().equals("onClockTransitionStarted");
+                    optional.add(
+                            module.hook(m)
+                                    .setId(
+                                            "dressroom-advanced.prevent-widget-transition-"
+                                                    + m.getName())
+                                    .intercept(
+                                            chain -> {
+                                                Object manager = chain.getThisObject();
+                                                ViewGroup container =
+                                                        (ViewGroup)
+                                                                Reflect.field(manager, "container");
+                                                if (container != null
+                                                        && WidgetPlacement.isCustomPlacement(
+                                                                container)) {
+                                                    Reflect.call(
+                                                            manager,
+                                                            "updateContainerAlpha",
+                                                            starting);
+                                                    return null;
+                                                }
+                                                return chain.proceed();
+                                            })
+                                    ::unhook);
+                    module.deoptimize(m);
+                }
+            }
+            optional.commitTo(hooks);
+        } catch (Exception | LinkageError e) {
+            module.report("ComplicationManager transition hook unavailable", e);
+        }
+    }
+
+    private static void syncParentHeight(Object controller, ViewGroup root) {
+        if (!(root.getParent() instanceof ViewGroup parent)) return;
+        ViewGroup.LayoutParams params = parent.getLayoutParams();
+        if (params == null || params.height <= 0) return;
+        try {
+            int height =
+                    ((Number) Reflect.call(controller, "getHeight", root.getContext())).intValue();
+            if (height > 0 && params.height != height) {
+                params.height = height;
+                parent.setLayoutParams(params);
+            }
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
         }
     }
 
@@ -510,11 +542,6 @@ final class RuntimeWidgetHooks {
         ViewGroup root = state == null ? null : state.root.get();
         if (root != null) {
             DepthEffects.setDozing(root, false);
-            if (legacyControllers.contains(controller.getClass())) {
-                DepthEffects.applyWidgetRoot(root, false, null);
-                WidgetPlacement.clear(root);
-                return;
-            }
             WidgetMediaOcclusion.forget(root);
             DepthEffects.applyWidgetRoot(root, false, null);
             WidgetDepthBlur.blur(root, false);
@@ -523,6 +550,7 @@ final class RuntimeWidgetHooks {
     }
 
     private void refresh(Object controller, boolean force) {
+        if (!needsRefresh(controller, force)) return;
         if (Looper.myLooper() != Looper.getMainLooper()) {
             WeakReference<Object> reference = new WeakReference<>(controller);
             boolean requested = force;
@@ -570,6 +598,9 @@ final class RuntimeWidgetHooks {
                 }
                 state.root = new WeakReference<>(root);
                 state.loaded = false;
+                state.type = state.font = -1;
+                state.fontPath = "";
+                state.depthProfile = null;
                 watchLayout(controller, root);
             }
             WidgetMediaOcclusion.register(root);
@@ -591,22 +622,9 @@ final class RuntimeWidgetHooks {
                     throw error;
                 }
             }
-            Object provider =
-                    resolveControllerMember(
-                            controller, "keyguardClockProvider", "keyguardClockProviderProvider");
-            if (provider == null) return;
-            Object item = Reflect.field(provider, "clockItem");
-            if (item == null) return;
-            int type = ((Number) Reflect.call(item, "getClockType")).intValue();
-            Object preset = Reflect.call(Reflect.call(item, "getFont"), "getPresetFontIndex");
-            int font = preset instanceof Number ? ((Number) preset).intValue() : 0;
-            if (!force && state.loaded && state.type == type && state.font == font) return;
-            Bundle query = new Bundle();
-            query.putInt("type", type);
-            query.putInt("font", font);
-            Bundle saved = SettingsBridge.read(root.getContext(), query);
             if (force) module.widgetEngine.invalidate();
             Bundle widgets = module.widgetEngine.settings(root.getContext());
+            boolean alignChanged = false;
             if (widgets.getBoolean("layout") || state.layout.startsWith("true:")) {
                 Object nativeData =
                         resolveControllerProvider(
@@ -619,6 +637,7 @@ final class RuntimeWidgetHooks {
                         align = WidgetEngine.enumValue(align.getClass(), "Default");
                     if (align != Reflect.field(grid, "widgetAlignType")) {
                         Reflect.call(grid, "changeAlignType", align);
+                        alignChanged = true;
                         try {
                             module.widgetEngine.reflow(grid);
                         } catch (Exception e) {
@@ -627,27 +646,55 @@ final class RuntimeWidgetHooks {
                     }
                 }
             }
-            String layout =
-                    widgets.getBoolean("layout")
-                            + ":"
-                            + widgets.getInt("columns")
-                            + ":"
-                            + widgets.getInt("rows")
-                            + ":"
-                            + widgets.getBoolean("vertical")
-                            + ":"
-                            + widgets.getFloat("scale", 1);
-            if (!layout.equals(state.layout)) {
+            String layout = WidgetPreferences.layoutKey(widgets);
+            if (!state.loaded || alignChanged || !layout.equals(state.layout)) {
                 state.layout = layout;
-                module.widgetEngine.refreshAll();
+                module.widgetEngine.refreshChecked(nativeGrid);
+                module.widgetEngine.repairPositions(nativeGrid);
             }
-            state.type = type;
-            state.font = font;
-            state.loaded = true;
-            boolean enabled = WidgetPreferences.depth(widgets, saved);
-            boolean hideOnAod = WidgetPreferences.depthOffAod(widgets, saved);
-            DepthEffects.applyWidgetRoot(
-                    root, enabled, WidgetPreferences.mask(widgets, saved), hideOnAod);
+            syncParentHeight(controller, root);
+            Object provider =
+                    resolveControllerMember(
+                            controller, "keyguardClockProvider", "keyguardClockProviderProvider");
+            Object item = provider == null ? null : Reflect.field(provider, "clockItem");
+            if (item != null) {
+                int type = ((Number) Reflect.call(item, "getClockType")).intValue();
+                Object preset = Reflect.call(Reflect.call(item, "getFont"), "getPresetFontIndex");
+                int font = preset instanceof Number ? ((Number) preset).intValue() : 0;
+                String path = "";
+                try {
+                    if (Reflect.call(provider, "getClockFontPath") instanceof String fontPath
+                            && !fontPath.isEmpty()) {
+                        path = fontPath;
+                    }
+                } catch (ReflectiveOperationException ignored) {
+                }
+                if (force
+                        || !state.loaded
+                        || state.type != type
+                        || state.font != font
+                        || !path.equals(state.fontPath)
+                        || state.depthProfile == null) {
+                    Bundle query = new Bundle();
+                    query.putInt("type", type);
+                    query.putInt("font", font);
+                    if (!path.isEmpty()) query.putString("fontPath", path);
+                    state.depthProfile = SettingsBridge.readRuntimeClock(root.getContext(), query);
+                    state.type = type;
+                    state.font = font;
+                    state.fontPath = path;
+                }
+                state.loaded = true;
+                boolean enabled = WidgetPreferences.depth(widgets, state.depthProfile);
+                boolean hideOnAod = WidgetPreferences.depthOffAod(widgets, state.depthProfile);
+                DepthEffects.applyWidgetRoot(
+                        root, enabled, WidgetPreferences.mask(widgets, state.depthProfile), hideOnAod);
+            } else {
+                state.type = state.font = -1;
+                state.fontPath = "";
+                state.depthProfile = null;
+                DepthEffects.applyWidgetRoot(root, false, null);
+            }
             DepthEffects.setDozing(root, state.dozing || state.aodRequested);
             WidgetDepthBlur.blur(root, widgets.getBoolean("blurOff"));
             WidgetPlacement.apply(root, widgets, provider);
@@ -678,7 +725,9 @@ final class RuntimeWidgetHooks {
             View previous = state.root.get();
             if (previous != null) {
                 DepthEffects.setDozing(previous, false);
+                WidgetMediaOcclusion.forget(previous);
                 DepthEffects.applyWidgetRoot(previous, false, null);
+                WidgetDepthBlur.blur(previous, false);
                 WidgetPlacement.clear(previous);
             }
             state.root = new WeakReference<>(root);
@@ -689,6 +738,7 @@ final class RuntimeWidgetHooks {
             state.scale = 1f;
             watchLayout(controller, root);
         }
+        WidgetMediaOcclusion.register(root);
         if (observing.compareAndSet(false, true)) {
             try {
                 root.getContext()
@@ -723,10 +773,13 @@ final class RuntimeWidgetHooks {
             }
         } else {
             boolean alignChanged = false;
-            if (settings.getBoolean("layout")) {
+            if (settings.getBoolean("layout") || state.layout.startsWith("true:")) {
                 Object align = Reflect.field(grid, "widgetAlignType");
                 // The grid alignment can be null until Samsung receives an explicit layout.
-                Object target = WidgetEngine.savedAlignment(grid, settings.getBoolean("vertical"));
+                Object target =
+                        WidgetEngine.savedAlignment(
+                                grid,
+                                settings.getBoolean("layout") && settings.getBoolean("vertical"));
                 if (align != target) {
                     Reflect.call(grid, "changeAlignType", target);
                     alignChanged = true;
@@ -737,24 +790,33 @@ final class RuntimeWidgetHooks {
                 module.widgetEngine.refreshChecked(grid);
                 module.widgetEngine.repairPositions(grid);
                 state.layout = layout;
-                state.loaded = true;
             }
         }
+        syncParentHeight(controller, root);
         Object provider = Reflect.field(controller, "keyguardClockProvider");
         Class<?> base =
                 Class.forName(
                         "com.samsung.android.uniform.widget.clock.AbsClockView",
                         false,
                         grid.getClass().getClassLoader());
+        boolean depthLoaded = true;
         if (DepthBinding.provider(base)) {
             boolean early = earlyControllers.contains(controller.getClass());
             Object item = early ? null : Reflect.field(provider, "clockItem");
-            if (early || item != null) {
+            depthLoaded = early || item != null;
+            if (depthLoaded) {
                 Bundle query = early ? OneUi80WidgetRuntime.clockIdentity(provider) : new Bundle();
                 if (!early) {
                     query.putInt("type", ((Number) Reflect.call(item, "getClockType")).intValue());
                     Object preset = Reflect.call(Reflect.call(item, "getFont"), "getPresetFontIndex");
                     query.putInt("font", preset instanceof Number ? ((Number) preset).intValue() : 0);
+                    try {
+                        if (Reflect.call(provider, "getClockFontPath") instanceof String fontPath
+                                && !fontPath.isEmpty()) {
+                            query.putString("fontPath", fontPath);
+                        }
+                    } catch (ReflectiveOperationException ignored) {
+                    }
                 }
                 int type = query.getInt("type"), font = query.getInt("font");
                 String path = query.getString("fontPath", "");
@@ -800,6 +862,8 @@ final class RuntimeWidgetHooks {
                 DepthEffects.applyWidgetRoot(root, false, null);
             }
         }
+        state.loaded = depthLoaded;
+        WidgetDepthBlur.blur(root, settings.getBoolean("blurOff"));
         WidgetPlacement.apply(root, settings, provider, earlyControllers.contains(controller.getClass()));
     }
 

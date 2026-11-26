@@ -68,6 +68,38 @@ final class WidgetLayout {
             float x,
             float y,
             float offset) {
+        return placeInto(
+                new float[2],
+                anchor,
+                left,
+                top,
+                right,
+                bottom,
+                width,
+                height,
+                screenWidth,
+                screenHeight,
+                gap,
+                x,
+                y,
+                offset);
+    }
+
+    static float[] placeInto(
+            float[] out,
+            int anchor,
+            float left,
+            float top,
+            float right,
+            float bottom,
+            float width,
+            float height,
+            float screenWidth,
+            float screenHeight,
+            float gap,
+            float x,
+            float y,
+            float offset) {
         float px = (left + right - width) / 2, py = bottom + gap;
         if (anchor == 2) py = top - gap - height;
         if (anchor == 3 || anchor == 4) {
@@ -80,10 +112,9 @@ final class WidgetLayout {
             px = x * Math.max(0, screenWidth - width);
             py = y * Math.max(0, screenHeight - height);
         }
-        return new float[] {
-            Math.max(0, Math.min(Math.max(0, screenWidth - width), px)),
-            Math.max(0, Math.min(Math.max(0, screenHeight - height), py))
-        };
+        out[0] = Math.max(0, Math.min(Math.max(0, screenWidth - width), px));
+        out[1] = Math.max(0, Math.min(Math.max(0, screenHeight - height), py));
+        return out;
     }
 
     static boolean positionsValid(int columns, int rows, int[][] cells) {

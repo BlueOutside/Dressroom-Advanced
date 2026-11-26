@@ -97,7 +97,97 @@ public final class WidgetLayoutTest {
         check(WidgetLayout.effectiveAnchor(0, false, true, true) == 0, "Stock non-custom layout changed");
         verifyMod5WidgetContracts();
         verifyWidgetWiper();
+        verifyCrossVersionWidgetContracts();
         System.out.println("Widget layout contracts: " + checks + " checks passed");
+    }
+
+    private enum AlignVerStub {
+        Default(false),
+        Vertical(true);
+
+        private final boolean vertical;
+
+        AlignVerStub(boolean vertical) {
+            this.vertical = vertical;
+        }
+
+        public boolean isVertical() {
+            return vertical;
+        }
+    }
+
+    @SuppressWarnings("unused")
+    private static final class ContainerMgrStub {
+        public String getContainerId() {
+            return "LOCK_COMPLICATION_GRID_CONTAINER";
+        }
+    }
+
+    @SuppressWarnings("unused")
+    private static final class GridContainerStub {
+        boolean arranged;
+
+        public java.util.List<String> items() {
+            return java.util.List.of("w1", "w2");
+        }
+
+        public boolean rearrange(
+                java.util.List<?> list, java.util.Set<?> fixed, boolean animate) {
+            arranged = list.size() == 2 && fixed.isEmpty() && animate;
+            return arranged;
+        }
+    }
+
+    @SuppressWarnings("unused")
+    private static final class GridManagerStub {
+        final GridContainerStub container = new GridContainerStub();
+
+        public GridContainerStub lookupRenamed(String id) {
+            return "LOCK_COMPLICATION_GRID_CONTAINER".equals(id) ? container : null;
+        }
+    }
+
+    @SuppressWarnings("unused")
+    private static final class ModernGridStub {
+        final ContainerMgrStub containerManager = new ContainerMgrStub();
+        final GridManagerStub gridManager = new GridManagerStub();
+
+        public GridManagerStub getGridManager() {
+            return gridManager;
+        }
+    }
+
+    private static void verifyCrossVersionWidgetContracts() {
+        try {
+            check(!WidgetEngine.isVertical(null), "Null widgetAlignType must default to horizontal");
+            check(
+                    !WidgetEngine.isVertical(AlignVerStub.Default),
+                    "Default widgetAlignType must report horizontal");
+            check(
+                    WidgetEngine.isVertical(AlignVerStub.Vertical),
+                    "Vertical widgetAlignType must report vertical");
+            check(
+                    !Boolean.TRUE.equals(WidgetHostSizing.unscaled.get()),
+                    "WidgetHostSizing.unscaled must default to false");
+
+            ModernGridStub modernGrid = new ModernGridStub();
+            OneUi80WidgetRuntime.Grid binding =
+                    new OneUi80WidgetRuntime.Grid(
+                            ModernGridStub.class.getDeclaredMethod("getGridManager"),
+                            null,
+                            GridManagerStub.class.getDeclaredMethod("lookupRenamed", String.class),
+                            GridContainerStub.class.getDeclaredMethod("items"),
+                            GridContainerStub.class.getDeclaredMethod(
+                                    "rearrange",
+                                    java.util.List.class,
+                                    java.util.Set.class,
+                                    boolean.class));
+            check(
+                    binding.reflow(modernGrid) && modernGrid.gridManager.container.arranged,
+                    "ContainerManager-backed grid must reflow via resolved lookup method");
+        } catch (ReflectiveOperationException error) {
+            throw new AssertionError("Cross-version widget contract failure", error);
+        }
     }
 
     private enum AlignStub {
@@ -197,7 +287,9 @@ public final class WidgetLayoutTest {
                         "WidgetDepthBlur." + mapField + " must stay synchronized");
             }
             for (String setField :
-                    new String[] {"verified", "hidden", "previewLayout", "deoptimized"}) {
+                    new String[] {
+                        "verified", "hidden", "previewLayout", "clippedBlur", "deoptimized"
+                    }) {
                 java.lang.reflect.Field f = WidgetDepthBlur.class.getDeclaredField(setField);
                 f.setAccessible(true);
                 check(

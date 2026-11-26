@@ -62,6 +62,10 @@ final class WidgetEngine {
             Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
     private final Set<ClassLoader> earlyGrid =
             Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
+    private static final java.util.Map<Object, Boolean> mainDisplays =
+            Collections.synchronizedMap(new WeakHashMap<>());
+    private static final java.util.Map<Object, Context> managerContexts =
+            Collections.synchronizedMap(new WeakHashMap<>());
 
     WidgetEngine(DressroomModule module) {
         this.module = module;
@@ -91,18 +95,32 @@ final class WidgetEngine {
     }
 
     boolean main(Object manager) {
+        if (manager == null) return false;
         try {
             Object display = Reflect.call(manager, "getWidgetDisplayType");
-            return !(Boolean) Reflect.call(display, "isCover")
-                    && !(Boolean) Reflect.call(display, "isInformative");
+            if (display == null) return false;
+            Boolean cached = mainDisplays.get(display);
+            if (cached != null) return cached;
+            boolean isMain =
+                    !(Boolean) Reflect.call(display, "isCover")
+                            && !(Boolean) Reflect.call(display, "isInformative");
+            mainDisplays.put(display, isMain);
+            return isMain;
         } catch (Exception e) {
             return false;
         }
     }
 
     private Bundle config(Object manager) throws ReflectiveOperationException {
-        return settings((Context) RuntimeWidgetHooks.resolveControllerMember(
-                manager, "context", "contextProvider"));
+        Context c = managerContexts.get(manager);
+        if (c == null) {
+            c =
+                    (Context)
+                            RuntimeWidgetHooks.resolveControllerMember(
+                                    manager, "context", "contextProvider");
+            if (c != null) managerContexts.put(manager, c);
+        }
+        return settings(c);
     }
 
     synchronized boolean installLegacyCapacity(ClassLoader loader)
@@ -141,6 +159,7 @@ final class WidgetEngine {
                         false,
                         loader);
         Method init = NativeContract.method(manager, "init", void.class, display);
+        Method padding = NativeContract.method(manager, "getPadding", float.class);
         Class<?> grid = Class.forName(GRID, false, loader);
         Method bind =
                 NativeContract.method(
@@ -179,6 +198,24 @@ final class WidgetEngine {
                                     });
             hooks.add(scale::unhook);
             module.deoptimize(init);
+            var pad =
+                    module.hook(padding)
+                            .setId("dressroom-advanced.85-widget-padding-scale")
+                            .intercept(
+                                    chain -> {
+                                        Object result = chain.proceed();
+                                        Object instance = chain.getThisObject();
+                                        if (!nativeMetrics.get()
+                                                && !WidgetHostSizing.unscaled.get()
+                                                && result instanceof Number value
+                                                && main(instance)) {
+                                            float zoom = config(instance).getFloat("scale", 1f);
+                                            if (zoom != 1f) return value.floatValue() * zoom;
+                                        }
+                                        return result;
+                                    });
+            hooks.add(pad::unhook);
+            module.deoptimize(padding);
             var root =
                     module.hook(bind)
                             .setId("dressroom-advanced.85-widget-owner")
@@ -206,6 +243,11 @@ final class WidgetEngine {
         if (installed.contains(loader)) return;
         try (HookTransaction hooks = new HookTransaction()) {
             Class<?> size = Class.forName(SIZE, false, loader);
+            Class<?> alignType =
+                    Class.forName(
+                            "com.samsung.android.clockpack.plugins.briefwidget.WidgetAlignType",
+                            false,
+                            loader);
             for (String name : new String[] {"getColumn", "getRow", "isBiggerSize"}) {
                 Method m = size.getDeclaredMethod(name);
                 hooks.add(
@@ -219,13 +261,10 @@ final class WidgetEngine {
                                                 if (b.getBoolean("layout")) {
                                                     if (name.equals("isBiggerSize")) return true;
                                                     boolean vertical =
-                                                            (Boolean)
-                                                                    Reflect.call(
-                                                                            Reflect.field(
-                                                                                    chain
-                                                                                            .getThisObject(),
-                                                                                    "widgetAlignType"),
-                                                                            "isVertical");
+                                                            isVertical(
+                                                                    Reflect.field(
+                                                                            chain.getThisObject(),
+                                                                            "widgetAlignType"));
                                                     int[] dimensions =
                                                             WidgetLayout.dimensions(
                                                                     b.getInt("columns"),
@@ -241,6 +280,25 @@ final class WidgetEngine {
                                 ::unhook);
                 module.deoptimize(m);
             }
+            Method padding = NativeContract.method(size, "getPadding", float.class);
+            hooks.add(
+                    module.hook(padding)
+                            .setId("dressroom-advanced.widget-padding-scale")
+                            .intercept(
+                                    chain -> {
+                                        Object result = chain.proceed();
+                                        Object instance = chain.getThisObject();
+                                        if (!nativeMetrics.get()
+                                                && !WidgetHostSizing.unscaled.get()
+                                                && result instanceof Number value
+                                                && main(instance)) {
+                                            float zoom = config(instance).getFloat("scale", 1f);
+                                            if (zoom != 1f) return value.floatValue() * zoom;
+                                        }
+                                        return result;
+                                    })
+                            ::unhook);
+            module.deoptimize(padding);
             for (Method m : size.getDeclaredMethods())
                 if (m.getName().equals("init") && m.getParameterCount() == 1) {
                     hooks.add(
@@ -252,6 +310,7 @@ final class WidgetEngine {
                                                 nativeMetrics.set(true);
                                                 Object manager = chain.getThisObject();
                                                 Object align = null;
+                                                boolean restoreAlign = false;
                                                 try {
                                                     if (main(manager)
                                                             && config(manager)
@@ -259,12 +318,11 @@ final class WidgetEngine {
                                                         align =
                                                                 Reflect.field(
                                                                         manager, "widgetAlignType");
+                                                        restoreAlign = true;
                                                         Reflect.set(
                                                                 manager,
                                                                 "widgetAlignType",
-                                                                        enumValue(
-                                                                                align.getClass(),
-                                                                                "Default"));
+                                                                enumValue(alignType, "Default"));
                                                     }
                                                     Object result = chain.proceed();
                                                     if (main(chain.getThisObject())) {
@@ -283,7 +341,7 @@ final class WidgetEngine {
                                                     }
                                                     return result;
                                                 } finally {
-                                                    if (align != null)
+                                                    if (restoreAlign)
                                                         Reflect.set(
                                                                 manager, "widgetAlignType", align);
                                                     nativeMetrics.set(old);
@@ -293,12 +351,26 @@ final class WidgetEngine {
                     module.deoptimize(m);
                 }
             Class<?> grid = Class.forName(GRID, false, loader);
-            if (early) OneUi80WidgetRuntime.grid(grid);
-            Class<?> alignType =
-                    Class.forName(
-                            "com.samsung.android.clockpack.plugins.briefwidget.WidgetAlignType",
-                            false,
-                            loader);
+            OneUi80WidgetRuntime.grid(grid);
+            Method largeScreen = NativeContract.method(grid, "isLargeScreenWidget", boolean.class);
+            hooks.add(
+                    module.hook(largeScreen)
+                            .setId("dressroom-advanced.widget-large-screen-grid")
+                            .intercept(
+                                    chain -> {
+                                        Object manager =
+                                                Reflect.call(
+                                                        chain.getThisObject(),
+                                                        "getWidgetSizeManager");
+                                        if (!nativeMetrics.get()
+                                                && main(manager)
+                                                && config(manager).getBoolean("layout")) {
+                                            return true;
+                                        }
+                                        return chain.proceed();
+                                    })
+                            ::unhook);
+            module.deoptimize(largeScreen);
             if (!early && module.editorWidgets == null) {
                 boolean legacy;
                 try {
@@ -402,6 +474,8 @@ final class WidgetEngine {
                                 "updateAlignChangeLayout",
                                 "updateRootContainerSize",
                                 "checkAllowPosition",
+                                "animateOffsetX",
+                                "registerDropListener",
                                 "sendAppWidgetOptions")
                         .contains(m.getName())) module.deoptimize(m);
             if (!early) {
@@ -532,11 +606,7 @@ final class WidgetEngine {
                                                                     .intValue(),
                                                             manager,
                                                             config(manager).getFloat("scale", 1),
-                                                            legacyProviders.contains(
-                                                                            manager.getClass()
-                                                                                    .getClassLoader())
-                                                                    && config(manager)
-                                                                            .getBoolean("layout"));
+                                                            config(manager).getBoolean("layout"));
                                             }
                                         }
                                     } catch (Exception error) {
@@ -569,11 +639,14 @@ final class WidgetEngine {
                                     float scaled =
                                             ((Number) Reflect.field(sizes, "_scaleFactor"))
                                                     .floatValue();
+                                    boolean wasUnscaled = WidgetHostSizing.unscaled.get();
                                     try {
+                                        WidgetHostSizing.unscaled.set(true);
                                         Reflect.set(sizes, "_scaleFactor", scaled / zoom);
                                         return chain.proceed();
                                     } finally {
                                         Reflect.set(sizes, "_scaleFactor", scaled);
+                                        WidgetHostSizing.unscaled.set(wasUnscaled);
                                     }
                                 });
         own.accept(options);
@@ -616,15 +689,14 @@ final class WidgetEngine {
     void refreshChecked(Object grid) throws ReflectiveOperationException {
         Object manager = Reflect.call(grid, "getWidgetSizeManager");
         if (!main(manager)) return;
+        Reflect.call(manager, "init", Reflect.call(manager, "getWidgetDisplayType"));
         GridRefresh refresh = refreshBindings.get(grid.getClass());
         if (refresh.forceArgument()) {
             refresh.method().invoke(grid, true);
-            notifyLegacyProviders(grid);
         } else {
-            Reflect.call(manager, "init", Reflect.call(manager, "getWidgetDisplayType"));
             refresh.method().invoke(grid);
-            notifyLegacyProviders(grid);
         }
+        notifyLegacyProviders(grid);
     }
 
     static void validateLegacyGrid(Class<?> grid) throws ReflectiveOperationException {
@@ -660,8 +732,8 @@ final class WidgetEngine {
                     rows,
                     manager,
                     config(manager).getFloat("scale", 1),
-                    legacyProviders.contains(manager.getClass().getClassLoader())
-                            && config(manager).getBoolean("layout"), early);
+                    config(manager).getBoolean("layout"),
+                    early);
             Reflect.call(grid, "sendAppWidgetOptions", id, columns, rows);
         }
     }
@@ -671,9 +743,7 @@ final class WidgetEngine {
         if (!main(manager) || !config(manager).getBoolean("layout")) return false;
         Object current = Reflect.call(grid, "getModuleInfo");
         if (!(current instanceof java.util.List<?> items)) return false;
-        boolean vertical =
-                Boolean.TRUE.equals(
-                        Reflect.call(Reflect.field(grid, "widgetAlignType"), "isVertical"));
+        boolean vertical = isVertical(Reflect.field(grid, "widgetAlignType"));
         int[][] cells = new int[items.size()][4];
         for (int i = 0; i < items.size(); i++) {
             Object item = items.get(i);
@@ -693,32 +763,13 @@ final class WidgetEngine {
     }
 
     void reflow(Object grid) throws ReflectiveOperationException {
-        if (earlyCapacity(grid)) {
-            if (!OneUi80WidgetRuntime.grid(grid.getClass()).reflow(grid))
-                throw new IllegalStateException(
-                        "Samsung could not fit these widgets. Increase the grid size.");
-            return;
-        }
-        Object containers = RuntimeWidgetHooks.widgetMember(grid, "containerManager");
-        Object id = Reflect.call(containers, "getContainerId");
-        if (id == null) return;
-        Object manager = Reflect.call(grid, "getGridManager");
-        Object container = Reflect.call(manager, "b", id);
-        if (container == null) return;
-        Method listItems =
-                NativeContract.findMethod(container.getClass(), null, java.util.List.class);
-        Object items = listItems.invoke(container);
-        Method rearrange =
-                NativeContract.findMethod(
-                        container.getClass(),
-                        null,
-                        boolean.class,
-                        java.util.List.class,
-                        java.util.Set.class,
-                        boolean.class);
-        if (!Boolean.TRUE.equals(rearrange.invoke(container, items, Collections.emptySet(), true)))
+        if (!OneUi80WidgetRuntime.grid(grid.getClass()).reflow(grid))
             throw new IllegalStateException(
                     "Samsung could not fit these widgets. Increase the grid size.");
+    }
+
+    static boolean isVertical(Object align) throws ReflectiveOperationException {
+        return align != null && Boolean.TRUE.equals(Reflect.call(align, "isVertical"));
     }
 
     static Object savedAlignment(Object grid, boolean vertical)

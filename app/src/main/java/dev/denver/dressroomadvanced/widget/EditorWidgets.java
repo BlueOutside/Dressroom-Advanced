@@ -360,16 +360,30 @@ final class EditorWidgets {
         if (structural) {
             if (!customGridAvailable())
                 throw new IllegalStateException("Custom grid hooks are not ready");
-            if (!next.getBoolean("layout") && vertical())
+            if (!next.getBoolean("layout") && vertical() && !nativeRotationAvailable())
                 throw new IllegalArgumentException(
-                        "Rotate to Horizontal before restoring the stock grid");
+                        "Rotate back to Horizontal before restoring the stock phone grid.");
             if (next.getBoolean("layout")
                     && !WidgetLayout.matchesOrientation(
                             next.getInt("columns"), next.getInt("rows"), vertical()))
-                throw new IllegalArgumentException("Use Rotate to change the arrangement");
+                throw new IllegalArgumentException(
+                        vertical()
+                                ? "A vertical grid needs more rows than columns. Use Rotate to"
+                                        + " change arrangement."
+                                : "A horizontal grid needs at least as many columns as rows. Use"
+                                        + " Rotate to change arrangement.");
             if (!module.widgetEngine.fits(grid(), next))
                 throw new IllegalArgumentException(
-                        "The widgets do not fit. Increase the grid first");
+                        "The current widgets do not fit this grid. Remove a widget or increase"
+                                + " rows/columns.");
+        }
+        if (WidgetPreferences.covers(next) && next.getInt("depth") == 1) {
+            byte[] mask = WidgetPreferences.mask(next, clock);
+            if (mask == null)
+                throw new IllegalStateException(
+                        "Detect a wallpaper subject in Clock → Advanced → Depth effect first.");
+            next.putByteArray("depthMask", mask.clone());
+            if (clock != null) DepthMetadata.copy(clock, next);
         }
         if (legacy()) {
             boolean early = earlyClockEditor();
@@ -379,11 +393,6 @@ final class EditorWidgets {
                     != (draft == null ? 1f : draft.getFloat("scale", 1f));
             if (scaleChanged && !legacyScaleReady)
                 throw new IllegalStateException("Widget sizing is not ready.");
-            if (WidgetPreferences.covers(next)
-                    && next.getInt("depth") == 1
-                    && WidgetPreferences.mask(next, clock) == null)
-                throw new IllegalStateException(
-                        "Detect a wallpaper subject in Clock → Advanced first.");
             Bundle previous = draft;
             boolean previousDirty = dirty;
             draft = next;
@@ -392,7 +401,10 @@ final class EditorWidgets {
             try {
                 if (structural) {
                     restoreModel(data());
-                    Reflect.call(data(), "setEditableAlign", next.getBoolean("layout"));
+                    Reflect.call(
+                            data(),
+                            "setEditableAlign",
+                            next.getBoolean("layout") || nativeRotationAvailable());
                     module.widgetEngine.refreshChecked(grid());
                     module.widgetEngine.reflow(grid());
                     legacyBinding.finalizeList(owner.get());
@@ -422,30 +434,6 @@ final class EditorWidgets {
             }
             return;
         }
-        if (structural && !next.getBoolean("layout") && vertical())
-            throw new IllegalArgumentException(
-                    "Rotate back to Horizontal before restoring the stock phone grid.");
-        if (structural
-                && next.getBoolean("layout")
-                && !WidgetLayout.matchesOrientation(
-                        next.getInt("columns"), next.getInt("rows"), vertical()))
-            throw new IllegalArgumentException(
-                    vertical()
-                            ? "A vertical grid needs more rows than columns. Use Rotate to change"
-                                    + " arrangement."
-                            : "A horizontal grid needs at least as many columns as rows. Use Rotate"
-                                    + " to change arrangement.");
-        if (structural && !module.widgetEngine.fits(grid(), next))
-            throw new IllegalArgumentException(
-                    "The current widgets do not fit this grid. Remove a widget or increase"
-                            + " rows/columns.");
-        if (WidgetPreferences.covers(next) && next.getInt("depth") == 1) {
-            byte[] mask = WidgetPreferences.mask(next, clock);
-            if (mask == null)
-                throw new IllegalStateException(
-                        "Detect a wallpaper subject in Clock → Advanced → Depth effect first.");
-            next.putByteArray("depthMask", mask.clone());
-        }
         Bundle previous = draft;
         boolean wasDirty = dirty;
         draft = next;
@@ -454,7 +442,10 @@ final class EditorWidgets {
         try {
             if (structural) {
                 Object model = data();
-                Reflect.call(model, "setEditableAlign", draft.getBoolean("layout"));
+                Reflect.call(
+                        model,
+                        "setEditableAlign",
+                        draft.getBoolean("layout") || nativeRotationAvailable());
                 module.widgetEngine.refreshChecked(grid());
                 module.widgetEngine.reflow(grid());
                 OneUi9WidgetEditor.refreshList(owner.get()); // Refresh native widget list after reflow.
@@ -563,7 +554,10 @@ final class EditorWidgets {
         try {
             if (legacy()) {
                 View root = previewRoot(item);
-                if (root != null) rotationGuide.update(root.getRootView());
+                if (root != null) {
+                    rotationGuide.update(root.getRootView());
+                    WidgetDepthBlur.blur(root, draft.getBoolean("blurOff"));
+                }
                 if (depthAvailable() && root != null) {
                     DepthEffects.applyEditorWidgets(
                             root,
@@ -1201,7 +1195,19 @@ final class EditorWidgets {
                                     boolean wasDirty = dirty;
                                     Bundle next = new Bundle(draft);
                                     orient(next, target);
-                                    if (!module.widgetEngine.fits(grid(), next)) return false;
+                                    if (!WidgetLayout.fits(
+                                                    next.getInt("columns"),
+                                                    next.getInt("rows"),
+                                                    new int[0][])
+                                            || !module.widgetEngine.fits(grid(), next)) {
+                                        android.widget.Toast.makeText(
+                                                        context(),
+                                                        "These widgets need a larger grid for"
+                                                                + " this arrangement.",
+                                                        android.widget.Toast.LENGTH_LONG)
+                                                .show();
+                                        return false;
+                                    }
                                     draft = WidgetPreferences.clean(next);
                                     dirty = true;
                                     try {

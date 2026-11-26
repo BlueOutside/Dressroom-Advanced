@@ -380,12 +380,25 @@ final class DepthEffects {
 
     static Path localSubjectPath(View view) {
         Entry entry = inheritedSubject(view);
-        if (entry == null || (entry.editor && sourcePending) || subjectSuppressed(view, entry))
+        if (entry == null
+                || entry.alphaBounds.isEmpty()
+                || (entry.editor && sourcePending)
+                || subjectSuppressed(view, entry))
             return null;
         Matrix global = new Matrix(), local = new Matrix();
         view.transformMatrixToGlobal(global);
         if (!global.invert(local)) return null;
-        Path subject = screenSubjectPath(view, entry, 0, 0);
+        Matrix transform = subjectTransform(view, entry, 0, 0);
+        if (transform == null) return null;
+        if (view.getWidth() > 0 && view.getHeight() > 0) {
+            RectF bounds = new RectF(entry.alphaBounds);
+            transform.mapRect(bounds);
+            if (bounds.width() > 0 && bounds.height() > 0) {
+                local.mapRect(bounds);
+                if (!bounds.intersects(0, 0, view.getWidth(), view.getHeight())) return null;
+            }
+        }
+        Path subject = screenSubjectPath(entry, transform);
         if (subject == null) return null;
         LocalPath cached = localPaths.get(view);
         if (cached != null && cached.screen == subject && cached.matrix.equals(local))
@@ -469,7 +482,10 @@ final class DepthEffects {
     }
 
     private static Path screenSubjectPath(View clock, Entry entry, float hostX, float hostY) {
-        Matrix transform = subjectTransform(clock, entry, hostX, hostY);
+        return screenSubjectPath(entry, subjectTransform(clock, entry, hostX, hostY));
+    }
+
+    private static Path screenSubjectPath(Entry entry, Matrix transform) {
         if (transform == null) return null;
         Path cached = entry.paths.get(transform);
         if (cached != null) return cached;
