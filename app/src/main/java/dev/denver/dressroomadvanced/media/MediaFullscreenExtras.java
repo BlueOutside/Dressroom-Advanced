@@ -706,23 +706,36 @@ public final class MediaFullscreenExtras {
                     && candidate.bitmap() != null;
         }
 
+        private boolean hooksActive;
+
+        private void setRuntimeHooksActive(boolean active) {
+            if (hooksActive == active) return;
+            hooksActive = active;
+            MediaClockContrast.setHooksEnabled(active);
+            MediaBlurHost.setHooksEnabled(active);
+            MediaInteraction.setActive(active);
+        }
+
         void update() {
             ViewGroup parent = root.get();
-            if (parent == null) return;
+            if (parent == null) {
+                setRuntimeHooksActive(false);
+                return;
+            }
             if (ambientCollapsed) {
                 if (!nativeAmbientState && !liveCover.ambientHandoff()) {
                     ambientCollapsed = false;
                 } else {
+                    setRuntimeHooksActive(false);
                     updateRegularWidgets(parent);
                     return;
                 }
             }
             boolean fullscreenEnabled = RuntimeExtras.enabled(getContext(), "fullscreenArt");
-            MediaClockContrast.setHooksEnabled(fullscreenEnabled);
-            MediaBlurHost.setHooksEnabled(fullscreenEnabled);
             if (fullscreenEnabled
                     && liveCover.retainOnWallpaperAod(
                             showing && current != null && !current.closing ? current.bitmap() : null)) {
+                setRuntimeHooksActive(true);
                 if (!wasAmbient) {
                     preAmbientNative =
                             showing && current != null && !current.closing
@@ -842,9 +855,11 @@ public final class MediaFullscreenExtras {
                     setVisibility(INVISIBLE);
                     returnLayer.setVisibility(INVISIBLE);
                 }
+                setRuntimeHooksActive(false);
                 updateRegularWidgets(parent);
                 return;
             }
+            setRuntimeHooksActive(true);
             regularPublished = false;
             View target = best.target.get();
             View page = target;

@@ -4,17 +4,22 @@ import android.animation.Animator;
 import android.graphics.drawable.Drawable;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.FrameLayout;
 
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.Collections;
 import java.util.HashSet;
+import java.util.Set;
+import java.util.WeakHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /** Refresh fixes for the supported native stacks. Samsung still owns card order and animations. */
 final class NowBarStackRepair {
     private final Method data, item, key, blur, expanded, normalContent;
     private final Field state, animator, dragging, reordering, dismissing, expanding;
+    private final Set<ViewGroup> layoutWatched =
+            Collections.newSetFromMap(new WeakHashMap<>());
 
     private NowBarStackRepair(NowBarStackBinding binding) {
         data = binding.data;
@@ -31,24 +36,44 @@ final class NowBarStackRepair {
         expanding = binding.expanding;
     }
 
+    private void watchLayout(DressroomModule module, ViewGroup stackView) {
+        if (stackView == null || !layoutWatched.add(stackView)) return;
+        stackView.addOnLayoutChangeListener(
+                (v, l, t, r, b, ol, ot, or, ob) ->
+                        updatePivotsSafely(module, (ViewGroup) v));
+    }
+
     static void install(DressroomModule module, NowBarStackBinding binding)
             throws ReflectiveOperationException {
         Class<?> stack = binding.stack;
         NowBarStackRepair repair = new NowBarStackRepair(binding);
         Method refresh = binding.refresh;
         Method animate = binding.animate;
-        Method layout =
-                FrameLayout.class.getDeclaredMethod(
-                        "onLayout", boolean.class, int.class, int.class, int.class, int.class);
         try (HookTransaction hooks = new HookTransaction()) {
+            for (Constructor<?> ctor : stack.getDeclaredConstructors()) {
+                hooks.add(
+                        module.hook(ctor)
+                                        .setId("dressroom-advanced.stack-pill-pivot")
+                                        .intercept(
+                                                chain -> {
+                                                    Object result = chain.proceed();
+                                                    if (chain.getThisObject()
+                                                            instanceof ViewGroup root)
+                                                        repair.watchLayout(module, root);
+                                                    return result;
+                                                })
+                                ::unhook);
+            }
             hooks.add(
                     module.hook(refresh)
                                     .setId("dressroom-advanced.stack-refresh")
                                     .intercept(
                                             chain -> {
+                                                ViewGroup root = (ViewGroup) chain.getThisObject();
+                                                repair.watchLayout(module, root);
                                                 try {
                                                     repair.beforeRefresh(
-                                                            (ViewGroup) chain.getThisObject(),
+                                                            root,
                                                             (CopyOnWriteArrayList<?>)
                                                                     chain.getArg(binding.refreshItemsArgument()));
                                                 } catch (ReflectiveOperationException
@@ -58,21 +83,7 @@ final class NowBarStackRepair {
                                                             error);
                                                 }
                                                 Object result = chain.proceed();
-                                                repair.updatePivotsSafely(
-                                                        module, (ViewGroup) chain.getThisObject());
-                                                return result;
-                                            })
-                            ::unhook);
-            hooks.add(
-                    module.hook(layout)
-                                    .setId("dressroom-advanced.stack-pill-pivot")
-                                    .intercept(
-                                            chain -> {
-                                                Object result = chain.proceed();
-                                                if (stack.isInstance(chain.getThisObject()))
-                                                    repair.updatePivotsSafely(
-                                                            module,
-                                                            (ViewGroup) chain.getThisObject());
+                                                repair.updatePivotsSafely(module, root);
                                                 return result;
                                             })
                             ::unhook);
@@ -126,7 +137,6 @@ final class NowBarStackRepair {
                             ::unhook);
             module.deoptimize(refresh);
             module.deoptimize(animate);
-            module.deoptimize(layout);
             hooks.commit();
         }
         android.util.Log.i(

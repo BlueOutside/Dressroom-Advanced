@@ -31,8 +31,14 @@ final class NowBarStackLayers {
     private final Constructor<?> stackSize;
     private final WeakHashMap<ViewGroup, WeakReference<Tail>> tails = new WeakHashMap<>();
     private final WeakHashMap<ViewGroup, CountRefresh> countRefreshes = new WeakHashMap<>();
+    private final java.util.Set<ViewGroup> layoutWatched =
+            java.util.Collections.newSetFromMap(new WeakHashMap<>());
     private Method cardBlurAlpha;
     private volatile int liveTails;
+    private Runnable alphaLease;
+    private Runnable drawChildUnhook;
+    private boolean drawChildDeoptimized;
+    private int activeReleases;
     private final WeakHashMap<android.content.res.Resources, float[]> offsets = new WeakHashMap<>();
 
     private NowBarStackLayers(DressroomModule module, NowBarStackBinding binding) {
@@ -52,15 +58,104 @@ final class NowBarStackLayers {
         animationsEnabled = binding.animationsEnabled;
     }
 
+    private void watchLayout(ViewGroup root) {
+        if (root == null || !layoutWatched.add(root)) return;
+        root.addOnLayoutChangeListener(
+                (v, l, t, r, b, ol, ot, or, ob) -> {
+                    ViewGroup stackRoot = (ViewGroup) v;
+                    if (!tails.containsKey(stackRoot)) {
+                        tails.put(stackRoot, new WeakReference<>(null));
+                        stackRoot.post(() -> rebuild(stackRoot));
+                    }
+                    position(stackRoot);
+                });
+    }
+
+    private synchronized void syncAlphaHook() {
+        if (liveTails > 0 && alphaLease == null) {
+            try {
+                alphaLease =
+                        ViewAlphaHooks.acquireAfter(
+                                module,
+                                view -> {
+                                    if (liveTails != 0 && stackClass.isInstance(view)) {
+                                        ViewGroup root = (ViewGroup) view;
+                                        Tail tail = tail(root);
+                                        if (tail != null && tail.getChildCount() != 0)
+                                            tail.applyStackAlpha(root.getAlpha());
+                                    }
+                                });
+            } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+                module.report("Now Bar rear opacity hook unavailable", error);
+            }
+        } else if (liveTails <= 0 && alphaLease != null) {
+            Runnable lease = alphaLease;
+            alphaLease = null;
+            lease.run();
+        }
+    }
+
+    private synchronized void acquireDrawChildHook() {
+        activeReleases++;
+        if (drawChildUnhook != null) return;
+        try {
+            Method drawChild =
+                    ViewGroup.class.getDeclaredMethod(
+                            "drawChild", Canvas.class, View.class, long.class);
+            var handle =
+                    module.hook(drawChild)
+                            .setId("dressroom-advanced.stack-release-drawing")
+                            .intercept(
+                                    chain -> {
+                                        if (liveTails == 0) return chain.proceed();
+                                        if (stackClass.isInstance(chain.getThisObject())) {
+                                            Tail tail = tail((ViewGroup) chain.getThisObject());
+                                            if (tail != null
+                                                    && tail.outgoing != null
+                                                    && tail.outgoing.front == chain.getArg(1))
+                                                return true;
+                                        }
+                                        return chain.proceed();
+                                    });
+            if (!drawChildDeoptimized) {
+                module.deoptimize(drawChild);
+                drawChildDeoptimized = true;
+            }
+            drawChildUnhook = handle::unhook;
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+            module.report("Now Bar rear release draw hook unavailable", error);
+        }
+    }
+
+    private synchronized void releaseDrawChildHook() {
+        if (activeReleases > 0) activeReleases--;
+        if (activeReleases == 0 && drawChildUnhook != null) {
+            Runnable unhook = drawChildUnhook;
+            drawChildUnhook = null;
+            unhook.run();
+        }
+    }
+
     static void install(DressroomModule module, NowBarStackBinding binding)
             throws ReflectiveOperationException {
         NowBarStackLayers layers = new NowBarStackLayers(module, binding);
         Class<?> stack = binding.stack;
         Method refresh = binding.refresh;
-        Method layout =
-                FrameLayout.class.getDeclaredMethod(
-                        "onLayout", boolean.class, int.class, int.class, int.class, int.class);
         try (HookTransaction hooks = new HookTransaction()) {
+            for (Constructor<?> ctor : stack.getDeclaredConstructors()) {
+                hooks.add(
+                        module.hook(ctor)
+                                        .setId("dressroom-advanced.stack-rear-layout")
+                                        .intercept(
+                                                chain -> {
+                                                    Object result = chain.proceed();
+                                                    if (chain.getThisObject()
+                                                            instanceof ViewGroup root)
+                                                        layers.watchLayout(root);
+                                                    return result;
+                                                })
+                                ::unhook);
+            }
             for (String name : new String[] {"f", "g"}) {
                 Method method = name.equals("f") ? binding.scale : binding.offset;
                 hooks.add(
@@ -102,6 +197,7 @@ final class NowBarStackLayers {
                                     .intercept(
                                             chain -> {
                                                 ViewGroup root = (ViewGroup) chain.getThisObject();
+                                                layers.watchLayout(root);
                                                 if (layers.busy(root)) return chain.proceed();
                                                 Tail tail = layers.tail(root);
                                                 layers.cancelCountRefresh(root);
@@ -130,25 +226,6 @@ final class NowBarStackLayers {
                                                 }
                                             })
                             ::unhook);
-            hooks.add(
-                    module.hook(layout)
-                                    .setId("dressroom-advanced.stack-rear-layout")
-                                    .intercept(
-                                            chain -> {
-                                                Object result = chain.proceed();
-                                                if (stack.isInstance(chain.getThisObject())) {
-                                                    ViewGroup root =
-                                                            (ViewGroup) chain.getThisObject();
-                                                    if (!layers.tails.containsKey(root)) {
-                                                        layers.tails.put(
-                                                                root, new WeakReference<>(null));
-                                                        root.post(() -> layers.rebuild(root));
-                                                    }
-                                                    layers.position(root);
-                                                }
-                                                return result;
-                                            })
-                            ::unhook);
             for (String name : new String[] {"z", "setExpandedCardState", "setExpandVIStarted"}) {
                 Method method =
                         name.equals("z")
@@ -160,7 +237,10 @@ final class NowBarStackLayers {
                                         .intercept(
                                                 chain -> {
                                                     Object result = chain.proceed();
-                                                    layers.sync((ViewGroup) chain.getThisObject());
+                                                    ViewGroup root =
+                                                            (ViewGroup) chain.getThisObject();
+                                                    layers.watchLayout(root);
+                                                    layers.sync(root);
                                                     return result;
                                                 })
                                 ::unhook);
@@ -249,29 +329,7 @@ final class NowBarStackLayers {
                                                 return result;
                                             })
                             ::unhook);
-            Method drawChild =
-                    ViewGroup.class.getDeclaredMethod(
-                            "drawChild", Canvas.class, View.class, long.class);
-            hooks.add(
-                    module.hook(drawChild)
-                                    .setId("dressroom-advanced.stack-release-drawing")
-                                    .intercept(
-                                            chain -> {
-                                                if (layers.liveTails == 0) return chain.proceed();
-                                                if (stack.isInstance(chain.getThisObject())) {
-                                                    Tail tail =
-                                                            layers.tail(
-                                                                    (ViewGroup)
-                                                                            chain.getThisObject());
-                                                    if (tail != null
-                                                            && tail.outgoing != null
-                                                            && tail.outgoing.front
-                                                                    == chain.getArg(1)) return true;
-                                                }
-                                                return chain.proceed();
-                                            })
-                            ::unhook);
-            for (Method method : new Method[] {depth, touch, drawChild}) module.deoptimize(method);
+            for (Method method : new Method[] {depth, touch}) module.deoptimize(method);
             Method configuration =
                     stack.getDeclaredMethod(
                             "onConfigurationChanged", android.content.res.Configuration.class);
@@ -281,6 +339,7 @@ final class NowBarStackLayers {
                                     .intercept(
                                             chain -> {
                                                 ViewGroup root = (ViewGroup) chain.getThisObject();
+                                                layers.watchLayout(root);
                                                 layers.offsets.remove(root.getResources());
                                                 Object result = chain.proceed();
                                                 layers.position(root);
@@ -296,19 +355,6 @@ final class NowBarStackLayers {
             } catch (ReflectiveOperationException unavailable) {
                 module.report("Optional Now Bar rear blur alpha unavailable", unavailable);
             }
-            Method alpha = View.class.getDeclaredMethod("setAlpha", float.class);
-            hooks.add(module.hook(alpha).setId("dressroom-advanced.stack-rear-opacity")
-                    .intercept(chain -> {
-                        Object result = chain.proceed();
-                        if (layers.liveTails != 0 && stack.isInstance(chain.getThisObject())) {
-                            ViewGroup root = (ViewGroup) chain.getThisObject();
-                            Tail tail = layers.tail(root);
-                            if (tail != null && tail.getChildCount() != 0)
-                                tail.applyStackAlpha(root.getAlpha());
-                        }
-                        return result;
-                    })::unhook);
-            module.deoptimize(alpha);
             Method detach = stack.getDeclaredMethod("onDetachedFromWindow");
             hooks.add(
                     module.hook(detach)
@@ -322,7 +368,6 @@ final class NowBarStackLayers {
                                             })
                             ::unhook);
             module.deoptimize(refresh);
-            module.deoptimize(layout);
             module.deoptimize(detach);
             hooks.commit();
         }
@@ -452,6 +497,7 @@ final class NowBarStackLayers {
         tails.remove(root);
         if (tail != null) {
             liveTails--;
+            syncAlphaHook();
             tail.stop();
             if (tail.getParent() instanceof ViewGroup parent) parent.removeView(tail);
         }
@@ -472,6 +518,7 @@ final class NowBarStackLayers {
                 tail = new Tail(root);
                 tails.put(root, new WeakReference<>(tail));
                 liveTails++;
+                syncAlphaHook();
                 parent.addView(
                         tail, 0, new FrameLayout.LayoutParams(root.getWidth(), root.getHeight()));
             }
@@ -692,6 +739,7 @@ final class NowBarStackLayers {
         void start(Release moving) {
             stop();
             outgoing = moving;
+            acquireDrawChildHook();
             progress = 0;
             observer = getViewTreeObserver();
             observer.addOnPreDrawListener(advance);
@@ -705,6 +753,7 @@ final class NowBarStackLayers {
             observer = null;
             outgoing = null;
             if (moving == null) return;
+            releaseDrawChildHook();
             for (var entry : ranks.entrySet()) {
                 View card = entry.getKey();
                 Rank rank = entry.getValue();

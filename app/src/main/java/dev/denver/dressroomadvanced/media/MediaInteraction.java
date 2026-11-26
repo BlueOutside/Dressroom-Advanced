@@ -17,7 +17,10 @@ final class MediaInteraction {
     private static final Map<View, Target> targets = new WeakHashMap<>();
     private static final Map<View, Boolean> rejected = new WeakHashMap<>();
     private static final Set<Class<?>> stacks = Collections.newSetFromMap(new WeakHashMap<>());
-    private static boolean installed;
+    private static DressroomModule hookModule;
+    private static Runnable touchUnhook;
+    private static boolean touchDeoptimized;
+    private static boolean touchActive;
 
     private static final class Target {
         final WeakReference<Object> holder;
@@ -33,72 +36,112 @@ final class MediaInteraction {
         }
     }
 
-    static void bind(DressroomModule module, Object holder, View root)
+    static synchronized void bind(DressroomModule module, Object holder, View root)
             throws ReflectiveOperationException {
         OneUi9MediaBinding.HolderContract contract =
                 OneUi9MediaBinding.holderContract(holder.getClass().getClassLoader());
         targets.put(root, new Target(holder, (View) contract.titleArtist().get(holder), contract));
-        if (installed) return;
-        Method dispatch =
-                ViewGroup.class.getDeclaredMethod("dispatchTouchEvent", MotionEvent.class);
-        module.hook(dispatch)
-                .setId("dressroom-advanced.media-artwork-touch")
-                .intercept(
-                        chain -> {
-                            View rootView = (View) chain.getThisObject();
-                            Target target = targets.get(rootView);
-                            if (target == null) return chain.proceed();
-                            MotionEvent event = (MotionEvent) chain.getArg(0);
-                            int action = event.getActionMasked();
-                            if (action == MotionEvent.ACTION_DOWN) {
-                                target.outside = false;
-                                if (!RuntimeExtras.enabled(rootView.getContext(), "fullscreenArt"))
-                                    return chain.proceed();
-                                View title = target.title.get();
-                                Rect bounds = new Rect();
-                                target.outside =
-                                        title == null
-                                                || !title.getGlobalVisibleRect(bounds)
-                                                || !bounds.contains(
-                                                        (int) event.getRawX(),
-                                                        (int) event.getRawY());
-                                target.x = event.getRawX();
-                                target.y = event.getRawY();
-                                target.moved = false;
-                            }
-                            if (!target.outside) return chain.proceed();
-                            if (action == MotionEvent.ACTION_MOVE || action == MotionEvent.ACTION_UP) {
-                                float dx = event.getRawX() - target.x;
-                                float dy = event.getRawY() - target.y;
-                                int slop = ViewConfiguration.get(rootView.getContext()).getScaledTouchSlop();
-                                target.moved |= dx * dx + dy * dy > slop * slop;
-                            } else if (action == MotionEvent.ACTION_POINTER_DOWN) {
-                                target.moved = true;
-                            }
-                            if (action == MotionEvent.ACTION_UP) {
-                                target.outside = false;
-                                Object holderObject = target.holder.get();
-                                if (holderObject != null && !target.moved
-                                        && RuntimeExtras.enabled(rootView.getContext(), "fullscreenArt"))
-                                    try {
-                                        if (!Boolean.TRUE.equals(
-                                                target.contract.showing().get(holderObject))) {
-                                            target.contract
-                                                    .viewModelExpand()
-                                                    .invoke(
+        hookModule = module;
+        syncTouchHook();
+    }
+
+    static synchronized void setActive(boolean active) {
+        if (touchActive == active) return;
+        touchActive = active;
+        syncTouchHook();
+    }
+
+    private static synchronized void syncTouchHook() {
+        boolean needed = touchActive && !targets.isEmpty() && hookModule != null;
+        if (needed && touchUnhook == null) {
+            DressroomModule module = hookModule;
+            try {
+                Method dispatch =
+                        ViewGroup.class.getDeclaredMethod("dispatchTouchEvent", MotionEvent.class);
+                var handle =
+                        module.hook(dispatch)
+                                .setId("dressroom-advanced.media-artwork-touch")
+                                .intercept(
+                                        chain -> {
+                                            View rootView = (View) chain.getThisObject();
+                                            Target target = targets.get(rootView);
+                                            if (target == null) return chain.proceed();
+                                            MotionEvent event = (MotionEvent) chain.getArg(0);
+                                            int action = event.getActionMasked();
+                                            if (action == MotionEvent.ACTION_DOWN) {
+                                                target.outside = false;
+                                                if (!RuntimeExtras.enabled(
+                                                        rootView.getContext(), "fullscreenArt"))
+                                                    return chain.proceed();
+                                                View title = target.title.get();
+                                                Rect bounds = new Rect();
+                                                target.outside =
+                                                        title == null
+                                                                || !title.getGlobalVisibleRect(
+                                                                        bounds)
+                                                                || !bounds.contains(
+                                                                        (int) event.getRawX(),
+                                                                        (int) event.getRawY());
+                                                target.x = event.getRawX();
+                                                target.y = event.getRawY();
+                                                target.moved = false;
+                                            }
+                                            if (!target.outside) return chain.proceed();
+                                            if (action == MotionEvent.ACTION_MOVE
+                                                    || action == MotionEvent.ACTION_UP) {
+                                                float dx = event.getRawX() - target.x;
+                                                float dy = event.getRawY() - target.y;
+                                                int slop =
+                                                        ViewConfiguration.get(rootView.getContext())
+                                                                .getScaledTouchSlop();
+                                                target.moved |= dx * dx + dy * dy > slop * slop;
+                                            } else if (action == MotionEvent.ACTION_POINTER_DOWN) {
+                                                target.moved = true;
+                                            }
+                                            if (action == MotionEvent.ACTION_UP) {
+                                                target.outside = false;
+                                                Object holderObject = target.holder.get();
+                                                if (holderObject != null
+                                                        && !target.moved
+                                                        && RuntimeExtras.enabled(
+                                                                rootView.getContext(),
+                                                                "fullscreenArt"))
+                                                    try {
+                                                        if (!Boolean.TRUE.equals(
+                                                                target.contract
+                                                                        .showing()
+                                                                        .get(holderObject))) {
                                                             target.contract
-                                                                    .viewModel()
-                                                                    .get(holderObject));
-                                        }
-                                    } catch (Exception error) {
-                                        module.report(
-                                                "Native media outside-close unavailable", error);
-                                    }
-                            } else if (action == MotionEvent.ACTION_CANCEL) target.outside = false;
-                            return true;
-                        });
-        module.deoptimize(dispatch);
-        installed = true;
+                                                                    .viewModelExpand()
+                                                                    .invoke(
+                                                                            target.contract
+                                                                                    .viewModel()
+                                                                                    .get(
+                                                                                            holderObject));
+                                                        }
+                                                    } catch (Exception error) {
+                                                        module.report(
+                                                                "Native media outside-close"
+                                                                        + " unavailable",
+                                                                error);
+                                                    }
+                                            } else if (action == MotionEvent.ACTION_CANCEL)
+                                                target.outside = false;
+                                            return true;
+                                        });
+                if (!touchDeoptimized) {
+                    module.deoptimize(dispatch);
+                    touchDeoptimized = true;
+                }
+                touchUnhook = handle::unhook;
+            } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+                module.report("Media touch hook unavailable", error);
+            }
+        } else if (!needed && touchUnhook != null) {
+            Runnable unhook = touchUnhook;
+            touchUnhook = null;
+            unhook.run();
+        }
     }
 
     static void installStack(DressroomModule module, ClassLoader loader)

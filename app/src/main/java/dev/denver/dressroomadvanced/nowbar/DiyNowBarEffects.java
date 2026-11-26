@@ -70,7 +70,13 @@ final class DiyNowBarEffects {
     private static final int TAG_ORIG_SETTINGS_CLICK = 0x5A3D1102;
 
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
-    private static final ExecutorService IO = Executors.newSingleThreadExecutor();
+    private static final ExecutorService IO =
+            Executors.newSingleThreadExecutor(
+                    task -> {
+                        Thread thread = new Thread(task, "Dressroom-nowbar-io");
+                        thread.setDaemon(true);
+                        return thread;
+                    });
     private static final Set<ClassLoader> installed =
             Collections.newSetFromMap(new WeakHashMap<>());
     private static final Set<ClassLoader> labsSettingsInstalled =
@@ -88,6 +94,7 @@ final class DiyNowBarEffects {
     private static volatile Context stackHostContext;
     private static volatile String lastReportedLiveSig = "";
     private static volatile boolean lastKnownPlugged;
+    private static volatile boolean pluggedSeeded;
 
     private static final class ManagerHandle {
         final Field rawListField;
@@ -164,128 +171,140 @@ final class DiyNowBarEffects {
      */
     static synchronized void installLabsSettingsHooks(DressroomModule module, ClassLoader loader) {
         if (loader == null || !labsSettingsInstalled.add(loader)) return;
-        try {
-            // 1. AbstractC0814t1.m11184A(Context): scpm_aod_common_policy -> "nowbar_commute"
-            for (DexSignatures.Body body :
-                    DexSignatures.find(loader, Set.of("scpm_aod_common_policy", "nowbar_commute"))) {
-                if (body.parameters().equals(List.of("Landroid/content/Context;"))
-                        && "Z".equals(body.result())) {
-                    Method m = body.method(loader);
-                    hookAndDeopt(
-                            module,
-                            m,
-                            "dressroom-advanced.labs-commute-policy",
-                            chain -> {
-                                Context ctx =
-                                        chain.getArg(0) instanceof Context c ? c : stackHostContext;
-                                DiyNowBarLabs labs = ensureLabsSnapshot(ctx);
-                                if (labs.unlockGoogleCommute) return true;
-                                return chain.proceed();
-                            });
-                    break;
-                }
-            }
-
-            // 2. AbstractC0814t1.m11185B(Context): Google Commute enabled check
-            for (DexSignatures.Body body :
-                    DexSignatures.find(
-                            loader,
-                            Set.of("com.google.android.apps.maps_internal", "key_now_bar_"))) {
-                if (body.parameters().equals(List.of("Landroid/content/Context;"))
-                        && "Z".equals(body.result())) {
-                    Method m = body.method(loader);
-                    hookAndDeopt(
-                            module,
-                            m,
-                            "dressroom-advanced.labs-commute-enabled",
-                            chain -> {
-                                Context ctx =
-                                        chain.getArg(0) instanceof Context c ? c : stackHostContext;
-                                DiyNowBarLabs labs = ensureLabsSnapshot(ctx);
-                                if (labs.unlockGoogleCommute && ctx != null) {
-                                    return Settings.System.getInt(
-                                                    ctx.getContentResolver(),
-                                                    "key_now_bar_com_google_android_apps_maps_internal",
-                                                    1)
-                                            == 1;
-                                }
-                                return chain.proceed();
-                            });
-                    break;
-                }
-            }
-
-            // 3. AbstractC0814t1.m11186C(Context): Google Finance enabled check
-            for (DexSignatures.Body body :
-                    DexSignatures.find(
-                            loader,
-                            Set.of(
-                                    "com.google.android.googlequicksearchbox_finance",
-                                    "key_now_bar_"))) {
-                if (body.parameters().equals(List.of("Landroid/content/Context;"))
-                        && "Z".equals(body.result())) {
-                    Method m = body.method(loader);
-                    hookAndDeopt(
-                            module,
-                            m,
-                            "dressroom-advanced.labs-finance-enabled",
-                            chain -> {
-                                Context ctx =
-                                        chain.getArg(0) instanceof Context c ? c : stackHostContext;
-                                DiyNowBarLabs labs = ensureLabsSnapshot(ctx);
-                                if (labs.unlockGoogleFinance && ctx != null) {
-                                    return Settings.System.getInt(
-                                                    ctx.getContentResolver(),
-                                                    "key_now_bar_com_google_android_googlequicksearchbox_finance",
-                                                    1)
-                                            == 1;
-                                }
-                                return chain.proceed();
-                            });
-                    break;
-                }
-            }
-
-            // 4. b05.m1840g(Context): NowBarOngoingListUtils.getOngoingList
-            for (DexSignatures.Body body :
-                    DexSignatures.find(
-                            loader, Set.of("NowBarOngoingListUtils", "getOngoingList "))) {
-                if (body.parameters().equals(List.of("Landroid/content/Context;"))
-                        && "Ljava/util/List;".equals(body.result())) {
-                    Method m = body.method(loader);
-                    hookAndDeopt(
-                            module,
-                            m,
-                            "dressroom-advanced.labs-ongoing-list",
-                            chain -> {
-                                Object res = chain.proceed();
-                                Context ctx =
-                                        chain.getArg(0) instanceof Context c ? c : stackHostContext;
-                                DiyNowBarLabs labs = ensureLabsSnapshot(ctx);
-                                if (!labs.unlockGoogleFinance && !labs.unlockGoogleCommute) {
-                                    return res;
-                                }
-                                List<Object> out =
-                                        res instanceof List<?> raw
-                                                ? new ArrayList<>(raw)
-                                                : new ArrayList<>();
-                                if (labs.unlockGoogleFinance
-                                        && !out.contains(
+        DexSignatures.cachedRun(
+                () -> {
+                    try {
+                        List<String> ctxParam = List.of("Landroid/content/Context;");
+                        List<DexSignatures.Body> matches =
+                                DexSignatures.find(
+                                        loader,
+                                        Set.of(
+                                                "scpm_aod_common_policy",
+                                                "nowbar_commute",
+                                                "com.google.android.apps.maps_internal",
+                                                "com.google.android.googlequicksearchbox_finance",
+                                                "NowBarOngoingListUtils",
+                                                "getOngoingList "));
+                        boolean commutePolicyHooked = false;
+                        boolean commuteEnabledHooked = false;
+                        boolean financeEnabledHooked = false;
+                        boolean ongoingListHooked = false;
+                        for (DexSignatures.Body body : matches) {
+                            if (!body.parameters().equals(ctxParam)) continue;
+                            Map<String, Integer> anchors = body.anchors();
+                            if ("Z".equals(body.result())) {
+                                if (!commutePolicyHooked
+                                        && (anchors.containsKey("scpm_aod_common_policy")
+                                                || anchors.containsKey("nowbar_commute"))) {
+                                    commutePolicyHooked = true;
+                                    Method m = body.method(loader);
+                                    hookAndDeopt(
+                                            module,
+                                            m,
+                                            "dressroom-advanced.labs-commute-policy",
+                                            chain -> {
+                                                Context ctx =
+                                                        chain.getArg(0) instanceof Context c
+                                                                ? c
+                                                                : stackHostContext;
+                                                DiyNowBarLabs labs = ensureLabsSnapshot(ctx);
+                                                if (labs.unlockGoogleCommute) return true;
+                                                return chain.proceed();
+                                            });
+                                } else if (!commuteEnabledHooked
+                                        && anchors.containsKey(
+                                                "com.google.android.apps.maps_internal")) {
+                                    commuteEnabledHooked = true;
+                                    Method m = body.method(loader);
+                                    hookAndDeopt(
+                                            module,
+                                            m,
+                                            "dressroom-advanced.labs-commute-enabled",
+                                            chain -> {
+                                                Context ctx =
+                                                        chain.getArg(0) instanceof Context c
+                                                                ? c
+                                                                : stackHostContext;
+                                                DiyNowBarLabs labs = ensureLabsSnapshot(ctx);
+                                                if (labs.unlockGoogleCommute && ctx != null) {
+                                                    return Settings.System.getInt(
+                                                                    ctx.getContentResolver(),
+                                                                    "key_now_bar_com_google_android_apps_maps_internal",
+                                                                    1)
+                                                            == 1;
+                                                }
+                                                return chain.proceed();
+                                            });
+                                } else if (!financeEnabledHooked
+                                        && anchors.containsKey(
                                                 "com.google.android.googlequicksearchbox_finance")) {
-                                    out.add(0, "com.google.android.googlequicksearchbox_finance");
+                                    financeEnabledHooked = true;
+                                    Method m = body.method(loader);
+                                    hookAndDeopt(
+                                            module,
+                                            m,
+                                            "dressroom-advanced.labs-finance-enabled",
+                                            chain -> {
+                                                Context ctx =
+                                                        chain.getArg(0) instanceof Context c
+                                                                ? c
+                                                                : stackHostContext;
+                                                DiyNowBarLabs labs = ensureLabsSnapshot(ctx);
+                                                if (labs.unlockGoogleFinance && ctx != null) {
+                                                    return Settings.System.getInt(
+                                                                    ctx.getContentResolver(),
+                                                                    "key_now_bar_com_google_android_googlequicksearchbox_finance",
+                                                                    1)
+                                                            == 1;
+                                                }
+                                                return chain.proceed();
+                                            });
                                 }
-                                if (labs.unlockGoogleCommute
-                                        && !out.contains("com.google.android.apps.maps_internal")) {
-                                    out.add(0, "com.google.android.apps.maps_internal");
-                                }
-                                return out;
-                            });
-                    break;
-                }
-            }
-        } catch (Throwable error) {
-            DressroomModule.note("Now Bar Labs settings hooks unavailable", error);
-        }
+                            } else if (!ongoingListHooked
+                                    && "Ljava/util/List;".equals(body.result())
+                                    && (anchors.containsKey("NowBarOngoingListUtils")
+                                            || anchors.containsKey("getOngoingList "))) {
+                                ongoingListHooked = true;
+                                Method m = body.method(loader);
+                                hookAndDeopt(
+                                        module,
+                                        m,
+                                        "dressroom-advanced.labs-ongoing-list",
+                                        chain -> {
+                                            Object res = chain.proceed();
+                                            Context ctx =
+                                                    chain.getArg(0) instanceof Context c
+                                                            ? c
+                                                            : stackHostContext;
+                                            DiyNowBarLabs labs = ensureLabsSnapshot(ctx);
+                                            if (!labs.unlockGoogleFinance
+                                                    && !labs.unlockGoogleCommute) {
+                                                return res;
+                                            }
+                                            List<Object> out =
+                                                    res instanceof List<?> raw
+                                                            ? new ArrayList<>(raw)
+                                                            : new ArrayList<>();
+                                            if (labs.unlockGoogleFinance
+                                                    && !out.contains(
+                                                            "com.google.android.googlequicksearchbox_finance")) {
+                                                out.add(
+                                                        0,
+                                                        "com.google.android.googlequicksearchbox_finance");
+                                            }
+                                            if (labs.unlockGoogleCommute
+                                                    && !out.contains(
+                                                            "com.google.android.apps.maps_internal")) {
+                                                out.add(0, "com.google.android.apps.maps_internal");
+                                            }
+                                            return out;
+                                        });
+                            }
+                        }
+                    } catch (Throwable error) {
+                        DressroomModule.note("Now Bar Labs settings hooks unavailable", error);
+                    }
+                });
     }
 
     private static DiyNowBarLabs ensureLabsSnapshot(Context ctx) {
@@ -452,12 +471,13 @@ final class DiyNowBarEffects {
     }
 
     private static boolean isDevicePluggedIn(Context ctx) {
-        if (ctx == null) return lastKnownPlugged;
+        if (pluggedSeeded || ctx == null) return lastKnownPlugged;
         try {
             Intent bat = ctx.registerReceiver(null, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
             if (bat != null) {
                 int plugged = bat.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0);
                 lastKnownPlugged = plugged != 0;
+                pluggedSeeded = true;
             }
         } catch (Throwable ignored) {
         }
@@ -538,7 +558,7 @@ final class DiyNowBarEffects {
         Method forceUpdate = null;
         try {
             List<DexSignatures.Body> matches =
-                    DexSignatures.find(loader, Set.of(FORCE_UPDATE_MARKER)).stream()
+                    DexSignatures.findInClass(loader, MANAGER, Set.of(FORCE_UPDATE_MARKER)).stream()
                             .filter(
                                     body ->
                                             body.owner().equals(MANAGER)
@@ -664,6 +684,7 @@ final class DiyNowBarEffects {
                                         || Intent.ACTION_POWER_DISCONNECTED.equals(action)) {
                                     lastKnownPlugged =
                                             Intent.ACTION_POWER_CONNECTED.equals(action);
+                                    pluggedSeeded = true;
                                     if (labsConfig != null && labsConfig.nativeBatteryCard) {
                                         MAIN.post(DiyNowBarEffects::refreshTrackedManagers);
                                     }
@@ -921,7 +942,7 @@ final class DiyNowBarEffects {
     static Method resolveFilter(ClassLoader loader) throws ReflectiveOperationException {
         try {
             List<DexSignatures.Body> matches =
-                    DexSignatures.find(loader, Set.of(FILTER_MARKER)).stream()
+                    DexSignatures.findInClass(loader, MANAGER, Set.of(FILTER_MARKER)).stream()
                             .filter(
                                     body ->
                                             body.owner().equals(MANAGER)
@@ -955,7 +976,8 @@ final class DiyNowBarEffects {
 
     private static void installBouncerBypassHook(DressroomModule module, ClassLoader loader) {
         try {
-            for (DexSignatures.Body body : DexSignatures.find(loader, Set.of("LSE4510"))) {
+            for (DexSignatures.Body body :
+                    DexSignatures.findInClass(loader, ONGOING_DESC, Set.of("LSE4510"))) {
                 if (ONGOING_DESC.equals(body.owner())
                         && body.parameters().isEmpty()
                         && "V".equals(body.result())) {
@@ -1179,7 +1201,8 @@ final class DiyNowBarEffects {
 
             // Synchronous geometry sync on every expand/collapse animation frame (0-frame lag)
             for (DexSignatures.Body body :
-                    DexSignatures.find(loader, Set.of("onShapeAnimationValueChanged isExpanded "))) {
+                    DexSignatures.findInClass(
+                            loader, ONGOING_DESC, Set.of("onShapeAnimationValueChanged isExpanded "))) {
                 if (ONGOING_DESC.equals(body.owner())
                         && body.parameters().isEmpty()
                         && "V".equals(body.result())) {

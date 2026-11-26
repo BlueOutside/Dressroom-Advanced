@@ -45,9 +45,14 @@ final class GlyphFontCache {
         String glyphDesc = DexSignatures.descriptor(glyph);
         String baseDesc = DexSignatures.descriptor(base);
 
+        List<DexSignatures.Body> glyphBodies =
+                DexSignatures.findInClass(
+                        glyph, Set.of("fixFontType: [", "updateTypeface() ["));
         DexSignatures.Body fixBody =
                 uniqueMethod(
-                        DexSignatures.find(loader, Set.of("fixFontType: [")),
+                        glyphBodies.stream()
+                                .filter(body -> body.anchors().containsKey("fixFontType: ["))
+                                .toList(),
                         glyphDesc,
                         "V",
                         "glyph fixFontType",
@@ -55,7 +60,9 @@ final class GlyphFontCache {
                         "Ljava/lang/String;");
         DexSignatures.Body updateBody =
                 uniqueMethod(
-                        DexSignatures.find(loader, Set.of("updateTypeface() [")),
+                        glyphBodies.stream()
+                                .filter(body -> body.anchors().containsKey("updateTypeface() ["))
+                                .toList(),
                         glyphDesc,
                         "V",
                         "glyph updateTypeface");
@@ -90,7 +97,7 @@ final class GlyphFontCache {
                         .method(loader);
         Method applyTypeface =
                 uniqueMethod(
-                                DexSignatures.find(loader, Set.of("fixTypeface: [")),
+                                DexSignatures.findInClass(base, Set.of("fixTypeface: [")),
                                 baseDesc,
                                 "V",
                                 "clock applyTypeface",

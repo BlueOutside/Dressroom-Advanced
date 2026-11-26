@@ -19,6 +19,29 @@ import java.util.zip.ZipFile;
 /** Reads only the code needed for anchored bindings. Nothing runs in a draw hook. */
 final class DexSignatures {
     private static final int MAX_DEX = 128 * 1024 * 1024;
+    private static final byte[] OPCODE_WIDTH = new byte[256];
+
+    static {
+        java.util.Arrays.fill(OPCODE_WIDTH, (byte) 1);
+        for (int op = 0xe3; op <= 0xf9; op++) OPCODE_WIDTH[op] = -1;
+        for (int op :
+                new int[] {
+                    0x02, 0x05, 0x08, 0x13, 0x15, 0x16, 0x19, 0x1a, 0x1c, 0x1f, 0x20, 0x22, 0x23,
+                    0x29, 0xfe, 0xff
+                }) OPCODE_WIDTH[op] = 2;
+        for (int op = 0x2d; op <= 0x6d; op++) OPCODE_WIDTH[op] = 2;
+        for (int op = 0x90; op <= 0xaf; op++) OPCODE_WIDTH[op] = 2;
+        for (int op = 0xd0; op <= 0xe2; op++) OPCODE_WIDTH[op] = 2;
+        for (int op :
+                new int[] {
+                    0x03, 0x06, 0x09, 0x14, 0x17, 0x1b, 0x24, 0x25, 0x26, 0x2a, 0x2b, 0x2c, 0xfc,
+                    0xfd
+                }) OPCODE_WIDTH[op] = 3;
+        for (int op = 0x6e; op <= 0x78; op++) OPCODE_WIDTH[op] = 3;
+        OPCODE_WIDTH[0xfa] = 4;
+        OPCODE_WIDTH[0xfb] = 4;
+        OPCODE_WIDTH[0x18] = 5;
+    }
 
     record Member(String owner, String name, String type) {
         Field field(ClassLoader loader) throws ReflectiveOperationException {
@@ -276,6 +299,16 @@ final class DexSignatures {
         return find(loader, anchors, null);
     }
 
+    static List<Body> findInClass(Class<?> owner, Set<String> anchors)
+            throws ReflectiveOperationException, IOException {
+        return findInClass(owner.getClassLoader(), descriptor(owner), anchors);
+    }
+
+    static List<Body> findInClass(ClassLoader loader, String ownerDesc, Set<String> anchors)
+            throws ReflectiveOperationException, IOException {
+        return find(loader, anchors, new Target(ownerDesc, null, null, null, false));
+    }
+
     private static Set<String> dexSources(ClassLoader loader) throws ReflectiveOperationException {
         Object elements = Reflect.field(Reflect.field(loader, "pathList"), "dexElements");
         Set<String> sources = new LinkedHashSet<>();
@@ -504,10 +537,36 @@ final class DexSignatures {
             while (entries.hasMoreElements()) {
                 var entry = entries.nextElement();
                 if (!entry.getName().matches("classes[0-9]*\\.dex")) continue;
-                if (entry.getSize() > MAX_DEX) throw new IOException("DEX is too large");
+                long declaredSize = entry.getSize();
+                if (declaredSize > MAX_DEX) throw new IOException("DEX is too large");
                 try (var input = zip.getInputStream(entry)) {
-                    byte[] bytes = input.readNBytes(MAX_DEX + 1);
-                    if (bytes.length > MAX_DEX) throw new IOException("DEX is too large");
+                    byte[] bytes;
+                    if (declaredSize > 0) {
+                        int size = (int) declaredSize;
+                        byte[] buf = new byte[size];
+                        int read = 0;
+                        while (read < size) {
+                            int n = input.read(buf, read, size - read);
+                            if (n < 0) break;
+                            read += n;
+                        }
+                        int extra = read == size ? input.read() : -1;
+                        if (read == size && extra == -1) {
+                            bytes = buf;
+                        } else if (extra == -1) {
+                            bytes = java.util.Arrays.copyOf(buf, read);
+                        } else {
+                            byte[] rest = input.readNBytes(MAX_DEX - size);
+                            if (input.read() != -1) throw new IOException("DEX is too large");
+                            bytes = new byte[size + 1 + rest.length];
+                            System.arraycopy(buf, 0, bytes, 0, size);
+                            bytes[size] = (byte) extra;
+                            System.arraycopy(rest, 0, bytes, size + 1, rest.length);
+                        }
+                    } else {
+                        bytes = input.readNBytes(MAX_DEX + 1);
+                        if (bytes.length > MAX_DEX) throw new IOException("DEX is too large");
+                    }
                     if (visitor.accept(bytes)) return;
                 }
             }
@@ -541,10 +600,13 @@ final class DexSignatures {
     private static final class Reader {
         final byte[] data;
         final int headerOffset;
-        final int stringCount, strings, types, protos, fields, methodCount, methods, classCount, classDefs;
-        final Map<Set<String>, Map<Integer, String>> anchorCache;
+        final int stringCount, strings, typeCount, types, protos, fields, methodCount, methods, classCount, classDefs;
+        Map<Set<String>, Map<Integer, String>> anchorCache;
         boolean indexed;
-        private Map<String, Integer> classIndex;
+        private int[] classDefByType;
+        private byte stringsSortedState;
+        private byte typesSortedState;
+        private byte methodsSortedState;
 
         static List<Reader> readers(byte[] data) {
             Reader first = new Reader(data, 0, null);
@@ -580,13 +642,24 @@ final class DexSignatures {
         }
 
         int classDef(String owner) {
-            if (classIndex == null) {
-                Map<String, Integer> index = new HashMap<>();
-                for (int i = 0; i < classCount; i++)
-                    index.putIfAbsent(type(u32(classDefs + i * 32)), i);
-                classIndex = index;
+            int typeIdx = findTypeIndex(owner);
+            if (typeIdx < 0) return -1;
+            if (indexed && typeIdx < typeCount) {
+                if (classDefByType == null) {
+                    int[] index = new int[typeCount];
+                    java.util.Arrays.fill(index, -1);
+                    for (int i = 0; i < classCount; i++) {
+                        int t = u32(classDefs + i * 32);
+                        if (t < typeCount && index[t] < 0) index[t] = i;
+                    }
+                    classDefByType = index;
+                }
+                return classDefByType[typeIdx];
             }
-            return classIndex.getOrDefault(owner, -1);
+            for (int i = 0; i < classCount; i++) {
+                if (u32(classDefs + i * 32) == typeIdx) return i;
+            }
+            return -1;
         }
 
         Reader(
@@ -605,6 +678,7 @@ final class DexSignatures {
                 throw new IllegalArgumentException("Unsupported DEX header");
             stringCount = u32(headerOffset + 56);
             strings = u32(headerOffset + 60);
+            typeCount = u32(headerOffset + 64);
             types = u32(headerOffset + 68);
             protos = u32(headerOffset + 76);
             fields = u32(headerOffset + 84);
@@ -676,60 +750,207 @@ final class DexSignatures {
             return matchesText(u32(types + index * 4), expected);
         }
 
+        private int compareString(int index, String expected) {
+            int pos = textOffset(index);
+            int len = expected.length();
+            for (int p = 0; p < len; p++) {
+                int b = data[pos] & 0xff;
+                if (b == 0) return -1;
+                char ec = expected.charAt(p);
+                if (b < 0x80 && ec < 0x80) {
+                    if (b != ec) return b - ec;
+                    pos++;
+                } else {
+                    return text(index).compareTo(expected);
+                }
+            }
+            return data[pos] == 0 ? 0 : 1;
+        }
+
+        private int compareStrings(int a, int b) {
+            int pa = textOffset(a), pb = textOffset(b);
+            while (true) {
+                int ba = data[pa] & 0xff;
+                int bb = data[pb] & 0xff;
+                if (ba == 0 || bb == 0) return ba - bb;
+                if (ba < 0x80 && bb < 0x80) {
+                    if (ba != bb) return ba - bb;
+                    pa++;
+                    pb++;
+                } else {
+                    return text(a).compareTo(text(b));
+                }
+            }
+        }
+
+        private boolean isStringsSorted() {
+            if (stringsSortedState != 0) return stringsSortedState > 0;
+            if (stringCount <= 1) {
+                stringsSortedState = 1;
+                return true;
+            }
+            int step = stringCount <= 256 ? 1 : Math.max(1, (stringCount - 1) / 32);
+            for (int i = 0; i < stringCount - 1; i += step) {
+                if (compareStrings(i, i + 1) > 0) {
+                    stringsSortedState = -1;
+                    return false;
+                }
+            }
+            if (compareStrings(stringCount - 2, stringCount - 1) > 0) {
+                stringsSortedState = -1;
+                return false;
+            }
+            stringsSortedState = 1;
+            return true;
+        }
+
+        private int findStringIndex(String expected) {
+            if (isStringsSorted()) {
+                int lo = 0, hi = stringCount - 1;
+                while (lo <= hi) {
+                    int mid = (lo + hi) >>> 1;
+                    int cmp = compareString(mid, expected);
+                    if (cmp == 0) return mid;
+                    if (cmp < 0) lo = mid + 1;
+                    else hi = mid - 1;
+                }
+                return -1;
+            }
+            for (int i = 0; i < stringCount; i++) {
+                if (matchesText(i, expected)) return i;
+            }
+            return -1;
+        }
+
+        private boolean isTypesSorted() {
+            if (typesSortedState != 0) return typesSortedState > 0;
+            if (typeCount <= 1) {
+                typesSortedState = 1;
+                return true;
+            }
+            int step = typeCount <= 256 ? 1 : Math.max(1, (typeCount - 1) / 32);
+            for (int i = 0; i < typeCount - 1; i += step) {
+                if (u32(types + i * 4) > u32(types + (i + 1) * 4)) {
+                    typesSortedState = -1;
+                    return false;
+                }
+            }
+            if (u32(types + (typeCount - 2) * 4) > u32(types + (typeCount - 1) * 4)) {
+                typesSortedState = -1;
+                return false;
+            }
+            typesSortedState = 1;
+            return true;
+        }
+
+        private int findTypeIndex(String expected) {
+            int strIdx = findStringIndex(expected);
+            if (strIdx < 0) return -1;
+            if (isTypesSorted()) {
+                int lo = 0, hi = typeCount - 1;
+                while (lo <= hi) {
+                    int mid = (lo + hi) >>> 1;
+                    int desc = u32(types + mid * 4);
+                    if (desc == strIdx) return mid;
+                    if (desc < strIdx) lo = mid + 1;
+                    else hi = mid - 1;
+                }
+                return -1;
+            }
+            for (int i = 0; i < typeCount; i++) {
+                if (u32(types + i * 4) == strIdx) return i;
+            }
+            return -1;
+        }
+
+        private boolean isMethodsSorted() {
+            if (methodsSortedState != 0) return methodsSortedState > 0;
+            if (methodCount <= 1) {
+                methodsSortedState = 1;
+                return true;
+            }
+            int step = methodCount <= 256 ? 1 : Math.max(1, (methodCount - 1) / 32);
+            for (int i = 0; i < methodCount - 1; i += step) {
+                if (compareMethodOrder(i, i + 1) > 0) {
+                    methodsSortedState = -1;
+                    return false;
+                }
+            }
+            if (compareMethodOrder(methodCount - 2, methodCount - 1) > 0) {
+                methodsSortedState = -1;
+                return false;
+            }
+            methodsSortedState = 1;
+            return true;
+        }
+
+        private int compareMethodOrder(int a, int b) {
+            int oa = methods + a * 8, ob = methods + b * 8;
+            int ca = u16(oa), cb = u16(ob);
+            if (ca != cb) return ca - cb;
+            int na = u32(oa + 4), nb = u32(ob + 4);
+            if (na != nb) return Integer.compare(na, nb);
+            return u16(oa + 2) - u16(ob + 2);
+        }
+
         Map<Integer, String> anchorIds(Set<String> anchors) {
             if (anchors.isEmpty()) return Map.of();
+            if (anchorCache == null && indexed) anchorCache = new HashMap<>();
             if (anchorCache != null) {
                 Map<Integer, String> cached = anchorCache.get(anchors);
                 if (cached != null) return cached;
             }
             Map<Integer, String> ids = new HashMap<>();
-            for (int i = 0; i < stringCount; i++) {
+            if (isStringsSorted()) {
                 for (String anchor : anchors) {
-                    if (matchesText(i, anchor)) ids.put(i, anchor);
+                    int idx = findStringIndex(anchor);
+                    if (idx >= 0) ids.put(idx, anchor);
+                }
+            } else {
+                for (int i = 0; i < stringCount; i++) {
+                    for (String anchor : anchors) {
+                        if (matchesText(i, anchor)) ids.put(i, anchor);
+                    }
                 }
             }
             if (anchorCache != null) anchorCache.put(Set.copyOf(anchors), ids);
             return ids;
         }
 
-        boolean matchesMethod(int index, Target target) {
+        boolean matchesMethodProto(int index, Target target) {
             int method = methods + index * 8, proto = protos + u16(method + 2) * 12;
             int args = u32(proto + 8), size = args == 0 ? 0 : u32(args);
             if (size != target.parameters.size()
-                    || !matchesText(u32(method + 4), target.name)
                     || !matchesType(u32(proto + 4), target.result)) return false;
             for (int a = 0; a < size; a++)
                 if (!matchesType(u16(args + 4 + a * 2), target.parameters.get(a))) return false;
             return true;
         }
 
+        boolean matchesMethod(int index, Target target) {
+            int method = methods + index * 8;
+            return matchesText(u32(method + 4), target.name) && matchesMethodProto(index, target);
+        }
+
         int findMethodCode(Target target) {
-            int first = 0, count = classCount, base = classDefs;
-            if (indexed) {
-                int def = classDef(target.owner);
-                if (def < 0) return -1;
-                first = def;
-                count = def + 1;
+            int def = classDef(target.owner);
+            if (def < 0) return -1;
+            int offset = u32(classDefs + def * 32 + 24);
+            if (offset == 0) return -1;
+            int[] cursor = {offset};
+            int staticFields = leb(cursor), instanceFields = leb(cursor);
+            int direct = leb(cursor), virtual = leb(cursor);
+            for (int n = 0; n < staticFields + instanceFields; n++) {
+                leb(cursor);
+                leb(cursor);
             }
-            for (int i = first; i < count; i++) {
-                if (!matchesType(u32(base + i * 32), target.owner)) continue;
-                int offset = u32(base + i * 32 + 24);
-                if (offset == 0) continue;
-                int[] cursor = {offset};
-                int staticFields = leb(cursor), instanceFields = leb(cursor);
-                int direct = leb(cursor), virtual = leb(cursor);
-                for (int n = 0; n < staticFields + instanceFields; n++) {
+            for (int countMethods : new int[] {direct, virtual}) {
+                int index = 0;
+                for (int n = 0; n < countMethods; n++) {
+                    index += leb(cursor);
                     leb(cursor);
-                    leb(cursor);
-                }
-                for (int countMethods : new int[] {direct, virtual}) {
-                    int index = 0;
-                    for (int n = 0; n < countMethods; n++) {
-                        index += leb(cursor);
-                        leb(cursor);
-                        int code = leb(cursor);
-                        if (code != 0 && matchesMethod(index, target)) return code;
-                    }
+                    int code = leb(cursor);
+                    if (code != 0 && matchesMethod(index, target)) return code;
                 }
             }
             return -1;
@@ -968,26 +1189,54 @@ final class DexSignatures {
         List<Body> find(Set<String> anchors, Target target) {
             Map<Integer, String> ids = anchorIds(anchors);
             List<Body> found = new ArrayList<>();
-            Set<Integer> callIds = new LinkedHashSet<>();
+            boolean classAnchorOnly = target != null && target.name == null;
+            if (ids.isEmpty() && (target == null || classAnchorOnly)) return found;
+            Set<Integer> callIds = null;
+            int singleCallId = -1;
             if (target != null && target.callers) {
-                for (int i = 0; i < methodCount; i++) {
-                    if (matchesType(u16(methods + i * 8), target.owner)
-                            && matchesMethod(i, target)) callIds.add(i);
+                int ownerTypeIdx = findTypeIndex(target.owner);
+                if (ownerTypeIdx < 0) return found;
+                int nameStrIdx = findStringIndex(target.name);
+                if (nameStrIdx < 0) return found;
+                callIds = new LinkedHashSet<>();
+                if (isMethodsSorted()) {
+                    int lo = 0, hi = methodCount;
+                    while (lo < hi) {
+                        int mid = (lo + hi) >>> 1;
+                        int mOff = methods + mid * 8;
+                        int cls = u16(mOff);
+                        if (cls < ownerTypeIdx) lo = mid + 1;
+                        else if (cls > ownerTypeIdx) hi = mid;
+                        else if (u32(mOff + 4) < nameStrIdx) lo = mid + 1;
+                        else hi = mid;
+                    }
+                    for (int i = lo; i < methodCount; i++) {
+                        int mOff = methods + i * 8;
+                        if (u16(mOff) != ownerTypeIdx || u32(mOff + 4) != nameStrIdx) break;
+                        if (matchesMethodProto(i, target)) callIds.add(i);
+                    }
+                } else {
+                    for (int i = 0; i < methodCount; i++) {
+                        int mOff = methods + i * 8;
+                        if (u16(mOff) == ownerTypeIdx
+                                && u32(mOff + 4) == nameStrIdx
+                                && matchesMethodProto(i, target)) callIds.add(i);
+                    }
                 }
                 if (callIds.isEmpty()) return found;
+                if (callIds.size() == 1) singleCallId = callIds.iterator().next();
             }
-            if (ids.isEmpty() && target == null) return found;
             int first = 0, count = classCount, base = classDefs;
-            if (indexed && target != null && !target.callers) {
+            if (target != null && !target.callers) {
                 int def = classDef(target.owner);
                 if (def < 0) return found;
                 first = def;
                 count = def + 1;
             }
+            int singleAnchorId = ids.size() == 1 ? ids.keySet().iterator().next() : -1;
+            String singleAnchorName = singleAnchorId >= 0 ? ids.get(singleAnchorId) : null;
+            boolean unanchored = target != null && !classAnchorOnly;
             for (int i = first; i < count; i++) {
-                if (target != null
-                        && !target.callers
-                        && !matchesType(u32(base + i * 32), target.owner)) continue;
                 int offset = u32(base + i * 32 + 24);
                 if (offset == 0) continue;
                 int[] cursor = {offset};
@@ -1003,23 +1252,31 @@ final class DexSignatures {
                         index += leb(cursor);
                         int access = leb(cursor), code = leb(cursor);
                         if (code == 0) continue;
-                        if (target != null && !target.callers && !matchesMethod(index, target))
-                            continue;
-                        if (!callIds.isEmpty()) {
+                        if (target != null && !target.callers && !classAnchorOnly
+                                && !matchesMethod(index, target)) continue;
+                        if (callIds != null) {
                             boolean calls = false;
-                            for (int pc = 0, units = u32(code + 12), instructions = code + 16;
-                                    pc < units;
-                                    pc += width(instructions, pc)) {
+                            int units = u32(code + 12), instructions = code + 16;
+                            for (int pc = 0; pc < units; ) {
                                 int op = u16(instructions + pc * 2) & 255;
-                                if ((op >= 0x6e && op <= 0x72 || op >= 0x74 && op <= 0x78)
-                                        && callIds.contains(u16(instructions + pc * 2 + 2))) {
-                                    calls = true;
-                                    break;
+                                if (op >= 0x6e && op <= 0x72 || op >= 0x74 && op <= 0x78) {
+                                    int invoked = u16(instructions + pc * 2 + 2);
+                                    if (singleCallId >= 0
+                                            ? invoked == singleCallId
+                                            : callIds.contains(invoked)) {
+                                        calls = true;
+                                        break;
+                                    }
                                 }
+                                int w = width(instructions, pc);
+                                if (w <= 0 || w > units - pc)
+                                    throw new IllegalArgumentException(
+                                            "Invalid DEX instruction span");
+                                pc += w;
                             }
                             if (!calls) continue;
                         }
-                        scan(index, access, code, ids, found, target != null);
+                        scan(index, access, code, ids, singleAnchorId, singleAnchorName, found, unanchored);
                     }
                 }
             }
@@ -1031,27 +1288,41 @@ final class DexSignatures {
                 int access,
                 int code,
                 Map<Integer, String> ids,
+                int singleAnchorId,
+                String singleAnchorName,
                 List<Body> found,
                 boolean unanchored) {
             int units = u32(code + 12), base = code + 16;
-            Map<String, Integer> anchors = new HashMap<>();
-            for (int pc = 0; pc < units; ) {
-                int op = u16(base + pc * 2) & 255;
-                if (op == 0x1a || op == 0x1b) {
-                    int id = op == 0x1a ? u16(base + pc * 2 + 2) : u32(base + pc * 2 + 2);
-                    String anchor = ids.get(id);
-                    if (anchor != null) anchors.putIfAbsent(anchor, pc);
+            Map<String, Integer> anchors = Map.of();
+            if (!ids.isEmpty()) {
+                Map<String, Integer> matched = null;
+                for (int pc = 0; pc < units; ) {
+                    int op = u16(base + pc * 2) & 255;
+                    if (op == 0x1a || op == 0x1b) {
+                        int id = op == 0x1a ? u16(base + pc * 2 + 2) : u32(base + pc * 2 + 2);
+                        String anchor =
+                                singleAnchorId >= 0
+                                        ? (id == singleAnchorId ? singleAnchorName : null)
+                                        : ids.get(id);
+                        if (anchor != null) {
+                            if (matched == null) matched = new HashMap<>();
+                            matched.putIfAbsent(anchor, pc);
+                        }
+                    }
+                    int width = width(base, pc);
+                    if (width <= 0 || width > units - pc)
+                        throw new IllegalArgumentException("Invalid DEX instruction span");
+                    pc += width;
                 }
-                int width = width(base, pc);
-                if (width <= 0 || width > units - pc)
-                    throw new IllegalArgumentException("Invalid DEX instruction span");
-                pc += width;
+                if (matched == null && !unanchored) return;
+                if (matched != null) anchors = Map.copyOf(matched);
+            } else if (!unanchored) {
+                return;
             }
-            if (anchors.isEmpty() && !unanchored) return;
             List<Read> reads = new ArrayList<>();
             List<Write> writes = new ArrayList<>();
             List<Call> calls = new ArrayList<>();
-            for (int pc = 0; pc < units; pc += width(base, pc)) {
+            for (int pc = 0; pc < units; ) {
                 int op = u16(base + pc * 2) & 255;
                 if (op >= 0x6e && op <= 0x72 || op >= 0x74 && op <= 0x78)
                     calls.add(call(u16(base + pc * 2 + 2), pc, op == 0x71 || op == 0x77));
@@ -1059,6 +1330,10 @@ final class DexSignatures {
                     reads.add(new Read(pc, fieldMember(u16(base + pc * 2 + 2))));
                 else if (op >= 0x59 && op <= 0x5f)
                     writes.add(new Write(pc, fieldMember(u16(base + pc * 2 + 2))));
+                int width = width(base, pc);
+                if (width <= 0 || width > units - pc)
+                    throw new IllegalArgumentException("Invalid DEX instruction span");
+                pc += width;
             }
             int method = methods + index * 8, proto = protos + u16(method + 2) * 12;
             List<String> parameters = new ArrayList<>();
@@ -1073,7 +1348,7 @@ final class DexSignatures {
                             List.copyOf(parameters),
                             type(u32(proto + 4)),
                             access,
-                            Map.copyOf(anchors),
+                            anchors,
                             List.copyOf(reads),
                             List.copyOf(writes),
                             List.copyOf(calls)));
@@ -1111,34 +1386,9 @@ final class DexSignatures {
                     default -> throw new IllegalArgumentException("Unknown DEX payload");
                 };
             }
-            if (op == 0x18) return 5;
-            if (op == 0xfa || op == 0xfb) return 4;
-            if (op == 3
-                    || op == 6
-                    || op == 9
-                    || op == 0x14
-                    || op == 0x17
-                    || op == 0x1b
-                    || op >= 0x24 && op <= 0x26
-                    || op >= 0x2a && op <= 0x2c
-                    || op >= 0x6e && op <= 0x78
-                    || op == 0xfc
-                    || op == 0xfd) return 3;
-            if (op == 2
-                    || op == 5
-                    || op == 8
-                    || op >= 0x13 && op <= 0x1c
-                    || op == 0x1f
-                    || op == 0x20
-                    || op == 0x22
-                    || op == 0x23
-                    || op == 0x29
-                    || op >= 0x2d && op <= 0x6d
-                    || op >= 0x90 && op <= 0xaf
-                    || op >= 0xd0 && op <= 0xe2
-                    || op >= 0xfe) return 2;
-            if (op >= 0xe3) throw new IllegalArgumentException("Unsupported DEX opcode");
-            return 1;
+            int w = OPCODE_WIDTH[op];
+            if (w < 0) throw new IllegalArgumentException("Unsupported DEX opcode");
+            return w;
         }
     }
 

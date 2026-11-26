@@ -38,6 +38,7 @@ final class ClockContentClip {
                 if (tree != null && tree.isAlive()) tree.removeOnPreDrawListener(this);
                 return true;
             }
+            if (!view.isShown()) return true;
             boolean suspended = DepthEffects.mediaActive(view);
             boolean changed = WidgetContentClip.apply(view, !suspended);
             boolean moved =

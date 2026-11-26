@@ -769,21 +769,20 @@ final class RuntimeClockHooks {
         String mediaVmDesc = DexSignatures.descriptor(mediaVmClass);
 
         Method closeCard = null;
-        for (var body : DexSignatures.find(loader, Set.of("closeExtendNowBarCard"))) {
-            if (body.owner().equals(cardVmDesc)
-                    && body.parameters().isEmpty()
-                    && body.result().equals("V")) {
-                closeCard = body.method(loader);
-                break;
-            }
-        }
         Method updateView = null;
-        for (var body : DexSignatures.find(loader, Set.of("updateView isCollapsed = "))) {
-            if (body.owner().equals(cardVmDesc)
-                    && body.parameters().equals(List.of("Z"))
-                    && body.result().equals("V")) {
+        for (var body :
+                DexSignatures.findInClass(
+                        cardVmClass,
+                        Set.of("closeExtendNowBarCard", "updateView isCollapsed = "))) {
+            if (!body.owner().equals(cardVmDesc) || !body.result().equals("V")) continue;
+            if (closeCard == null
+                    && body.anchors().containsKey("closeExtendNowBarCard")
+                    && body.parameters().isEmpty()) {
+                closeCard = body.method(loader);
+            } else if (updateView == null
+                    && body.anchors().containsKey("updateView isCollapsed = ")
+                    && body.parameters().equals(List.of("Z"))) {
                 updateView = body.method(loader);
-                break;
             }
         }
         java.lang.reflect.Field mediaExpandedField = null;
@@ -798,7 +797,7 @@ final class RuntimeClockHooks {
             if (mediaExpandedField != null) break;
         }
         int mediaStyleOrdinal = -1;
-        for (var body : DexSignatures.find(loader, Set.of("startMediaPauseTimer"))) {
+        for (var body : DexSignatures.findInClass(itemMgrClass, Set.of("startMediaPauseTimer"))) {
             if (!body.owner().equals(itemMgrDesc)) continue;
             for (var read : body.reads()) {
                 String ownerDesc = read.field().owner();

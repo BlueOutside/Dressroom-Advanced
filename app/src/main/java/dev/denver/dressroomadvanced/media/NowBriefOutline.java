@@ -37,8 +37,12 @@ final class NowBriefOutline extends Drawable implements ViewTreeObserver.OnPreDr
 
     @Override public boolean onPreDraw() {
         View view = card.get();
+        if (view == null || !view.isShown()) {
+            if (owner.get() != null) remove();
+            return true;
+        }
         try {
-            View pill = view != null && (Integer) state.invoke(view) == 0
+            View pill = (Integer) state.invoke(view) == 0
                     && (Float) dark.invoke(view) == 0f
                     ? (View) surface.invoke(view) : null;
             if (pill == null || !pill.isShown() || pill.getWidth() == 0 || pill.getHeight() == 0) {

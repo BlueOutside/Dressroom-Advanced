@@ -20,7 +20,7 @@ final class MediaBlurHost {
     private static final Map<View, WeakReference<ViewGroup>> artworkHosts = new WeakHashMap<>();
     private static DressroomModule hookModule;
     private static Runnable alphaLease;
-    private static boolean hooksWanted = true;
+    private static boolean hooksWanted;
 
     static synchronized void install(DressroomModule module) throws ReflectiveOperationException {
         hookModule = module;

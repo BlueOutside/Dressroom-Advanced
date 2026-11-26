@@ -16,79 +16,67 @@
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/DressroomModule.java",
-      "line": 501,
+      "line": 502,
       "kind": "declared-method",
       "target": "onConfigurationChanged"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/DressroomModule.java",
-      "line": 527,
-      "kind": "declared-method",
-      "target": "onCreate"
-    },
-    {
-      "file": "app/src/main/java/dev/denver/dressroomadvanced/DressroomModule.java",
-      "line": 556,
-      "kind": "declared-method",
-      "target": "onDestroy"
-    },
-    {
-      "file": "app/src/main/java/dev/denver/dressroomadvanced/DressroomModule.java",
-      "line": 1140,
+      "line": 1153,
       "kind": "class",
       "target": "com.samsung.android.uniform.widget.clock.AbsClockView"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/DressroomModule.java",
-      "line": 1154,
+      "line": 1167,
       "kind": "class",
       "target": "com.samsung.android.clockpack.plugins.clock.ClockFontData"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/DressroomModule.java",
-      "line": 1167,
+      "line": 1180,
       "kind": "declared-method",
       "target": "setFontType"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/DressroomModule.java",
-      "line": 1301,
+      "line": 1314,
       "kind": "declared-method",
       "target": "isStretchable"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/DressroomModule.java",
-      "line": 1324,
+      "line": 1337,
       "kind": "declared-method",
       "target": "onAttachedToWindow"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/DressroomModule.java",
-      "line": 1707,
+      "line": 1721,
       "kind": "class",
       "target": "com.samsung.android.lockscreen.editor.item.domain.entity.item.clock.ClockStretchData"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/DressroomModule.java",
-      "line": 1711,
+      "line": 1725,
       "kind": "declared-method",
       "target": "setFontHeight"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/DressroomModule.java",
-      "line": 1795,
+      "line": 1809,
       "kind": "class",
       "target": "com.samsung.android.lockscreen.editor.item.domain.entity.item.clock.ClockData"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/DressroomModule.java",
-      "line": 1822,
+      "line": 1836,
       "kind": "class",
       "target": "com.samsung.android.clockpack.plugins.clock.ClockView"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/DressroomModule.java",
-      "line": 1825,
+      "line": 1839,
       "kind": "class",
       "target": "com.samsung.android.clockpack.plugins.clock.extension.ClockBlurExtension"
     },
@@ -436,7 +424,7 @@
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/blur/ViewAlphaHooks.java",
-      "line": 64,
+      "line": 66,
       "kind": "declared-method",
       "target": "setAlpha"
     },
@@ -454,31 +442,31 @@
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/ClockBlurMotion.java",
-      "line": 132,
+      "line": 135,
       "kind": "class",
       "target": "com.samsung.android.app.facewidget.pages.clock.blur.ClockBlurController"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/ClockBlurMotion.java",
-      "line": 156,
+      "line": 159,
       "kind": "declared-method",
       "target": "removeBlur"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/ClockBlurMotion.java",
-      "line": 162,
+      "line": 165,
       "kind": "declared-method",
       "target": "setDozeAmount"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/ClockBlurMotion.java",
-      "line": 163,
+      "line": 166,
       "kind": "declared-method",
       "target": "setDozing"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/ClockBlurMotion.java",
-      "line": 381,
+      "line": 384,
       "kind": "class",
       "target": "com.samsung.android.app.facewidget.pages.clock.FaceWidgetClockPage"
     },
@@ -496,7 +484,7 @@
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/ClockBlurSync.java",
-      "line": 19,
+      "line": 34,
       "kind": "declared-method",
       "target": "dispatchDraw"
     },
@@ -652,7 +640,7 @@
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/GlyphFontCache.java",
-      "line": 101,
+      "line": 108,
       "kind": "declared-method",
       "target": "onConfigurationChanged"
     },
@@ -844,13 +832,13 @@
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/RuntimeClockHooks.java",
-      "line": 873,
+      "line": 872,
       "kind": "public-method",
       "target": "get"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/ShadowEffects.java",
-      "line": 26,
+      "line": 38,
       "kind": "declared-method",
       "target": "setRenderEffect"
     },
@@ -1618,57 +1606,39 @@
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/NowBarStackLayers.java",
-      "line": 61,
-      "kind": "declared-method",
-      "target": "onLayout"
-    },
-    {
-      "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/NowBarStackLayers.java",
-      "line": 203,
-      "kind": "declared-method",
-      "target": "onTouchEvent"
-    },
-    {
-      "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/NowBarStackLayers.java",
-      "line": 253,
+      "line": 103,
       "kind": "declared-method",
       "target": "drawChild"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/NowBarStackLayers.java",
-      "line": 276,
+      "line": 283,
+      "kind": "declared-method",
+      "target": "onTouchEvent"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/NowBarStackLayers.java",
+      "line": 334,
       "kind": "declared-method",
       "target": "onConfigurationChanged"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/NowBarStackLayers.java",
-      "line": 299,
-      "kind": "declared-method",
-      "target": "setAlpha"
-    },
-    {
-      "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/NowBarStackLayers.java",
-      "line": 312,
+      "line": 358,
       "kind": "declared-method",
       "target": "onDetachedFromWindow"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/NowBarStackLayers.java",
-      "line": 423,
+      "line": 468,
       "kind": "resource",
       "target": "now_bar_cardview_2nd_card_bottom_offset"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/NowBarStackLayers.java",
-      "line": 426,
+      "line": 471,
       "kind": "resource",
       "target": "now_bar_cardview_3rd_card_bottom_offset"
-    },
-    {
-      "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/NowBarStackRepair.java",
-      "line": 41,
-      "kind": "declared-method",
-      "target": "onLayout"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/WallpaperMotionBinding.java",
@@ -1858,49 +1828,49 @@
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/depth/DepthEffects.java",
-      "line": 96,
+      "line": 130,
       "kind": "declared-method",
       "target": "dispatchDraw"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/depth/DepthEffects.java",
-      "line": 130,
+      "line": 175,
       "kind": "declared-method",
       "target": "draw"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/depth/DepthEffects.java",
-      "line": 159,
+      "line": 211,
       "kind": "declared-method",
       "target": "onDraw"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/depth/DepthEffects.java",
-      "line": 858,
+      "line": 976,
       "kind": "class",
       "target": "com.samsung.android.app.dressroom.presentation.preview.widget.CropImageView"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/depth/DepthEffects.java",
-      "line": 862,
+      "line": 980,
       "kind": "declared-method",
       "target": "onDraw"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/depth/DepthEffects.java",
-      "line": 894,
+      "line": 1012,
       "kind": "class",
       "target": "com.samsung.android.app.dressroom.editorcomponent.component.wallpaper.image.effects.weather.WeatherSurfaceView"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/depth/DepthEffects.java",
-      "line": 902,
+      "line": 1020,
       "kind": "declared-method",
       "target": "surfaceCreated"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/depth/DepthEffects.java",
-      "line": 904,
+      "line": 1022,
       "kind": "declared-method",
       "target": "surfaceChanged"
     },
@@ -2428,55 +2398,55 @@
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/media/MediaFullscreenExtras.java",
-      "line": 1893,
+      "line": 1908,
       "kind": "class",
       "target": "com.samsung.android.uniform.nowbar.MediaMaskingFrameLayout"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/media/MediaFullscreenExtras.java",
-      "line": 1899,
+      "line": 1914,
       "kind": "declared-method",
       "target": "setAnimationProgress"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/media/MediaFullscreenExtras.java",
-      "line": 1900,
+      "line": 1915,
       "kind": "declared-method",
       "target": "setRandomOffset"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/media/MediaFullscreenExtras.java",
-      "line": 1902,
+      "line": 1917,
       "kind": "declared-method",
       "target": "start"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/media/MediaInteraction.java",
-      "line": 43,
+      "line": 60,
       "kind": "declared-method",
       "target": "dispatchTouchEvent"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/media/MediaInteraction.java",
-      "line": 107,
+      "line": 150,
       "kind": "class",
       "target": "com.samsung.android.app.facewidget.utils.NowBarCardStackView"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/media/MediaInteraction.java",
-      "line": 131,
+      "line": 174,
       "kind": "class",
       "target": "com.samsung.android.app.facewidget.FaceWidgetViewModel"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/media/MediaInteraction.java",
-      "line": 135,
+      "line": 178,
       "kind": "declared-method",
       "target": "isInContentBounds"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/media/MediaInteraction.java",
-      "line": 136,
+      "line": 179,
       "kind": "declared-method",
       "target": "dispatchTouchEvent"
     },
@@ -2854,49 +2824,49 @@
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/nowbar/DiyNowBarEffects.java",
-      "line": 443,
+      "line": 462,
       "kind": "declared-method",
       "target": "clone"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/nowbar/DiyNowBarEffects.java",
-      "line": 599,
+      "line": 619,
       "kind": "class",
       "target": "android.app.ActivityThread"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/nowbar/DiyNowBarEffects.java",
-      "line": 600,
+      "line": 620,
       "kind": "public-method",
       "target": "currentApplication"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/nowbar/DiyNowBarEffects.java",
-      "line": 1012,
+      "line": 1034,
       "kind": "declared-method",
       "target": "setNotificationIcon"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/nowbar/DiyNowBarEffects.java",
-      "line": 1059,
+      "line": 1081,
       "kind": "declared-method",
       "target": "getListenerInfo"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/nowbar/DiyNowBarEffects.java",
-      "line": 1063,
+      "line": 1085,
       "kind": "declared-field",
       "target": "mOnClickListener"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/nowbar/DiyNowBarEffects.java",
-      "line": 1106,
+      "line": 1128,
       "kind": "declared-method",
       "target": "onAttachedToWindow"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/nowbar/DiyNowBarEffects.java",
-      "line": 1117,
+      "line": 1139,
       "kind": "declared-method",
       "target": "onDetachedFromWindow"
     },
@@ -2908,25 +2878,25 @@
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/nowbar/DiyNowBarNativeShaders.java",
-      "line": 749,
+      "line": 752,
       "kind": "class",
       "target": "com.samsung.android.sesl.widget.AIPresenceView"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/nowbar/DiyNowBarNativeShaders.java",
-      "line": 847,
+      "line": 844,
       "kind": "class",
       "target": "com.samsung.android.sesl.widget.OuterGlowView"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/nowbar/DiyNowBarNativeShaders.java",
-      "line": 884,
+      "line": 882,
       "kind": "class",
       "target": "com.samsung.android.app.facewidget.presentation.NowBarOngoingCardView"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/nowbar/DiyNowBarNativeShaders.java",
-      "line": 888,
+      "line": 886,
       "kind": "declared-method",
       "target": "getNudgeAutomationConfigByUiMode"
     },

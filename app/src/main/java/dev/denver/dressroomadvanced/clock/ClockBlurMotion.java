@@ -76,8 +76,11 @@ final class ClockBlurMotion {
             aod = keepAod;
             moving = visible && allows(reasons, amount, dashboardReturn);
             if (moving && !aod) LockscreenFrameBoost.pulse(clock, 240L);
-            if (moving || aod) movingClocks.add(clock);
-            else movingClocks.remove(clock);
+            if (moving || aod) {
+                if (movingClocks.add(clock)) ClockBlurSync.syncHook();
+            } else if (movingClocks.remove(clock)) {
+                ClockBlurSync.syncHook();
+            }
             return moving || aod;
         }
 
@@ -91,7 +94,7 @@ final class ClockBlurMotion {
                 Reflect.call(clock, "setClockTextBlur");
             } catch (ReflectiveOperationException | RuntimeException error) {
                 moving = false;
-                movingClocks.remove(clock);
+                if (movingClocks.remove(clock)) ClockBlurSync.syncHook();
                 DressroomModule.note("Moving clock blur refresh", error);
             }
         }
@@ -300,7 +303,7 @@ final class ClockBlurMotion {
             Method palette = colors.get(0).method(loader);
             String helper =
                     "Lcom/samsung/android/app/aodservice/common/utils/settings/SettingsHelper;";
-            var supportChecks = DexSignatures.find(loader, Set.of(WallpaperAod.MAIN)).stream()
+            var supportChecks = DexSignatures.findInClass(loader, helper, Set.of(WallpaperAod.MAIN)).stream()
                     .filter(body -> body.owner().equals(helper) && body.parameters().isEmpty()
                             && body.result().equals("Z") && body.anchors().containsKey(WallpaperAod.MAIN))
                     .flatMap(body -> body.calls().stream())
@@ -382,7 +385,7 @@ final class ClockBlurMotion {
                 "com.samsung.android.app.facewidget.pages.clock.FaceWidgetClockPage", false, loader);
         var transition = ClockPageTransition.resolve(loader);
         String bindAnchor = "initViews() mClockView=";
-        var bodies = DexSignatures.find(loader, Set.of(
+        var bodies = DexSignatures.findInClass(page, Set.of(
                 "common_clock_transition_second", bindAnchor));
         DexSignatures.Body configuration = null;
         Method bind = null;
@@ -789,6 +792,10 @@ final class ClockBlurMotion {
         return !movingClocks.isEmpty() && movingClocks.contains(clock);
     }
 
+    static boolean hasMovingClocks() {
+        return !movingClocks.isEmpty();
+    }
+
     static boolean retaining(View clock) {
         return retained.get() == clock;
     }
@@ -800,7 +807,7 @@ final class ClockBlurMotion {
     }
 
     static void forget(View clock) {
-        movingClocks.remove(clock);
+        if (movingClocks.remove(clock)) ClockBlurSync.syncHook();
         State state = states.get(clock);
         if (state != null) {
             state.moving = false;

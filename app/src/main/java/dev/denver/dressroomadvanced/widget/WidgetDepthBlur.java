@@ -362,7 +362,7 @@ final class WidgetDepthBlur {
         ViewTreeObserver.OnPreDrawListener listener =
                 () -> {
                     View root = reference.get();
-                    if (root != null) {
+                    if (root != null && root.isShown()) {
                         if (separateSurfaces) {
                             clipWidgets(root, DepthEffects.hasVisibleSubject(root));
                         } else {

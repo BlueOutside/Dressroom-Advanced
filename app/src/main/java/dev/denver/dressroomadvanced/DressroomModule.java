@@ -493,13 +493,14 @@ public final class DressroomModule extends XposedModule {
                                     }));
             deoptimize(method);
         }
-        Method configuration =
+        Class<?> editMainActivity =
                 Class.forName(
-                                "com.samsung.android.app.dressroom.presentation.preview.activity.EditMainActivity",
-                                false,
-                                loader)
-                        .getDeclaredMethod(
-                                "onConfigurationChanged", android.content.res.Configuration.class);
+                        "com.samsung.android.app.dressroom.presentation.preview.activity.EditMainActivity",
+                        false,
+                        loader);
+        Method configuration =
+                editMainActivity.getDeclaredMethod(
+                        "onConfigurationChanged", android.content.res.Configuration.class);
         record(
                 hook(configuration)
                         .setId("dressroom-advanced.freeze-layout-before-rotation")
@@ -524,17 +525,17 @@ public final class DressroomModule extends XposedModule {
                                 }));
         deoptimize(configuration);
         Method created =
-                android.app.Activity.class.getDeclaredMethod("onCreate", android.os.Bundle.class);
+                resolveHierarchyMethod(
+                        editMainActivity,
+                        android.app.Activity.class,
+                        "onCreate",
+                        android.os.Bundle.class);
         record(
                 hook(created)
                         .setId("dressroom-advanced.new-editor-session")
                         .intercept(
                                 chain -> {
-                                    if (chain.getThisObject()
-                                            .getClass()
-                                            .getName()
-                                            .equals(
-                                                    "com.samsung.android.app.dressroom.presentation.preview.activity.EditMainActivity")) {
+                                    if (editMainActivity.isInstance(chain.getThisObject())) {
                                         beginEditor();
                                         editorActivity =
                                                 new java.lang.ref.WeakReference<>(
@@ -553,18 +554,15 @@ public final class DressroomModule extends XposedModule {
                                     }
                                     return chain.proceed();
                                 }));
-        Method destroyed = android.app.Activity.class.getDeclaredMethod("onDestroy");
+        Method destroyed =
+                resolveHierarchyMethod(editMainActivity, android.app.Activity.class, "onDestroy");
         record(
                 hook(destroyed)
                         .setId("dressroom-advanced.close-editor-detection")
                         .intercept(
                                 chain -> {
                                     Object result = chain.proceed();
-                                    if (chain.getThisObject()
-                                            .getClass()
-                                            .getName()
-                                            .equals(
-                                                    "com.samsung.android.app.dressroom.presentation.preview.activity.EditMainActivity")) {
+                                    if (editMainActivity.isInstance(chain.getThisObject())) {
                                         UpdatePrompt.close((android.app.Activity) chain.getThisObject());
                                         DepthEffects.resetEditor();
                                         if (depthAuto != null) depthAuto.reset();
@@ -573,6 +571,19 @@ public final class DressroomModule extends XposedModule {
                                 }));
         deoptimize(destroyed);
         installFinalSaveCompletion(loader);
+    }
+
+    private static Method resolveHierarchyMethod(
+            Class<?> target, Class<?> stopAt, String name, Class<?>... params)
+            throws NoSuchMethodException {
+        for (Class<?> c = target; c != null; c = c.getSuperclass()) {
+            try {
+                return c.getDeclaredMethod(name, params);
+            } catch (NoSuchMethodException ignored) {
+                if (c == stopAt) break;
+            }
+        }
+        return stopAt.getDeclaredMethod(name, params);
     }
 
     private void prepareSave() throws Exception {
@@ -1134,6 +1145,8 @@ public final class DressroomModule extends XposedModule {
             if (rendererHooks.contains(loader) || !rendererInstalling.add(loader)) return;
         }
         HookTransaction previousInstallation = editorInstallation.get();
+        DexSignatures.cachedRun(
+                () -> {
         try (HookTransaction transaction = new HookTransaction()) {
             editorInstallation.set(transaction);
             Class<?> base =
@@ -1351,6 +1364,7 @@ public final class DressroomModule extends XposedModule {
             if (previousInstallation == null) editorInstallation.remove();
             else editorInstallation.set(previousInstallation);
         }
+                });
     }
 
     private Object editorModel(View clock) throws Exception {

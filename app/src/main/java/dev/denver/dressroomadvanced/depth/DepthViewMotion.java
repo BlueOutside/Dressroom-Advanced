@@ -23,7 +23,9 @@ final class DepthViewMotion {
         @Override
         public boolean onPreDraw() {
             View view = root.get();
-            if (view != null && geometry.update(view, DepthEffects.subjectIdentity(view), null))
+            if (view != null
+                    && view.isShown()
+                    && geometry.update(view, DepthEffects.subjectIdentity(view), null))
                 DepthEffects.viewMotionChanged(view);
             return true;
         }

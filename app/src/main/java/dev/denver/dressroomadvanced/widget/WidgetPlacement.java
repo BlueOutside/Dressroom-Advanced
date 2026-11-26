@@ -45,6 +45,7 @@ final class WidgetPlacement {
         public boolean onPreDraw() {
             View view = root.get();
             if (view == null
+                    || !view.isShown()
                     || settings == null
                     || settings.getInt("anchor") == 0
                     || !(view.getParent() instanceof View parent)) return true;

@@ -738,9 +738,12 @@ final class DiyNowBarNativeShaders {
 
     private static NativeHandles resolveHandles(ClassLoader loader) {
         NativeHandles h = new NativeHandles();
-        resolveAiPresenceHandles(loader, h);
-        resolveOuterGlowStopHandles(loader, h);
-        resolveGuidingLightHandles(loader, h);
+        DexSignatures.cachedRun(
+                () -> {
+                    resolveAiPresenceHandles(loader, h);
+                    resolveOuterGlowStopHandles(loader, h);
+                    resolveGuidingLightHandles(loader, h);
+                });
         return h;
     }
 
@@ -808,32 +811,26 @@ final class DiyNowBarNativeShaders {
                     }
                 }
             }
-            List<DexSignatures.Body> startBodies =
-                    DexSignatures.find(loader, Set.of("startAiPresenceViewEffect already started"));
-            for (DexSignatures.Body body : startBodies) {
+            List<DexSignatures.Body> aiBodies =
+                    DexSignatures.findInClass(
+                            loader,
+                            ONGOING_DESC,
+                            Set.of(
+                                    "startAiPresenceViewEffect already started",
+                                    "stopAiPresenceViewEffect run"));
+            for (DexSignatures.Body body : aiBodies) {
                 if (!ONGOING_DESC.equals(body.owner())) continue;
+                boolean isStart =
+                        body.anchors().containsKey("startAiPresenceViewEffect already started");
+                boolean isStop = body.anchors().containsKey("stopAiPresenceViewEffect run");
                 for (DexSignatures.Call call : body.calls()) {
                     if (AI_PRESENCE_DESC.equals(call.owner())
                             && call.parameters().isEmpty()
                             && "V".equals(call.result())) {
                         Method m = ai.getDeclaredMethod(call.name());
                         m.setAccessible(true);
-                        h.aiStart = m;
-                        break;
-                    }
-                }
-            }
-            List<DexSignatures.Body> stopBodies =
-                    DexSignatures.find(loader, Set.of("stopAiPresenceViewEffect run"));
-            for (DexSignatures.Body body : stopBodies) {
-                if (!ONGOING_DESC.equals(body.owner())) continue;
-                for (DexSignatures.Call call : body.calls()) {
-                    if (AI_PRESENCE_DESC.equals(call.owner())
-                            && call.parameters().isEmpty()
-                            && "V".equals(call.result())) {
-                        Method m = ai.getDeclaredMethod(call.name());
-                        m.setAccessible(true);
-                        h.aiPause = m;
+                        if (isStart && h.aiStart == null) h.aiStart = m;
+                        if (isStop && h.aiPause == null) h.aiPause = m;
                         break;
                     }
                 }
@@ -860,7 +857,8 @@ final class DiyNowBarNativeShaders {
                 String ctrlDesc =
                         "L" + h.outerControllerField.getType().getName().replace('.', '/') + ";";
                 for (DexSignatures.Body body :
-                        DexSignatures.find(loader, Set.of("stopOuterGlowEffect already stopped"))) {
+                        DexSignatures.findInClass(
+                                loader, ONGOING_DESC, Set.of("stopOuterGlowEffect already stopped"))) {
                     if (!ONGOING_DESC.equals(body.owner())) continue;
                     for (DexSignatures.Call call : body.calls()) {
                         if (ctrlDesc.equals(call.owner())
@@ -907,8 +905,12 @@ final class DiyNowBarNativeShaders {
 
             String glDesc = "L" + glClass.getName().replace('.', '/') + ";";
             for (DexSignatures.Body body :
-                    DexSignatures.find(loader, Set.of("Hide Guiding Light Effect: "))) {
-                if (glDesc.equals(body.owner()) && body.parameters().size() == 1) {
+                    DexSignatures.findInClass(
+                            glClass, Set.of("Hide Guiding Light Effect: ", "release"))) {
+                if (!glDesc.equals(body.owner())) continue;
+                if (h.guidingHide == null
+                        && body.anchors().containsKey("Hide Guiding Light Effect: ")
+                        && body.parameters().size() == 1) {
                     Method m = body.method(loader);
                     m.setAccessible(true);
                     h.guidingHide = m;
@@ -924,17 +926,13 @@ final class DiyNowBarNativeShaders {
                             h.guidingHideAnim = constants[0];
                         }
                     }
-                    break;
-                }
-            }
-            for (DexSignatures.Body body : DexSignatures.find(loader, Set.of("release"))) {
-                if (glDesc.equals(body.owner())
+                } else if (h.guidingRelease == null
+                        && body.anchors().containsKey("release")
                         && body.parameters().isEmpty()
                         && "V".equals(body.result())) {
                     Method m = body.method(loader);
                     m.setAccessible(true);
                     h.guidingRelease = m;
-                    break;
                 }
             }
 

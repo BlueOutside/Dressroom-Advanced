@@ -69,7 +69,25 @@ final class DepthEffects {
             Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
     private static java.lang.ref.WeakReference<View> editorWallpaper =
             new java.lang.ref.WeakReference<>(null);
+    private static XposedModule hookModule;
+    private static final java.util.ArrayList<Runnable> drawUnhooks = new java.util.ArrayList<>();
+    private static volatile boolean hasEntries;
     private static boolean installed;
+
+    private static final class DrawScratch {
+        final Matrix local = new Matrix();
+        final Matrix inverse = new Matrix();
+        final Matrix transform = new Matrix();
+        final RectF bounds = new RectF();
+        final RectF sourceRect = new RectF();
+        final RectF destRect = new RectF();
+        int displayId = Integer.MIN_VALUE;
+        int dmW, dmH;
+        float winW, winH;
+    }
+
+    private static final ThreadLocal<DrawScratch> drawScratch =
+            ThreadLocal.withInitial(DrawScratch::new);
     private static volatile long editorGeneration;
     private static volatile long scanRequest;
     private static java.util.function.Consumer<View> wallpaperListener;
@@ -93,109 +111,164 @@ final class DepthEffects {
 
     static synchronized void install(XposedModule module) throws ReflectiveOperationException {
         if (installed) return;
-        Method draw = ViewGroup.class.getDeclaredMethod("dispatchDraw", Canvas.class);
-        module.hook(draw)
-                .setId("dressroom-advanced.depth-clock-draw")
-                .intercept(
-                        chain -> {
-                            if (entries.isEmpty()) return chain.proceed();
-                            Object target = chain.getThisObject();
-                            if (!(target instanceof View)) return chain.proceed();
-                            View view = (View) target;
-                            Entry entry = entries.get(view);
-                            if (entry == null
-                                    || entry.mask == null
-                                    || !entry.enabled
-                                    || (entry.editor && sourcePending)
-                                    || entry.nodeClip
-                                    || drawingClock.get()
-                                    || subjectSuppressed(view, entry)) return chain.proceed();
-                            Canvas canvas = (Canvas) chain.getArg(0);
-                            Matrix mask = visibleMask(canvas, view, entry);
-                            if (mask == null) return chain.proceed();
-                            // Grid children can extend beyond the native one-row host during
-                            // unlock. Keep the incoming canvas clip, not the host's old bounds.
-                            int save = canvas.saveLayer(null, null);
-                            boolean previous = drawingClock.get();
-                            drawingClock.set(true);
-                            try {
-                                Object result = chain.proceed();
-                                canvas.drawBitmap(entry.mask, mask, erase);
-                                return result;
-                            } finally {
-                                drawingClock.set(previous);
-                                canvas.restoreToCount(save);
-                            }
-                        });
-        module.hook(View.class.getDeclaredMethod("draw", Canvas.class))
-                .setId("dressroom-advanced.depth-whole-clock")
-                .intercept(
-                        chain -> {
-                            if (entries.isEmpty()) return chain.proceed();
-                            View view = (View) chain.getThisObject();
-                            Entry entry = entries.get(view);
-                            if (entry == null
-                                    || entry.mask == null
-                                    || !entry.enabled
-                                    || (entry.editor && sourcePending)
-                                    || !entry.wholeDraw
-                                    || drawingClock.get()
-                                    || subjectSuppressed(view, entry)) return chain.proceed();
-                            Canvas canvas = (Canvas) chain.getArg(0);
-                            Matrix mask = visibleMask(canvas, view, entry);
-                            if (mask == null) return chain.proceed();
-                            int save = canvas.saveLayer(null, null);
-                            boolean previous = drawingClock.get();
-                            drawingClock.set(true);
-                            try {
-                                Object result = chain.proceed();
-                                canvas.drawBitmap(entry.mask, mask, erase);
-                                return result;
-                            } finally {
-                                drawingClock.set(previous);
-                                canvas.restoreToCount(save);
-                            }
-                        });
-        module.hook(TextView.class.getDeclaredMethod("onDraw", Canvas.class))
-                .setId("dressroom-advanced.depth-digit-draw")
-                .intercept(
-                        chain -> {
-                            if (entries.isEmpty() || drawingClock.get()) return chain.proceed();
-                            View view = (View) chain.getThisObject();
-                            Entry entry = entries.get(view);
-                            if (entry == null) {
-                                entry = inheritedSubject(view);
-                                if (entry != null && entry.nodeClip) entry = null;
-                            }
-                            if (entry == null
-                                    || entry.mask == null
-                                    || !entry.enabled
-                                    || (entry.editor && sourcePending)
-                                    || subjectSuppressed(view, entry)) return chain.proceed();
-                            Canvas canvas = (Canvas) chain.getArg(0);
-                            Matrix mask = visibleMask(canvas, view, entry);
-                            if (mask == null) return chain.proceed();
-                            int save = canvas.saveLayer(null, null);
-                            try {
-                                Object result = chain.proceed();
-                                canvas.drawBitmap(entry.mask, mask, erase);
-                                return result;
-                            } finally {
-                                canvas.restoreToCount(save);
-                            }
-                        });
+        hookModule = module;
         installed = true;
+        syncDrawHooks();
+    }
+
+    private static void syncDrawHooks() {
+        boolean active = !entries.isEmpty();
+        hasEntries = active;
+        if (active == !drawUnhooks.isEmpty()) return;
+        synchronized (DepthEffects.class) {
+            active = !entries.isEmpty();
+            hasEntries = active;
+            if (active && drawUnhooks.isEmpty() && hookModule != null) {
+                XposedModule module = hookModule;
+                try (HookTransaction hooks = new HookTransaction()) {
+                    java.util.ArrayList<Runnable> pending = new java.util.ArrayList<>(3);
+                    Method draw = ViewGroup.class.getDeclaredMethod("dispatchDraw", Canvas.class);
+                    Runnable h1 =
+                            module.hook(draw)
+                                            .setId("dressroom-advanced.depth-clock-draw")
+                                            .intercept(
+                                                    chain -> {
+                                                        if (!hasEntries) return chain.proceed();
+                                                        Object target = chain.getThisObject();
+                                                        if (!(target instanceof View))
+                                                            return chain.proceed();
+                                                        View view = (View) target;
+                                                        Entry entry = entries.get(view);
+                                                        if (entry == null
+                                                                || entry.mask == null
+                                                                || !entry.enabled
+                                                                || (entry.editor && sourcePending)
+                                                                || entry.nodeClip
+                                                                || drawingClock.get()
+                                                                || subjectSuppressed(view, entry))
+                                                            return chain.proceed();
+                                                        Canvas canvas = (Canvas) chain.getArg(0);
+                                                        Matrix mask =
+                                                                visibleMask(canvas, view, entry);
+                                                        if (mask == null) return chain.proceed();
+                                                        // Grid children can extend beyond the
+                                                        // native one-row host during unlock. Keep
+                                                        // the incoming canvas clip, not the host's
+                                                        // old bounds.
+                                                        int save = canvas.saveLayer(null, null);
+                                                        boolean previous = drawingClock.get();
+                                                        drawingClock.set(true);
+                                                        try {
+                                                            Object result = chain.proceed();
+                                                            canvas.drawBitmap(
+                                                                    entry.mask, mask, erase);
+                                                            return result;
+                                                        } finally {
+                                                            drawingClock.set(previous);
+                                                            canvas.restoreToCount(save);
+                                                        }
+                                                    })
+                                    ::unhook;
+                    hooks.add(h1);
+                    pending.add(h1);
+                    Runnable h2 =
+                            module.hook(View.class.getDeclaredMethod("draw", Canvas.class))
+                                            .setId("dressroom-advanced.depth-whole-clock")
+                                            .intercept(
+                                                    chain -> {
+                                                        if (!hasEntries) return chain.proceed();
+                                                        View view = (View) chain.getThisObject();
+                                                        Entry entry = entries.get(view);
+                                                        if (entry == null
+                                                                || entry.mask == null
+                                                                || !entry.enabled
+                                                                || (entry.editor && sourcePending)
+                                                                || !entry.wholeDraw
+                                                                || drawingClock.get()
+                                                                || subjectSuppressed(view, entry))
+                                                            return chain.proceed();
+                                                        Canvas canvas = (Canvas) chain.getArg(0);
+                                                        Matrix mask =
+                                                                visibleMask(canvas, view, entry);
+                                                        if (mask == null) return chain.proceed();
+                                                        int save = canvas.saveLayer(null, null);
+                                                        boolean previous = drawingClock.get();
+                                                        drawingClock.set(true);
+                                                        try {
+                                                            Object result = chain.proceed();
+                                                            canvas.drawBitmap(
+                                                                    entry.mask, mask, erase);
+                                                            return result;
+                                                        } finally {
+                                                            drawingClock.set(previous);
+                                                            canvas.restoreToCount(save);
+                                                        }
+                                                    })
+                                    ::unhook;
+                    hooks.add(h2);
+                    pending.add(h2);
+                    Runnable h3 =
+                            module.hook(TextView.class.getDeclaredMethod("onDraw", Canvas.class))
+                                            .setId("dressroom-advanced.depth-digit-draw")
+                                            .intercept(
+                                                    chain -> {
+                                                        if (!hasEntries || drawingClock.get())
+                                                            return chain.proceed();
+                                                        View view = (View) chain.getThisObject();
+                                                        Entry entry = textDrawEntry(view);
+                                                        if (entry == null
+                                                                || entry.mask == null
+                                                                || !entry.enabled
+                                                                || (entry.editor && sourcePending)
+                                                                || subjectSuppressed(view, entry))
+                                                            return chain.proceed();
+                                                        Canvas canvas = (Canvas) chain.getArg(0);
+                                                        Matrix mask =
+                                                                visibleMask(canvas, view, entry);
+                                                        if (mask == null) return chain.proceed();
+                                                        int save = canvas.saveLayer(null, null);
+                                                        try {
+                                                            Object result = chain.proceed();
+                                                            canvas.drawBitmap(
+                                                                    entry.mask, mask, erase);
+                                                            return result;
+                                                        } finally {
+                                                            canvas.restoreToCount(save);
+                                                        }
+                                                    })
+                                    ::unhook;
+                    hooks.add(h3);
+                    pending.add(h3);
+                    hooks.commit();
+                    drawUnhooks.addAll(pending);
+                } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+                    DressroomModule.note("Depth draw hooks unavailable", error);
+                }
+            } else if (!active && !drawUnhooks.isEmpty()) {
+                for (int i = drawUnhooks.size() - 1; i >= 0; i--) {
+                    try {
+                        drawUnhooks.get(i).run();
+                    } catch (RuntimeException | LinkageError ignored) {
+                    }
+                }
+                drawUnhooks.clear();
+            }
+        }
     }
 
     private static Matrix visibleMask(Canvas canvas, View view, Entry entry) {
         if (entry.alphaBounds.isEmpty()) return null;
         Matrix source = subjectTransform(view, entry, 0, 0);
         if (source == null) return null;
-        Matrix local = new Matrix(), inverse = new Matrix();
+        DrawScratch scratch = drawScratch.get();
+        Matrix local = scratch.local;
+        Matrix inverse = scratch.inverse;
+        local.reset();
         view.transformMatrixToGlobal(local);
         if (!local.invert(inverse)) return null;
         local.setConcat(inverse, source);
-        RectF bounds = new RectF(entry.alphaBounds);
+        RectF bounds = scratch.bounds;
+        bounds.set(entry.alphaBounds);
         local.mapRect(bounds);
         // Check against the incoming canvas clip. Grid content can exceed the view bounds.
         return canvas.quickReject(bounds) ? null : local;
@@ -211,6 +284,7 @@ final class DepthEffects {
             ClockContentClip.watch(view, false);
             DepthViewMotion.watch(view, false);
             if (entries.remove(view) != null) {
+                syncDrawHooks();
                 view.invalidate();
                 refreshNativeBlur(view);
             }
@@ -237,6 +311,7 @@ final class DepthEffects {
                 ClockContentClip.watch(view, false);
                 DepthViewMotion.watch(view, false);
                 if (entries.remove(view) != null) {
+                    syncDrawHooks();
                     view.invalidate();
                     refreshNativeBlur(view);
                 }
@@ -244,6 +319,7 @@ final class DepthEffects {
             }
             entry = new Entry(png, mask);
             entries.put(view, entry);
+            syncDrawHooks();
         }
         String packageName = view.getContext().getPackageName();
         if (packageName.equals("com.android.systemui")
@@ -318,12 +394,32 @@ final class DepthEffects {
         return screenSubjectPath(clock, entry, hostX, hostY);
     }
 
+    private static Entry textDrawEntry(View view) {
+        if (!hasEntries) return null;
+        synchronized (entries) {
+            if (entries.isEmpty()) return null;
+            Entry direct = entries.get(view);
+            if (direct != null) return direct;
+            for (android.view.ViewParent parent = view.getParent();
+                    parent instanceof View current;
+                    parent = current.getParent()) {
+                Entry entry = entries.get(current);
+                if (entry != null && entry.enabled) return entry.nodeClip ? null : entry;
+            }
+        }
+        return null;
+    }
+
     private static Entry inheritedSubject(View view) {
-        if (entries.isEmpty()) return null;
-        for (View current = view; current != null; ) {
-            Entry entry = entries.get(current);
-            if (entry != null && entry.enabled) return entry;
-            current = current.getParent() instanceof View ? (View) current.getParent() : null;
+        if (!hasEntries) return null;
+        synchronized (entries) {
+            if (entries.isEmpty()) return null;
+            for (View current = view; current != null; ) {
+                Entry entry = entries.get(current);
+                if (entry != null && entry.enabled) return entry;
+                android.view.ViewParent parent = current.getParent();
+                current = parent instanceof View up ? up : null;
+            }
         }
         return null;
     }
@@ -437,20 +533,41 @@ final class DepthEffects {
     }
 
     private static Matrix subjectTransform(View clock, Entry entry, float hostX, float hostY) {
-        float screenWidth = clock.getResources().getDisplayMetrics().widthPixels;
-        float screenHeight = clock.getResources().getDisplayMetrics().heightPixels;
-        try {
-            WindowManager wm = clock.getContext().getSystemService(WindowManager.class);
-            if (wm != null) {
-                Rect bounds = wm.getCurrentWindowMetrics().getBounds();
-                screenWidth = bounds.width();
-                screenHeight = bounds.height();
+        DrawScratch scratch = drawScratch.get();
+        android.util.DisplayMetrics dm = clock.getResources().getDisplayMetrics();
+        android.view.Display display = clock.getDisplay();
+        int displayId = display == null ? -1 : display.getDisplayId();
+        float screenWidth;
+        float screenHeight;
+        if (scratch.displayId == displayId
+                && scratch.dmW == dm.widthPixels
+                && scratch.dmH == dm.heightPixels
+                && scratch.winW > 0
+                && scratch.winH > 0) {
+            screenWidth = scratch.winW;
+            screenHeight = scratch.winH;
+        } else {
+            screenWidth = dm.widthPixels;
+            screenHeight = dm.heightPixels;
+            try {
+                WindowManager wm = clock.getContext().getSystemService(WindowManager.class);
+                if (wm != null) {
+                    Rect bounds = wm.getCurrentWindowMetrics().getBounds();
+                    screenWidth = bounds.width();
+                    screenHeight = bounds.height();
+                }
+            } catch (Throwable ignored) {
             }
-        } catch (Throwable ignored) {
+            scratch.displayId = displayId;
+            scratch.dmW = dm.widthPixels;
+            scratch.dmH = dm.heightPixels;
+            scratch.winW = screenWidth;
+            scratch.winH = screenHeight;
         }
         float width = screenWidth * entry.previewScale;
         float height = screenHeight * entry.previewScale;
-        RectF source = new RectF(0, 0, entry.mask.getWidth(), entry.mask.getHeight());
+        RectF source = scratch.sourceRect;
+        source.set(0, 0, entry.mask.getWidth(), entry.mask.getHeight());
         float ratio = width / height;
         if (source.width() / source.height() > ratio) {
             float crop = source.height() * ratio;
@@ -459,15 +576,15 @@ final class DepthEffects {
             float crop = source.width() / ratio;
             source.inset(0, (source.height() - crop) / 2);
         }
-        Matrix transform = new Matrix();
-        transform.setRectToRect(
-                source,
-                new RectF(
-                        entry.previewOriginX - hostX,
-                        entry.previewOriginY - hostY,
-                        entry.previewOriginX - hostX + width,
-                        entry.previewOriginY - hostY + height),
-                Matrix.ScaleToFit.FILL);
+        Matrix transform = scratch.transform;
+        transform.reset();
+        RectF dest = scratch.destRect;
+        dest.set(
+                entry.previewOriginX - hostX,
+                entry.previewOriginY - hostY,
+                entry.previewOriginX - hostX + width,
+                entry.previewOriginY - hostY + height);
+        transform.setRectToRect(source, dest, Matrix.ScaleToFit.FILL);
         if (entry.live != null) {
             transform = entry.live.global();
             if (transform == null) return null;
@@ -574,6 +691,7 @@ final class DepthEffects {
                                 return true;
                             });
         }
+        syncDrawHooks();
         synchronized (editorRoots) {
             for (Map.Entry<View, android.view.ViewTreeObserver.OnGlobalLayoutListener> item :
                     editorRoots.entrySet())

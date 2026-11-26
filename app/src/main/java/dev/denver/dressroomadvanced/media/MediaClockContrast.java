@@ -209,7 +209,7 @@ final class MediaClockContrast {
     private static final ThreadLocal<Work> workspace = ThreadLocal.withInitial(Work::new);
     private static DressroomModule hookModule;
     private static boolean installed, activeHooksInstalled, writing;
-    private static boolean hooksWanted = true;
+    private static boolean hooksWanted;
     private static final ArrayList<Runnable> activeUnhooks = new ArrayList<>();
     private static final Set<Class<?>> hookedCustomClasses =
             Collections.newSetFromMap(new WeakHashMap<>());

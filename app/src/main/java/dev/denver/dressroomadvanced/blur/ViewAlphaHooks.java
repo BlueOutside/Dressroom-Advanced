@@ -19,6 +19,8 @@ final class ViewAlphaHooks {
             Collections.newSetFromMap(new WeakHashMap<>());
     private static final Set<Method> deoptimized =
             Collections.newSetFromMap(new WeakHashMap<>());
+    private static final java.util.concurrent.CopyOnWriteArrayList<java.util.function.Consumer<View>>
+            afterListeners = new java.util.concurrent.CopyOnWriteArrayList<>();
     private static Runnable activeUnhook;
 
     private ViewAlphaHooks() {}
@@ -67,17 +69,28 @@ final class ViewAlphaHooks {
                             .setId("dressroom-advanced.view-alpha-coordinator")
                             .intercept(
                                     chain -> {
-                                        if (isWriting()) return chain.proceed();
                                         View view = (View) chain.getThisObject();
-                                        if (!MediaBlurHost.hasHeld()
-                                                && !UnlockBlur.tracksClockAlpha(view)
-                                                && !MediaClockContrast.tracksWeatherAlpha(view))
-                                            return chain.proceed();
-                                        float requested = ((Number) chain.getArg(0)).floatValue();
-                                        float actual = dispatch(view, requested);
-                                        return actual == requested
-                                                ? chain.proceed()
-                                                : chain.proceed(new Object[] {actual});
+                                        Object result;
+                                        if (isWriting()
+                                                || (!MediaBlurHost.hasHeld()
+                                                        && !UnlockBlur.tracksClockAlpha(view)
+                                                        && !MediaClockContrast.tracksWeatherAlpha(
+                                                                view))) {
+                                            result = chain.proceed();
+                                        } else {
+                                            float requested =
+                                                    ((Number) chain.getArg(0)).floatValue();
+                                            float actual = dispatch(view, requested);
+                                            result =
+                                                    actual == requested
+                                                            ? chain.proceed()
+                                                            : chain.proceed(new Object[] {actual});
+                                        }
+                                        if (!afterListeners.isEmpty()) {
+                                            for (var listener : afterListeners)
+                                                listener.accept(view);
+                                        }
+                                        return result;
                                     });
             try {
                 if (deoptimized.add(alpha)) module.deoptimize(alpha);
@@ -91,6 +104,27 @@ final class ViewAlphaHooks {
         AtomicBoolean released = new AtomicBoolean();
         return () -> {
             if (released.compareAndSet(false, true)) release(token);
+        };
+    }
+
+    static synchronized Runnable acquireAfter(
+            DressroomModule module, java.util.function.Consumer<View> listener)
+            throws ReflectiveOperationException {
+        if (module == null || listener == null) return () -> {};
+        afterListeners.add(listener);
+        Runnable lease;
+        try {
+            lease = acquire(module);
+        } catch (ReflectiveOperationException | RuntimeException | Error error) {
+            afterListeners.remove(listener);
+            throw error;
+        }
+        AtomicBoolean released = new AtomicBoolean();
+        return () -> {
+            if (released.compareAndSet(false, true)) {
+                afterListeners.remove(listener);
+                lease.run();
+            }
         };
     }
 

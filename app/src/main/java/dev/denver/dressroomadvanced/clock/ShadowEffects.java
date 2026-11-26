@@ -17,6 +17,18 @@ final class ShadowEffects {
     private static final Map<View, ShadowEffectCache> compositions =
             Collections.synchronizedMap(new WeakHashMap<>());
     private static final ThreadLocal<Boolean> applying = ThreadLocal.withInitial(() -> false);
+    private static final ClassValue<Boolean> clockTypes =
+            new ClassValue<>() {
+                @Override
+                protected Boolean computeValue(Class<?> type) {
+                    for (Class<?> c = type; c != null; c = c.getSuperclass()) {
+                        if ("com.samsung.android.uniform.widget.clock.AbsClockView"
+                                .equals(c.getName())) return true;
+                    }
+                    return false;
+                }
+            };
+    private static volatile boolean hasShadows;
     private static boolean installed;
 
     private ShadowEffects() {}
@@ -29,10 +41,14 @@ final class ShadowEffects {
                         chain -> {
                             if (applying.get()) return chain.proceed();
                             View view = (View) chain.getThisObject();
+                            if (!hasShadows && !clockTypes.get(view.getClass()))
+                                return chain.proceed();
                             RenderEffect effect = (RenderEffect) chain.getArg(0);
-                            if (effect == null) nativeEffects.remove(view);
-                            else nativeEffects.put(view, effect);
                             Shadow shadow = shadows.get(view);
+                            if (shadow != null || clockTypes.get(view.getClass())) {
+                                if (effect == null) nativeEffects.remove(view);
+                                else nativeEffects.put(view, effect);
+                            }
                             return shadow == null
                                     ? chain.proceed()
                                     : chain.proceed(new Object[] {compose(view, shadow, effect)});
@@ -50,6 +66,7 @@ final class ShadowEffects {
             shadows.remove(view);
             compositions.remove(view);
         } else shadows.put(view, shadow);
+        hasShadows = !shadows.isEmpty();
         boolean previous = applying.get();
         applying.set(true);
         try {
