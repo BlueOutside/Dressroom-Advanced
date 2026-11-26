@@ -26,6 +26,10 @@ final class DateEffects {
                     "common_home_date_lower_view");
     private static final Map<View, Boolean> previews =
             Collections.synchronizedMap(new WeakHashMap<>());
+    private static final Map<View, Boolean> runtimeHide =
+            Collections.synchronizedMap(new WeakHashMap<>());
+    private static final Map<View, Long> lastLayoutSize =
+            Collections.synchronizedMap(new WeakHashMap<>());
     private static final Map<View, int[]> identities =
             Collections.synchronizedMap(new WeakHashMap<>());
     private static final Map<View, Integer> originalVisibility =
@@ -47,6 +51,8 @@ final class DateEffects {
 
     static void resetPreviews() {
         previews.clear();
+        runtimeHide.clear();
+        lastLayoutSize.clear();
         identities.clear();
         ClockLabelSizing.reset();
     }
@@ -99,7 +105,17 @@ final class DateEffects {
             }
             if (tracked.add(clock)) {
                 clock.addOnLayoutChangeListener(
-                        (v, l, t, r, b, ol, ot, or, ob) -> updateDate(clock));
+                        (v, l, t, r, b, ol, ot, or, ob) -> {
+                            int w = r - l, h = b - t;
+                            long packed = (((long) w) << 32) | (h & 0xffffffffL);
+                            Long previous = lastLayoutSize.put(clock, packed);
+                            if (previous == null
+                                    || previous != packed
+                                    || w != (or - ol)
+                                    || h != (ob - ot)) {
+                                updateDate(clock);
+                            }
+                        });
             }
             apply(clock);
         } catch (Exception | LinkageError e) {
@@ -145,6 +161,10 @@ final class DateEffects {
     }
 
     static void bindSettings(View clock, Bundle settings) {
+        if (clock != null) {
+            if (settings == null) runtimeHide.remove(clock);
+            else runtimeHide.put(clock, settings.getBoolean("hideDate"));
+        }
         ClockLabelSizing.bind(clock, settings);
     }
 
@@ -167,6 +187,7 @@ final class DateEffects {
 
     static void bindIdentity(View clock, int type, int font, int orientation) {
         identities.put(clock, new int[] {type, font, orientation});
+        runtimeHide.remove(clock);
         apply(clock);
     }
 
@@ -205,6 +226,8 @@ final class DateEffects {
     private static Boolean shouldHide(View clock) {
         Boolean preview = previews.get(clock);
         if (preview != null) return preview;
+        Boolean bound = runtimeHide.get(clock);
+        if (bound != null) return bound;
         try {
             Bundle query = new Bundle();
             int[] identity = identities.get(clock);
@@ -216,8 +239,10 @@ final class DateEffects {
             query.putInt(
                     "font", identity == null ? ClockBinding.of(clock).fontId(clock) : identity[1]);
             if (identity != null) query.putInt(LayoutOrientation.FIELD, identity[2]);
-            Bundle saved = SettingsBridge.read(clock.getContext(), query);
-            return saved != null && saved.getBoolean("hideDate");
+            Bundle saved = SettingsBridge.readRuntimeClock(clock.getContext(), query);
+            boolean hide = saved != null && saved.getBoolean("hideDate");
+            if (saved != null) runtimeHide.put(clock, hide);
+            return hide;
         } catch (Exception ignored) {
             return false;
         }

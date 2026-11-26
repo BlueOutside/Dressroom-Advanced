@@ -274,7 +274,50 @@ final class RuntimeWidgetHooks {
     private void installPlacementGuards(
             ClassLoader loader, Class<?> controller, HookTransaction hooks) {
         for (Method method : controller.getDeclaredMethods()) {
-            if (method.isBridge() || !method.getName().equals("updateClockGravity")) continue;
+            if (method.isBridge()) continue;
+            if (method.getName().equals("getHeight") && method.getParameterCount() == 1) {
+                hooks.add(
+                        module.hook(method)
+                                .setId("dressroom-advanced.widget-controller-height")
+                                .intercept(
+                                        chain -> {
+                                            Object result = chain.proceed();
+                                            if (!(result instanceof Number value)) return result;
+                                            int nativeHeight = value.intValue();
+                                            try {
+                                                Object controllerObj = chain.getThisObject();
+                                                Object grid =
+                                                        resolveControllerMember(
+                                                                controllerObj,
+                                                                "complicationGridUIController",
+                                                                "complicationGridUIControllerProvider");
+                                                if (grid == null) return result;
+                                                Object manager =
+                                                        Reflect.call(grid, "getWidgetSizeManager");
+                                                if (!module.widgetEngine.main(manager))
+                                                    return result;
+                                                int gridHeight =
+                                                        ((Number)
+                                                                        Reflect.call(
+                                                                                grid,
+                                                                                "getContainerHeight"))
+                                                                .intValue();
+                                                if (gridHeight <= 0) return result;
+                                                if (legacyControllers.contains(
+                                                                controllerObj.getClass())
+                                                        || gridHeight > nativeHeight) {
+                                                    return gridHeight;
+                                                }
+                                            } catch (ReflectiveOperationException
+                                                    | RuntimeException ignored) {
+                                            }
+                                            return result;
+                                        })
+                                ::unhook);
+                module.deoptimize(method);
+                continue;
+            }
+            if (!method.getName().equals("updateClockGravity")) continue;
             hooks.add(
                     module.hook(method)
                             .setId("dressroom-advanced.prevent-plugin-gravity-reset")
@@ -363,13 +406,22 @@ final class RuntimeWidgetHooks {
         }
     }
 
-    private static void syncParentHeight(Object controller, ViewGroup root) {
+    private static void syncParentHeight(Object controller, ViewGroup root, Object grid) {
+        WidgetPlacement.disableAncestorClipping(root);
         if (!(root.getParent() instanceof ViewGroup parent)) return;
         ViewGroup.LayoutParams params = parent.getLayoutParams();
         if (params == null || params.height <= 0) return;
         try {
             int height =
                     ((Number) Reflect.call(controller, "getHeight", root.getContext())).intValue();
+            if (grid != null) {
+                try {
+                    int gridHeight =
+                            ((Number) Reflect.call(grid, "getContainerHeight")).intValue();
+                    if (gridHeight > height) height = gridHeight;
+                } catch (ReflectiveOperationException | RuntimeException ignored) {
+                }
+            }
             if (height > 0 && params.height != height) {
                 params.height = height;
                 parent.setLayoutParams(params);
@@ -652,7 +704,7 @@ final class RuntimeWidgetHooks {
                 module.widgetEngine.refreshChecked(nativeGrid);
                 module.widgetEngine.repairPositions(nativeGrid);
             }
-            syncParentHeight(controller, root);
+            syncParentHeight(controller, root, nativeGrid);
             Object provider =
                     resolveControllerMember(
                             controller, "keyguardClockProvider", "keyguardClockProviderProvider");
@@ -792,7 +844,7 @@ final class RuntimeWidgetHooks {
                 state.layout = layout;
             }
         }
-        syncParentHeight(controller, root);
+        syncParentHeight(controller, root, grid);
         Object provider = Reflect.field(controller, "keyguardClockProvider");
         Class<?> base =
                 Class.forName(

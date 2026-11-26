@@ -631,7 +631,7 @@ final class NowBarGlass {
     static boolean glassAllowed(android.content.Context context, float darkAmount) {
         return RuntimeExtras.enabled(context, KEY)
                 && BlurAppearance.liveWindowBlurAllowed(context)
-                && Settings.System.getInt(context.getContentResolver(), "minimal_battery_use", 0) == 0
+                && !BlurAppearance.minimalBatteryUse(context)
                 && (darkAmount == 0f || WallpaperAod.shown(context));
     }
 

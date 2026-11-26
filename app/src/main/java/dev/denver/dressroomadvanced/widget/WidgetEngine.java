@@ -466,18 +466,41 @@ final class WidgetEngine {
                                     })
                             ::unhook);
             module.deoptimize(rotate);
-            for (Method m : grid.getDeclaredMethods())
-                if (java.util.Set.of(
+            for (Method m : grid.getDeclaredMethods()) {
+                if (m.getName().equals("animateOffsetX")) {
+                    hooks.add(
+                            module.hook(m)
+                                    .setId("dressroom-advanced.widget-grid-offset")
+                                    .intercept(
+                                            chain -> {
+                                                Object controller = chain.getThisObject();
+                                                Object manager =
+                                                        Reflect.call(
+                                                                controller,
+                                                                "getWidgetSizeManager");
+                                                if (!nativeMetrics.get()
+                                                        && main(manager)
+                                                        && config(manager).getBoolean("layout")) {
+                                                    resetGridOffset(controller);
+                                                    return null;
+                                                }
+                                                return chain.proceed();
+                                            })
+                                    ::unhook);
+                    module.deoptimize(m);
+                } else if (java.util.Set.of(
                                 "getLockWidgetGridSize",
                                 "updateGridRule",
                                 "initDynamicGridLayout",
                                 "updateAlignChangeLayout",
                                 "updateRootContainerSize",
                                 "checkAllowPosition",
-                                "animateOffsetX",
                                 "registerDropListener",
                                 "sendAppWidgetOptions")
-                        .contains(m.getName())) module.deoptimize(m);
+                        .contains(m.getName())) {
+                    module.deoptimize(m);
+                }
+            }
             if (!early) {
                 Class<?> containers = Class.forName(
                         "com.samsung.android.app.facewidget.complication.ComplicationContainerManager",
@@ -686,6 +709,26 @@ final class WidgetEngine {
         }
     }
 
+    private static void resetGridOffset(Object grid) {
+        try {
+            Object containerManager = Reflect.field(grid, "containerManager");
+            Object rootObj =
+                    containerManager != null
+                            ? Reflect.call(containerManager, "getRootContainer")
+                            : null;
+            if (rootObj instanceof android.view.ViewGroup root) {
+                for (int i = 0; i < root.getChildCount(); i++) {
+                    View child = root.getChildAt(i);
+                    if (child != null && child.getTranslationX() != 0f) {
+                        child.animate().cancel();
+                        child.setTranslationX(0f);
+                    }
+                }
+            }
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+        }
+    }
+
     void refreshChecked(Object grid) throws ReflectiveOperationException {
         Object manager = Reflect.call(grid, "getWidgetSizeManager");
         if (!main(manager)) return;
@@ -696,6 +739,7 @@ final class WidgetEngine {
         } else {
             refresh.method().invoke(grid);
         }
+        if (config(manager).getBoolean("layout")) resetGridOffset(grid);
         notifyLegacyProviders(grid);
     }
 

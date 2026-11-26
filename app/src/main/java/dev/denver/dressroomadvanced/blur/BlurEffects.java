@@ -17,6 +17,8 @@ final class BlurEffects {
     private static final ThreadLocal<Integer> radiusForDraw = new ThreadLocal<>();
     private static final Map<View, Bundle> previews =
             Collections.synchronizedMap(new WeakHashMap<>());
+    private static final Map<View, Bundle> runtimeSettings =
+            Collections.synchronizedMap(new WeakHashMap<>());
     private static final Set<View> forced = Collections.newSetFromMap(new WeakHashMap<>());
     private static final Set<ClassLoader> installed =
             Collections.newSetFromMap(new WeakHashMap<>());
@@ -200,8 +202,15 @@ final class BlurEffects {
         previews.remove(clock);
     }
 
+    static void bindSettings(View clock, Bundle settings) {
+        if (clock == null) return;
+        if (settings == null) runtimeSettings.remove(clock);
+        else runtimeSettings.put(clock, settings);
+    }
+
     static void resetPreviews() {
         previews.clear();
+        runtimeSettings.clear();
         forced.clear();
     }
 
@@ -261,11 +270,15 @@ final class BlurEffects {
         if (clock == null) return null;
         Bundle preview = previews.get(clock);
         if (preview != null) return preview;
+        Bundle bound = runtimeSettings.get(clock);
+        if (bound != null) return bound;
         try {
             Bundle query = new Bundle();
             query.putInt("type", ((Number) Reflect.call(clock, "getClockType")).intValue());
             query.putInt("font", ((Number) ClockBinding.of(clock).fontId(clock)).intValue());
-            return SettingsBridge.read(clock.getContext(), query);
+            Bundle loaded = SettingsBridge.readRuntimeClock(clock.getContext(), query);
+            if (loaded != null) runtimeSettings.put(clock, loaded);
+            return loaded;
         } catch (Exception ignored) {
             return null;
         }

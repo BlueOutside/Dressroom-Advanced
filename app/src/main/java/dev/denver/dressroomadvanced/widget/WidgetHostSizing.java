@@ -200,7 +200,7 @@ final class WidgetHostSizing {
                         number(spec, "getPxHeight"),
                         number(spec, "getScaleX") * zoom,
                         number(spec, "getScaleY") * zoom);
-        refreshHostSizeManager(host, manager.getClass());
+        refreshHostSizeManager(host, manager);
         if (hasNativeResize(host, spec)) {
             Reflect.call(host, "setResizeScale", spec);
             host.requestLayout();
@@ -220,13 +220,16 @@ final class WidgetHostSizing {
         if (!(host.getParent() instanceof ViewGroup container)
                 || !container.getClass().getName().equals(CONTAINER)) return;
         Object backgroundManager = Reflect.field(container, "widgetSizeManager");
-        Reflect.call(
-                backgroundManager, "init", Reflect.call(backgroundManager, "getWidgetDisplayType"));
+        syncSizeManager(backgroundManager, manager);
         Reflect.call(container, "initConfigurationValues");
         ViewGroup.LayoutParams params = container.getLayoutParams();
-        params.width = ((Number) Reflect.field(container, "containerCellWidth")).intValue();
-        params.height = ((Number) Reflect.field(container, "containerCellHeight")).intValue();
-        container.setLayoutParams(params);
+        if (params != null
+                && (params.width != ViewGroup.LayoutParams.MATCH_PARENT
+                        || params.height != ViewGroup.LayoutParams.MATCH_PARENT)) {
+            params.width = ((Number) Reflect.field(container, "containerCellWidth")).intValue();
+            params.height = ((Number) Reflect.field(container, "containerCellHeight")).intValue();
+            container.setLayoutParams(params);
+        }
         int padding = ((Number) Reflect.field(container, "padding")).intValue();
         container.setPadding(padding, padding, padding, padding);
         for (String name : new String[] {"blurView", "dimView", "previewDimView"}) {
@@ -259,18 +262,30 @@ final class WidgetHostSizing {
                 .legacy;
     }
 
-    private static void refreshHostSizeManager(View host, Class<?> managerType)
+    private static void syncSizeManager(Object targetManager, Object sourceManager)
             throws ReflectiveOperationException {
+        if (targetManager == null || sourceManager == null) return;
+        try {
+            Object align = Reflect.field(sourceManager, "widgetAlignType");
+            if (align != null) Reflect.set(targetManager, "widgetAlignType", align);
+        } catch (ReflectiveOperationException ignored) {
+        }
+        Object displayType = Reflect.call(sourceManager, "getWidgetDisplayType");
+        if (displayType == null) displayType = Reflect.call(targetManager, "getWidgetDisplayType");
+        Reflect.call(targetManager, "init", displayType);
+    }
+
+    private static void refreshHostSizeManager(View host, Object sourceManager)
+            throws ReflectiveOperationException {
+        if (sourceManager == null) return;
+        Class<?> managerType = sourceManager.getClass();
         for (Class<?> cursor = host.getClass();
                 cursor != null && cursor != Object.class;
                 cursor = cursor.getSuperclass()) {
             try {
                 Object hostManager = NativeContract.findField(cursor, null, managerType).get(host);
                 if (hostManager != null) {
-                    Reflect.call(
-                            hostManager,
-                            "init",
-                            Reflect.call(hostManager, "getWidgetDisplayType"));
+                    syncSizeManager(hostManager, sourceManager);
                 }
                 return;
             } catch (NoSuchFieldException ignored) {

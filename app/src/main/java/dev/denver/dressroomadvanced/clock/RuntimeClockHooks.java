@@ -237,9 +237,12 @@ final class RuntimeClockHooks {
                                             try {
                                                 loaded = read(view, identity(view, requestedFont));
                                                 Bundle settings = loaded.settings();
-                                                if (settings != null)
+                                                if (settings != null) {
                                                     profiles.put(
                                                             (View) chain.getThisObject(), settings);
+                                                    BlurEffects.bindSettings(
+                                                            (View) chain.getThisObject(), settings);
+                                                }
                                                 boolean held =
                                                         settings != null
                                                                 && FontAxisSettings.nativeStretch(
@@ -940,6 +943,7 @@ final class RuntimeClockHooks {
             if (settings == null) {
                 profiles.remove(view);
                 DateEffects.bindSettings(view, null);
+                BlurEffects.bindSettings(view, null);
                 if (effects.remove(view)) ShadowEffects.apply(view, false, 0, 0, 0, 0);
                 applyDepth(view, null);
                 int attempt = settingsRetries.getOrDefault(view, 0);
@@ -957,6 +961,7 @@ final class RuntimeClockHooks {
             }
             profiles.put(view, settings);
             DateEffects.bindSettings(view, settings);
+            BlurEffects.bindSettings(view, settings);
             if (FontAxisSettings.nativeStretch(settings)
                     && (settings.getBoolean("manual") || settings.getBoolean("depthEnabled"))
                     && settings.getFloatArray("manualHeights") != null

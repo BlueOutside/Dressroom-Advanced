@@ -800,8 +800,8 @@ final class WidgetEditorBinding {
         Reflect.call(size, "setWidgetSideMargin", padding);
         Reflect.call(size, "setScaleFactor", scale);
         Reflect.call(size, "setPreviewLayoutScale", scale);
-        int width = columns * unit + (columns - 1) * padding * 2;
-        int height = rows * unit + (rows - 1) * padding * 2;
+        int width = columns * (unit + padding * 2);
+        int height = rows * (unit + padding * 2);
         Reflect.call(size, "setContainerWidth", width);
         Reflect.call(size, "setContainerHeight", height);
         Reflect.call(size, "setDisableWidth", width);

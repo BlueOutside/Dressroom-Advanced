@@ -8,8 +8,37 @@ final class WallpaperAod {
     static final String MAIN = "aod_show_lockscreen_wallpaper";
     static final String COVER = "aod_show_cover_screen_wallpaper";
     private static Boolean fullscreen;
+    private static volatile Integer cachedMain, cachedCover;
+    private static final java.util.concurrent.atomic.AtomicBoolean observing =
+            new java.util.concurrent.atomic.AtomicBoolean();
 
     private WallpaperAod() {}
+
+    private static void ensureObserved(android.content.ContentResolver resolver) {
+        if (resolver == null || observing.get()) return;
+        android.os.Looper looper = android.os.Looper.getMainLooper();
+        if (looper == null || !observing.compareAndSet(false, true)) return;
+        try {
+            android.database.ContentObserver observer =
+                    new android.database.ContentObserver(new android.os.Handler(looper)) {
+                        @Override
+                        public void onChange(boolean selfChange) {
+                            cachedMain = null;
+                            cachedCover = null;
+                        }
+                    };
+            android.net.Uri mainUri = Settings.System.getUriFor(MAIN);
+            android.net.Uri coverUri = Settings.System.getUriFor(COVER);
+            if (mainUri == null || coverUri == null) {
+                observing.set(false);
+                return;
+            }
+            resolver.registerContentObserver(mainUri, false, observer);
+            resolver.registerContentObserver(coverUri, false, observer);
+        } catch (RuntimeException ignored) {
+            observing.set(false);
+        }
+    }
 
     static boolean supported() {
         int version = PlatformGate.oneUiVersion();
@@ -31,8 +60,19 @@ final class WallpaperAod {
     static boolean shown(Context context) {
         if (!supported()) return false;
         var resolver = context.getContentResolver();
-        int main = Settings.System.getInt(resolver, MAIN, 0);
-        return (ScreenIdentity.current() == ScreenIdentity.SUB
-                ? Settings.System.getInt(resolver, COVER, main) : main) == 1;
+        ensureObserved(resolver);
+        Integer mainVal = observing.get() ? cachedMain : null;
+        if (mainVal == null) {
+            mainVal = Settings.System.getInt(resolver, MAIN, 0);
+            if (observing.get()) cachedMain = mainVal;
+        }
+        int main = mainVal;
+        if (ScreenIdentity.current() != ScreenIdentity.SUB) return main == 1;
+        Integer coverVal = observing.get() ? cachedCover : null;
+        if (coverVal == null) {
+            coverVal = Settings.System.getInt(resolver, COVER, main);
+            if (observing.get()) cachedCover = coverVal;
+        }
+        return coverVal == 1;
     }
 }

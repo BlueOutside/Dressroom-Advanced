@@ -90,8 +90,22 @@ final class WidgetContentClip extends ViewOutlineProvider {
             boolean nativeClip, Path subject, Path cover) {
         Path visible = nativeClip && nativeOutline != null ? copyShape(nativeOutline) : null;
         if (visible == null) {
+            int left = 0, top = 0, right = view.getWidth(), bottom = view.getHeight();
+            if (view instanceof android.view.ViewGroup group) {
+                for (int i = 0; i < group.getChildCount(); i++) {
+                    View child = group.getChildAt(i);
+                    if (child != null && child.getVisibility() == View.VISIBLE) {
+                        int cx = Math.round(child.getX());
+                        int cy = Math.round(child.getY());
+                        left = Math.min(left, cx);
+                        top = Math.min(top, cy);
+                        right = Math.max(right, cx + child.getWidth());
+                        bottom = Math.max(bottom, cy + child.getHeight());
+                    }
+                }
+            }
             visible = new Path();
-            visible.addRect(0, 0, view.getWidth(), view.getHeight(), Path.Direction.CW);
+            visible.addRect(left, top, right, bottom, Path.Direction.CW);
         }
         if (subject != null) visible = DepthGeometry.subtract(visible, subject);
         if (cover != null) visible = DepthGeometry.subtract(visible, cover);

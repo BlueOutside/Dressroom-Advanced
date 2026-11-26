@@ -34,6 +34,10 @@ final class BlurAppearance {
     private static final java.util.Set<View> clocks =
             java.util.Collections.newSetFromMap(new WeakHashMap<>());
     private static Boolean samsungWindowBlur;
+    private static volatile Boolean cachedReducedTransparency, cachedSystemBlurDisabled;
+    private static volatile Boolean cachedMinimalBatteryUse;
+    private static final java.util.concurrent.atomic.AtomicBoolean observingSystemFlags =
+            new java.util.concurrent.atomic.AtomicBoolean();
     private static WidgetBlurInfo copies;
     private static Method setter;
     private static Field radius, color, curve, mode;
@@ -110,10 +114,60 @@ final class BlurAppearance {
         return false;
     }
 
+    private static void ensureSystemFlagsObserved(android.content.ContentResolver resolver) {
+        if (resolver == null || observingSystemFlags.get()) return;
+        android.os.Looper looper = android.os.Looper.getMainLooper();
+        if (looper == null || !observingSystemFlags.compareAndSet(false, true)) return;
+        try {
+            android.database.ContentObserver observer =
+                    new android.database.ContentObserver(new android.os.Handler(looper)) {
+                        @Override
+                        public void onChange(boolean selfChange) {
+                            cachedReducedTransparency = null;
+                            cachedSystemBlurDisabled = null;
+                            cachedMinimalBatteryUse = null;
+                        }
+                    };
+            android.net.Uri reduceUri =
+                    android.provider.Settings.System.getUriFor("accessibility_reduce_transparency");
+            android.net.Uri disableUri =
+                    android.provider.Settings.Global.getUriFor("disable_window_blurs");
+            android.net.Uri batteryUri =
+                    android.provider.Settings.System.getUriFor("minimal_battery_use");
+            if (reduceUri == null || disableUri == null || batteryUri == null) {
+                observingSystemFlags.set(false);
+                return;
+            }
+            resolver.registerContentObserver(reduceUri, false, observer);
+            resolver.registerContentObserver(disableUri, false, observer);
+            resolver.registerContentObserver(batteryUri, false, observer);
+        } catch (RuntimeException ignored) {
+            observingSystemFlags.set(false);
+        }
+    }
+
     private static boolean reducedTransparency(Context context) {
-        return android.provider.Settings.System.getInt(
-                        context.getContentResolver(), "accessibility_reduce_transparency", 0)
-                != 0;
+        Boolean cached = cachedReducedTransparency;
+        if (cached != null && observingSystemFlags.get()) return cached;
+        var resolver = context.getContentResolver();
+        ensureSystemFlagsObserved(resolver);
+        boolean value =
+                android.provider.Settings.System.getInt(
+                                resolver, "accessibility_reduce_transparency", 0)
+                        != 0;
+        if (observingSystemFlags.get()) cachedReducedTransparency = value;
+        return value;
+    }
+
+    static boolean minimalBatteryUse(Context context) {
+        Boolean cached = cachedMinimalBatteryUse;
+        if (cached != null && observingSystemFlags.get()) return cached;
+        var resolver = context.getContentResolver();
+        ensureSystemFlagsObserved(resolver);
+        boolean value =
+                android.provider.Settings.System.getInt(resolver, "minimal_battery_use", 0) != 0;
+        if (observingSystemFlags.get()) cachedMinimalBatteryUse = value;
+        return value;
     }
 
     static boolean windowBlur(Context context) {
@@ -124,8 +178,14 @@ final class BlurAppearance {
     }
 
     private static boolean systemBlurDisabled(Context context) {
-        return android.provider.Settings.Global.getInt(
-                context.getContentResolver(), "disable_window_blurs", 0) != 0;
+        Boolean cached = cachedSystemBlurDisabled;
+        if (cached != null && observingSystemFlags.get()) return cached;
+        var resolver = context.getContentResolver();
+        ensureSystemFlagsObserved(resolver);
+        boolean value =
+                android.provider.Settings.Global.getInt(resolver, "disable_window_blurs", 0) != 0;
+        if (observingSystemFlags.get()) cachedSystemBlurDisabled = value;
+        return value;
     }
 
     static boolean hasWindowDrawable(View view) {

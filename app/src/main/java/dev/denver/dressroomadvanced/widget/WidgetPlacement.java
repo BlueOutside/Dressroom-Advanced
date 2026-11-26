@@ -135,7 +135,17 @@ final class WidgetPlacement {
         apply(root, settings, provider, false);
     }
 
+    static void disableAncestorClipping(View root) {
+        android.view.ViewParent cursor = root instanceof ViewGroup ? (ViewGroup) root : root.getParent();
+        for (int depth = 0; depth < 5 && cursor instanceof ViewGroup group; depth++) {
+            group.setClipChildren(false);
+            group.setClipToPadding(false);
+            cursor = group.getParent();
+        }
+    }
+
     static void apply(View root, Bundle settings, Object provider, boolean legacyHostBounds) {
+        if (root != null) disableAncestorClipping(root);
         if (settings == null) {
             clear(root);
             return;
@@ -258,9 +268,13 @@ final class WidgetPlacement {
         if (root instanceof ViewGroup group) {
             for (int i = 0; i < group.getChildCount(); i++) {
                 View child = group.getChildAt(i);
-                if (child.getClass().getName().equals(
-                                "com.samsung.android.app.facewidget.complication.KeyguardComplicationWidgetContainer")
-                        && child.getWidth() > 0 && child.getHeight() > 0) {
+                String name = child.getClass().getName();
+                if ((name.equals(
+                                        "com.samsung.android.app.facewidget.complication.KeyguardComplicationWidgetContainer")
+                                || name.equals(
+                                        "com.samsung.android.app.aodservice.common.grid.view.GridContainerView"))
+                        && child.getWidth() > 0
+                        && child.getHeight() > 0) {
                     if (state != null) state.contentChild = new WeakReference<>(child);
                     return child;
                 }
