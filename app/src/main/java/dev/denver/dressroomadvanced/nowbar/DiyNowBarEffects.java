@@ -166,8 +166,9 @@ final class DiyNowBarEffects {
     }
 
     /**
-     * Installs Google Finance & Google Commute unlock hooks inside both SystemUI's AOD plugin
-     * ClassLoader and AODService's Settings process (FaceWidgetNowBarSettingsActivity).
+     * Installs Google Finance, Commute, Google Sports & Naver Sports unlock hooks inside both
+     * SystemUI's AOD plugin ClassLoader and AODService's Settings process
+     * (FaceWidgetNowBarSettingsActivity).
      */
     static synchronized void installLabsSettingsHooks(DressroomModule module, ClassLoader loader) {
         if (loader == null || !labsSettingsInstalled.add(loader)) return;
@@ -175,6 +176,8 @@ final class DiyNowBarEffects {
                 () -> {
                     try {
                         List<String> ctxParam = List.of("Landroid/content/Context;");
+                        String settingsHelperDesc =
+                                "Lcom/samsung/android/app/aodservice/common/utils/settings/SettingsHelper;";
                         List<DexSignatures.Body> matches =
                                 DexSignatures.find(
                                         loader,
@@ -183,15 +186,46 @@ final class DiyNowBarEffects {
                                                 "nowbar_commute",
                                                 "com.google.android.apps.maps_internal",
                                                 "com.google.android.googlequicksearchbox_finance",
+                                                "com.google.android.googlequicksearchbox",
                                                 "NowBarOngoingListUtils",
-                                                "getOngoingList "));
+                                                "getOngoingList ",
+                                                "key_nowbar_settings",
+                                                "selected_search_engine",
+                                                "is_sports_support"));
                         boolean commutePolicyHooked = false;
                         boolean commuteEnabledHooked = false;
                         boolean financeEnabledHooked = false;
+                        boolean naverSupportHooked = false;
                         boolean ongoingListHooked = false;
+                        boolean filteredListHooked = false;
+                        boolean searchEngineGateHooked = false;
                         for (DexSignatures.Body body : matches) {
-                            if (!body.parameters().equals(ctxParam)) continue;
                             Map<String, Integer> anchors = body.anchors();
+                            if (!searchEngineGateHooked
+                                    && settingsHelperDesc.equals(body.owner())
+                                    && body.parameters().isEmpty()
+                                    && "Z".equals(body.result())
+                                    && anchors.containsKey(
+                                            "com.google.android.googlequicksearchbox")) {
+                                searchEngineGateHooked = true;
+                                Method m = body.method(loader);
+                                hookAndDeopt(
+                                        module,
+                                        m,
+                                        "dressroom-advanced.labs-google-search-gate",
+                                        chain -> {
+                                            DiyNowBarLabs labs =
+                                                    ensureLabsSnapshot(stackHostContext);
+                                            if (labs.unlockGoogleSports
+                                                    || labs.unlockGoogleFinance
+                                                    || labs.unlockGoogleCommute) {
+                                                return true;
+                                            }
+                                            return chain.proceed();
+                                        });
+                                continue;
+                            }
+                            if (!body.parameters().equals(ctxParam)) continue;
                             if ("Z".equals(body.result())) {
                                 if (!commutePolicyHooked
                                         && (anchors.containsKey("scpm_aod_common_policy")
@@ -259,46 +293,109 @@ final class DiyNowBarEffects {
                                                 }
                                                 return chain.proceed();
                                             });
+                                } else if (!naverSupportHooked
+                                        && anchors.containsKey("is_sports_support")) {
+                                    naverSupportHooked = true;
+                                    Method m = body.method(loader);
+                                    hookAndDeopt(
+                                            module,
+                                            m,
+                                            "dressroom-advanced.labs-naver-sports-support",
+                                            chain -> {
+                                                Context ctx =
+                                                        chain.getArg(0) instanceof Context c
+                                                                ? c
+                                                                : stackHostContext;
+                                                DiyNowBarLabs labs = ensureLabsSnapshot(ctx);
+                                                if (labs.unlockNaverSports) return true;
+                                                return chain.proceed();
+                                            });
                                 }
-                            } else if (!ongoingListHooked
-                                    && "Ljava/util/List;".equals(body.result())
-                                    && (anchors.containsKey("NowBarOngoingListUtils")
-                                            || anchors.containsKey("getOngoingList "))) {
-                                ongoingListHooked = true;
-                                Method m = body.method(loader);
-                                hookAndDeopt(
-                                        module,
-                                        m,
-                                        "dressroom-advanced.labs-ongoing-list",
-                                        chain -> {
-                                            Object res = chain.proceed();
-                                            Context ctx =
-                                                    chain.getArg(0) instanceof Context c
-                                                            ? c
-                                                            : stackHostContext;
-                                            DiyNowBarLabs labs = ensureLabsSnapshot(ctx);
-                                            if (!labs.unlockGoogleFinance
-                                                    && !labs.unlockGoogleCommute) {
-                                                return res;
-                                            }
-                                            List<Object> out =
-                                                    res instanceof List<?> raw
-                                                            ? new ArrayList<>(raw)
-                                                            : new ArrayList<>();
-                                            if (labs.unlockGoogleFinance
-                                                    && !out.contains(
-                                                            "com.google.android.googlequicksearchbox_finance")) {
-                                                out.add(
-                                                        0,
-                                                        "com.google.android.googlequicksearchbox_finance");
-                                            }
-                                            if (labs.unlockGoogleCommute
-                                                    && !out.contains(
-                                                            "com.google.android.apps.maps_internal")) {
-                                                out.add(0, "com.google.android.apps.maps_internal");
-                                            }
-                                            return out;
-                                        });
+                            } else if ("Ljava/util/List;".equals(body.result())) {
+                                if (!ongoingListHooked
+                                        && (anchors.containsKey("NowBarOngoingListUtils")
+                                                || anchors.containsKey("getOngoingList "))) {
+                                    ongoingListHooked = true;
+                                    Method m = body.method(loader);
+                                    hookAndDeopt(
+                                            module,
+                                            m,
+                                            "dressroom-advanced.labs-ongoing-list",
+                                            chain -> {
+                                                Object res = chain.proceed();
+                                                Context ctx =
+                                                        chain.getArg(0) instanceof Context c
+                                                                ? c
+                                                                : stackHostContext;
+                                                DiyNowBarLabs labs = ensureLabsSnapshot(ctx);
+                                                if (!labs.unlockGoogleFinance
+                                                        && !labs.unlockGoogleCommute
+                                                        && !labs.unlockGoogleSports
+                                                        && !labs.unlockNaverSports) {
+                                                    return res;
+                                                }
+                                                List<Object> out =
+                                                        res instanceof List<?> raw
+                                                                ? new ArrayList<>(raw)
+                                                                : new ArrayList<>();
+                                                if (labs.unlockGoogleSports
+                                                        && !out.contains(
+                                                                "com.google.android.googlequicksearchbox")) {
+                                                    out.add(
+                                                            0,
+                                                            "com.google.android.googlequicksearchbox");
+                                                }
+                                                if (labs.unlockNaverSports
+                                                        && !out.contains(
+                                                                "com.nhn.android.search")) {
+                                                    out.add(0, "com.nhn.android.search");
+                                                }
+                                                if (labs.unlockGoogleFinance
+                                                        && !out.contains(
+                                                                "com.google.android.googlequicksearchbox_finance")) {
+                                                    out.add(
+                                                            0,
+                                                            "com.google.android.googlequicksearchbox_finance");
+                                                }
+                                                if (labs.unlockGoogleCommute
+                                                        && !out.contains(
+                                                                "com.google.android.apps.maps_internal")) {
+                                                    out.add(
+                                                            0,
+                                                            "com.google.android.apps.maps_internal");
+                                                }
+                                                return out;
+                                            });
+                                } else if (!filteredListHooked
+                                        && anchors.containsKey("key_nowbar_settings")
+                                        && anchors.containsKey("selected_search_engine")) {
+                                    filteredListHooked = true;
+                                    Method m = body.method(loader);
+                                    hookAndDeopt(
+                                            module,
+                                            m,
+                                            "dressroom-advanced.labs-filtered-ongoing-list",
+                                            chain -> {
+                                                Object res = chain.proceed();
+                                                Context ctx =
+                                                        chain.getArg(0) instanceof Context c
+                                                                ? c
+                                                                : stackHostContext;
+                                                DiyNowBarLabs labs = ensureLabsSnapshot(ctx);
+                                                if (!labs.unlockGoogleSports) return res;
+                                                List<Object> out =
+                                                        res instanceof List<?> raw
+                                                                ? new ArrayList<>(raw)
+                                                                : new ArrayList<>();
+                                                if (!out.contains(
+                                                        "com.google.android.googlequicksearchbox")) {
+                                                    out.add(
+                                                            0,
+                                                            "com.google.android.googlequicksearchbox");
+                                                }
+                                                return out;
+                                            });
+                                }
                             }
                         }
                     } catch (Throwable error) {
@@ -307,7 +404,37 @@ final class DiyNowBarEffects {
                 });
     }
 
+    private static final Map<String, Boolean> labsApplied = new java.util.HashMap<>();
+
+    /** Writes Samsung's own switches once per change; turning off only reverts what we wrote. */
+    private static void applyLabsSettings(Context ctx, DiyNowBarLabs labs) {
+        if (ctx == null || labs == null) return;
+        String[] keys = {
+            "gemini_space_commute_recap", "buds_enable", "support_nowbar_naver_sports"
+        };
+        boolean[] wanted = {
+            labs.geminiCommuteRecap, labs.budsInMusicCard, labs.unlockNaverSports
+        };
+        for (int i = 0; i < keys.length; i++) {
+            Boolean previous = labsApplied.get(keys[i]);
+            if (previous == null ? !wanted[i] : previous == wanted[i]) continue;
+            try {
+                Settings.System.putInt(ctx.getContentResolver(), keys[i], wanted[i] ? 1 : 0);
+                labsApplied.put(keys[i], wanted[i]);
+            } catch (RuntimeException restricted) {
+                // Samsung's own setting stays authoritative when the write is refused.
+            }
+        }
+    }
+
     private static DiyNowBarLabs ensureLabsSnapshot(Context ctx) {
+        if (ctx == null) ctx = AodTweaksRuntime.application();
+        DiyNowBarLabs snapshot = ensureLabsSnapshotInner(ctx);
+        applyLabsSettings(ctx, snapshot);
+        return snapshot;
+    }
+
+    private static DiyNowBarLabs ensureLabsSnapshotInner(Context ctx) {
         if (ctx != null) ensureStackObserver(ctx);
         if (!labsLoadedOnce && ctx != null) {
             try {

@@ -31,6 +31,7 @@ final class EditorExtras {
         drafts.put(ScreenIdentity.value(draft), new Bundle(draft));
         changed.add(ScreenIdentity.value(draft));
         BlurAppearance.preview(draft);
+        AodTweaksRuntime.editorDraft(draft);
     }
 
     Bundle freeze() {
@@ -60,6 +61,7 @@ final class EditorExtras {
         if (!BlurAppearanceSettings.same(draft, saved)) return;
         if (!ExtrasPreferences.sameFlags(draft, saved)) return;
         if (draft.getInt("stackCards", 3) != saved.getInt("stackCards", 3)) return;
+        if (!AodTweaks.same(draft, saved)) return;
         if (draft.getInt("lyricsTextSize", 28) != saved.getInt("lyricsTextSize", 28)) return;
         if (!ExtrasPreferences.sameLyricsFont(draft, saved)) return;
         if (draft.getInt(LiveCoverController.SOURCE, LiveCoverController.SOURCE_SPOTIFY_FIRST)
@@ -74,6 +76,7 @@ final class EditorExtras {
 
     void reset() {
         BlurAppearance.clearPreview();
+        AodTweaksRuntime.editorDraft(null);
         context = null;
         draft = null;
         dirty = false;
@@ -86,6 +89,7 @@ final class EditorExtras {
         if (!BlurAppearanceSettings.same(a, b)) return false;
         if (!ExtrasPreferences.sameFlags(a, b)) return false;
         return a.getInt("stackCards", 3) == b.getInt("stackCards", 3)
+                && AodTweaks.same(a, b)
                 && a.getInt("lyricsTextSize", 28) == b.getInt("lyricsTextSize", 28)
                 && ExtrasPreferences.sameLyricsFont(a, b)
                 && a.getInt(LiveCoverController.SOURCE, LiveCoverController.SOURCE_SPOTIFY_FIRST)

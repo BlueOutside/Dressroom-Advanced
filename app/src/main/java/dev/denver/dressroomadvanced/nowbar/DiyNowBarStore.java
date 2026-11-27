@@ -594,6 +594,10 @@ final class DiyNowBarStore {
             j.put("nativeContactCard", c.nativeContactCard);
             j.put("unlockGoogleFinance", c.unlockGoogleFinance);
             j.put("unlockGoogleCommute", c.unlockGoogleCommute);
+            j.put("unlockGoogleSports", c.unlockGoogleSports);
+            j.put("unlockNaverSports", c.unlockNaverSports);
+            j.put("geminiCommuteRecap", c.geminiCommuteRecap);
+            j.put("budsInMusicCard", c.budsInMusicCard);
             j.put("globalCardShader", c.globalCardShader);
             j.put("globalColor1", c.globalColor1);
             j.put("globalColor2", c.globalColor2);
@@ -614,6 +618,10 @@ final class DiyNowBarStore {
             c.nativeContactCard = j.optBoolean("nativeContactCard", false);
             c.unlockGoogleFinance = j.optBoolean("unlockGoogleFinance", false);
             c.unlockGoogleCommute = j.optBoolean("unlockGoogleCommute", false);
+            c.unlockGoogleSports = j.optBoolean("unlockGoogleSports", false);
+            c.unlockNaverSports = j.optBoolean("unlockNaverSports", false);
+            c.geminiCommuteRecap = j.optBoolean("geminiCommuteRecap", false);
+            c.budsInMusicCard = j.optBoolean("budsInMusicCard", false);
             c.globalCardShader = j.optInt("globalCardShader", DiyNowBarCard.EFFECT_NONE);
             c.globalColor1 = j.optInt("globalColor1", 0xFF4E8CFF);
             c.globalColor2 = j.optInt("globalColor2", 0xFFA86BFF);

@@ -9,6 +9,7 @@ import android.os.Looper;
 import android.util.TypedValue;
 import android.view.LayoutInflater;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.CompoundButton;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -97,6 +98,7 @@ final class NativeClockPanel {
     private android.os.Bundle depthSource = new android.os.Bundle();
     private CompoundButton dateOrderControl;
     private View dateSizeControl;
+    private View heightAxisControl;
     private int[] manualProgress;
     private android.os.Bundle fontValues = new android.os.Bundle();
     private android.os.Bundle initialFontValues = new android.os.Bundle();
@@ -104,6 +106,8 @@ final class NativeClockPanel {
     private String fontFile = "", fontFileName = "";
     private String initialFontFile = "", initialFontFileName = "";
     private boolean nativeFontStretchable;
+    private boolean fontAxisPreviewQueued;
+    private boolean fontAxisDirty;
     private String expectedScene = "";
     private String expectedFontPath = "";
     private Object weatherJob;
@@ -217,6 +221,7 @@ final class NativeClockPanel {
         handler.removeCallbacks(checkDepthSource);
         depthControl = depthAodControl = null;
         depthDetectControl = depthAvailability = null;
+        heightAxisControl = null;
         depthSourceRetries = 0;
         content.removeAllViews();
         status = null;
@@ -261,6 +266,8 @@ final class NativeClockPanel {
                         module.editorSettings(context, newType, newFont, newFontPath);
                 depthSource =
                         saved == null ? new android.os.Bundle() : new android.os.Bundle(saved);
+                fontAxisPreviewQueued = false;
+                fontAxisDirty = false;
                 nativeFontStretchable =
                         saved != null && saved.containsKey("fontNativeStretch")
                                 ? saved.getBoolean("fontNativeStretch")
@@ -304,7 +311,7 @@ final class NativeClockPanel {
                     depthOwnsManual = initialDepthOwnsManual = saved.getBoolean("depthOwnsManual");
                     depthMask = initialDepthMask = saved.getByteArray("depthMask");
                     font = Reflect.call(data, "getClockFontData");
-                    if (FontAxisSettings.nativeStretch(saved)
+                    if (FontAxisSettings.stretchAllowed(context, saved)
                             && saved.getBoolean("manual")
                             && bool(data, "getStretchable")
                             && hasInterface("FontExtension")) {
@@ -371,7 +378,8 @@ final class NativeClockPanel {
                                 : bool(data, "getShowWeatherInfo");
             }
             if (weatherJob == null) weatherPreference = null;
-            if (!fontFile.isEmpty()) suppressImportedStretch(data);
+            if (!fontFile.isEmpty() && !importedStretchable())
+                suppressImportedStretch(data);
             keepShadow(data);
             updateDepthPreview(data);
             Object color = Reflect.call(data, "getClockColorData");
@@ -489,7 +497,6 @@ final class NativeClockPanel {
                         imageAvailable,
                         enabled -> {
                             flush();
-                            if (enabled) holdStretchForDepth();
                             depthEnabled = enabled;
                             if (!enabled) releaseDepthStretch();
                             updateDepthPreview(data());
@@ -517,7 +524,6 @@ final class NativeClockPanel {
                             try {
                                 flush();
                                 if (!depthEnabled) {
-                                    holdStretchForDepth();
                                     depthEnabled = true;
                                     stage(data());
                                 }
@@ -580,16 +586,23 @@ final class NativeClockPanel {
                                 axis.label(),
                                 current >= .5f,
                                 true,
-                                enabled -> previewFontAxis(axis, enabled ? 1 : 0));
-                    else
-                        slider(
-                                axis.label(),
-                                axis.min(),
-                                axis.max(),
-                                current,
-                                false,
-                                1000,
-                                value -> previewFontAxis(axis, value));
+                                enabled -> previewFontAxis(axis, enabled ? 1 : 0, true));
+                    else {
+                        boolean nativeWeightAxis = axis.tag().equals("wght") && fontFile.isEmpty();
+                        View axisRow =
+                                slider(
+                                        axis.label(),
+                                        axis.min(),
+                                        axis.max(),
+                                        current,
+                                        false,
+                                        1000,
+                                        nativeWeightAxis,
+                                        value -> previewFontAxis(axis, value, false));
+                        if (!fontFile.isEmpty() && axis == fontAxes.heightAxis()) {
+                            heightAxisControl = axisRow;
+                        }
+                    }
                 }
             }
             if ((!builtInWeight || !fontFile.isEmpty()) && fontAxes == null)
@@ -701,7 +714,10 @@ final class NativeClockPanel {
                             updateDepthPreview(data());
                             if (forceBlur) module.forceBlurTypes.add(expectedType);
                             previewDateWeather();
-                            if (initialManual && initialFontFile.isEmpty()) {
+                            if (initialManual
+                                    && (initialFontFile.isEmpty()
+                                            || VariableFonts.hasHeightAxis(
+                                                    context, initialFontFile))) {
                                 Object restored =
                                         Reflect.call(
                                                 Reflect.call(initialSnapshot, "getClockFontData"),
@@ -835,12 +851,28 @@ final class NativeClockPanel {
     @SuppressWarnings("unchecked")
     private void buildStretch(Object data, Object font) throws Exception {
         section("Dynamic stretch");
-        if (!fontFile.isEmpty()) {
-            label("Samsung dynamic stretching is unavailable for imported fonts.", 12, false);
+        boolean importedStretch = importedStretchable();
+        if (!fontFile.isEmpty() && !importedStretch) {
+            label(
+                    "Samsung dynamic stretching requires a font with a HEGT or HGHT height axis.",
+                    12,
+                    false);
             return;
         }
         if (!bool(data, "getStretchable") || renderer == null || !hasInterface("FontExtension")) {
-            label("Choose a dynamic clock with a stretchable font to adjust its shape.", 12, false);
+            if (importedStretch && !nativeFontStretchable) {
+                label(
+                        "Pick a stretchable Samsung clock font (first two) to drive this font's "
+                                + fontAxes.heightAxis().tag()
+                                + " axis with Dynamic stretch.",
+                        12,
+                        false);
+            } else {
+                label(
+                        "Choose a dynamic clock with a stretchable font to adjust its shape.",
+                        12,
+                        false);
+            }
             return;
         }
         Object measured = Reflect.call(renderer, "getStretchMeasureData");
@@ -912,15 +944,24 @@ final class NativeClockPanel {
                 }
             }
         }
-        if (depthEnabled && module.stretchLocks.get(stretch) == null) holdStretchForDepth();
         boolean locked = module.stretchLocks.get(stretch) != null;
+        if (heightAxisControl != null) setControlEnabled(heightAxisControl, !locked);
+        if (importedStretch) {
+            label(
+                    "Using this font's "
+                            + fontAxes.heightAxis().tag()
+                            + " axis for native dynamic stretching.",
+                    12,
+                    false);
+        }
         List<View> controls = new ArrayList<>();
         toggle(
                 "Manual stretch",
                 locked,
-                !depthEnabled,
+                true,
                 enabled -> {
                     if (!enabled) {
+                        depthOwnsManual = false;
                         manualProgress = null;
                         module.stretchLocks.clear();
                         module.setManualRenderer(renderer, false);
@@ -934,9 +975,42 @@ final class NativeClockPanel {
                                     Reflect.call(item, "setFontHeight", (Object) null);
                                     SavedStretch.editorRects(item, null);
                                 });
+                        if (importedStretch && renderer instanceof View clock) {
+                            clock.post(
+                                    () -> {
+                                        if (!clock.isAttachedToWindow()) return;
+                                        VariableFonts.preview(clock, fontPreviewSettings());
+                                        refreshClockBlur(clock);
+                                    });
+                        }
                     } else applyStretch(mins, maxs, progress);
-                    for (View control : controls) control.setEnabled(enabled);
+                    for (View control : controls) setControlEnabled(control, enabled);
+                    if (heightAxisControl != null) setControlEnabled(heightAxisControl, !enabled);
                 });
+        View[] segmentRows = new View[progress.length];
+        View[] allRowRef = new View[1];
+        if (progress.length > 1) {
+            int initialAll = averageProgress(progress);
+            View allRow =
+                    slider(
+                            "All segments",
+                            0,
+                            100,
+                            initialAll,
+                            false,
+                            v -> {
+                                int unified = Math.round(v);
+                                for (int i = 0; i < progress.length; i++) {
+                                    progress[i] = unified;
+                                    syncSliderRow(
+                                            segmentRows[i], "Segment " + (i + 1), unified);
+                                }
+                                applyStretch(mins, maxs, progress);
+                            });
+            setControlEnabled(allRow, locked);
+            controls.add(allRow);
+            allRowRef[0] = allRow;
+        }
         for (int index = 0; index < progress.length; index++) {
             final int segment = index;
             View control =
@@ -948,78 +1022,52 @@ final class NativeClockPanel {
                             false,
                             v -> {
                                 progress[segment] = Math.round(v);
+                                if (allRowRef[0] != null) {
+                                    syncSliderRow(
+                                            allRowRef[0],
+                                            "All segments",
+                                            averageProgress(progress));
+                                }
                                 applyStretch(mins, maxs, progress);
                             });
-            control.setEnabled(locked);
+            setControlEnabled(control, locked);
             controls.add(control);
+            segmentRows[index] = control;
         }
     }
 
-    @SuppressWarnings("unchecked")
-    private void holdStretchForDepth() throws Exception {
-        if (!fontFile.isEmpty()) return;
-        Object draft = data();
-        if (!bool(draft, "getStretchable") || renderer == null || !hasInterface("FontExtension"))
-            return;
-        Object font = Reflect.call(draft, "getClockFontData");
-        Object stretch = Reflect.call(font, "getClockStretchData");
-        if (module.stretchLocks.get(stretch) != null) {
-            module.setManualRenderer(renderer, true);
-            return;
+    private static int averageProgress(int[] progress) {
+        if (progress == null || progress.length == 0) return 0;
+        int sum = 0;
+        for (int v : progress) sum += v;
+        return Math.max(0, Math.min(100, Math.round((float) sum / progress.length)));
+    }
+
+    private static void setControlEnabled(View view, boolean enabled) {
+        if (view == null) return;
+        view.setEnabled(enabled);
+        view.setAlpha(enabled ? 1f : 0.42f);
+        if (view instanceof ViewGroup group) {
+            for (int i = 0; i < group.getChildCount(); i++) {
+                View child = group.getChildAt(i);
+                child.setEnabled(enabled);
+            }
         }
-        List<Float> heights = (List<Float>) Reflect.call(stretch, "getFontHeight");
-        if (heights != null
-                && !heights.isEmpty()
-                && heights.stream().allMatch(h -> h != null && Float.isFinite(h) && h > 0)) {
-            depthOwnsManual = true;
-            module.setManualRenderer(renderer, true);
-            module.stretchLocks.put(stretch, new ArrayList<>(heights));
-            stage(draft);
-            return;
+    }
+
+    private static void syncSliderRow(View row, String name, int value) {
+        if (!(row instanceof ViewGroup group)) return;
+        for (int i = 0; i < group.getChildCount(); i++) {
+            View child = group.getChildAt(i);
+            if (child instanceof TextView caption) {
+                caption.setText(name + "   " + format(value, false));
+            } else {
+                try {
+                    Reflect.call(child, "setProgress", value);
+                } catch (ReflectiveOperationException | RuntimeException ignored) {
+                }
+            }
         }
-        Object measured = Reflect.call(renderer, "getStretchMeasureData");
-        if (measured == null)
-            throw new IllegalStateException(
-                    "Wait for the clock to finish measuring before enabling depth.");
-        List<Rect> mins = (List<Rect>) Reflect.call(measured, "getMinRects");
-        List<Rect> maxs = (List<Rect>) Reflect.call(measured, "getMaxRects");
-        List<Rect> current = SavedStretch.editorRects(stretch);
-        List<Rect> defaults = (List<Rect>) Reflect.call(measured, "getDefaultRects");
-        if (mins == null || maxs == null || mins.isEmpty() || mins.size() != maxs.size())
-            throw new IllegalStateException("Clock stretch measurements are not ready.");
-        int[] progress = new int[mins.size()];
-        for (int i = 0; i < progress.length; i++) {
-            int low = mins.get(i).height(), high = maxs.get(i).height();
-            int height =
-                    current != null && current.size() == progress.length
-                            ? current.get(i).height()
-                            : defaults != null && defaults.size() == progress.length
-                                    ? defaults.get(i).height()
-                                    : low;
-            progress[i] =
-                    high > low
-                            ? Math.max(
-                                    0,
-                                    Math.min(100, Math.round(100f * (height - low) / (high - low))))
-                            : 0;
-        }
-        List<Rect> targets = current != null && current.size() == mins.size() ? current : defaults;
-        if (targets == null || targets.size() != mins.size())
-            throw new IllegalStateException("No current stretch measurements available.");
-        heights = binding.stretchHeights(controller, mins, targets,
-                number(stretch, "getInnerBottomPadding").intValue(),
-                number(draft, "getScale").floatValue());
-        if (heights == null
-                || heights.isEmpty()
-                || heights.stream().anyMatch(h -> h == null || !Float.isFinite(h) || h <= 0))
-            throw new IllegalStateException("Clock did not expose valid manual heights.");
-        depthOwnsManual = true;
-        manualProgress = progress;
-        module.setManualRenderer(renderer, true);
-        Reflect.call(stretch, "setFontHeight", new ArrayList<>(heights));
-        SavedStretch.editorRects(stretch, targets);
-        module.stretchLocks.put(stretch, heights);
-        stage(draft);
     }
 
     private void releaseDepthStretch() {
@@ -1179,6 +1227,7 @@ final class NativeClockPanel {
     boolean prepareSave() {
         flush();
         try {
+            commitPendingFontAxis();
             Object current = data();
             if (matchesSelection(current)) {
                 stage(current);
@@ -1313,7 +1362,9 @@ final class NativeClockPanel {
     }
 
     private void stage(Object draft) throws Exception {
-        if (!fontFile.isEmpty()) suppressImportedStretch(draft);
+        boolean importedStretch = importedStretchable();
+        if (!fontFile.isEmpty() && !importedStretch)
+            suppressImportedStretch(draft);
         Object value =
                 Reflect.call(Reflect.call(draft, "getClockColorData"), "getClockShadowStyle");
         android.os.Bundle settings = new android.os.Bundle();
@@ -1329,6 +1380,7 @@ final class NativeClockPanel {
         settings.putString("fontFile", fontFile);
         settings.putString("fontFileName", fontFileName);
         settings.putBoolean("fontNativeStretch", nativeFontStretchable);
+        settings.putBoolean(FontAxisSettings.KEY_HEIGHT_AXIS, importedStretch);
         if (fontAxes != null || !fontFile.isEmpty())
             settings.putBundle("fontAxes", FontAxisSettings.clean(fontValues));
         settings.putBoolean("enabled", customShadow);
@@ -1645,22 +1697,29 @@ final class NativeClockPanel {
             for (FontAxes.Axis axis : fontAxes.values)
                 fontValues.putFloat(axis.tag(), axis.defaultValue());
         Object draft = data();
-        if (id.isEmpty())
+        boolean importedStretch = importedStretchable();
+        boolean stretchableAfterChange =
+                id.isEmpty() ? nativeFontStretchable : (nativeFontStretchable && importedStretch);
+        if (id.isEmpty() || stretchableAfterChange)
             Reflect.call(
                     Reflect.call(draft, "getClockFontData"),
                     "setStretchableFont",
-                    nativeFontStretchable);
+                    stretchableAfterChange);
         else suppressImportedStretch(draft);
         stage(draft);
         edit(
                 "fontFile",
                 value -> {
-                    if (!fontFile.isEmpty()) suppressImportedStretch(value);
+                    boolean allow =
+                            fontFile.isEmpty()
+                                    ? nativeFontStretchable
+                                    : (nativeFontStretchable && importedStretchable());
+                    if (!fontFile.isEmpty() && !allow) suppressImportedStretch(value);
                     else
                         Reflect.call(
                                 Reflect.call(value, "getClockFontData"),
                                 "setStretchableFont",
-                                nativeFontStretchable);
+                                allow);
                 });
         flush();
         if (renderer instanceof View clock) {
@@ -1668,10 +1727,27 @@ final class NativeClockPanel {
             if (nativeFont != null) ClockBinding.of(clock).render(clock, nativeFont);
             FontBinding.of(clock).refresh(clock);
             refreshClockSurface(clock);
+            refreshClockBlur(clock);
             clock.requestLayout();
             clock.invalidate();
         }
         refresh();
+    }
+
+    private boolean importedStretchable() {
+        return !fontFile.isEmpty() && fontAxes != null && fontAxes.heightAxis() != null;
+    }
+
+    private void refreshClockBlur(View clock) {
+        if (clock == null || !hasInterface("ClockBlurExtension")) return;
+        clock.post(
+                () -> {
+                    if (!clock.isAttachedToWindow()) return;
+                    try {
+                        Reflect.call(clock, "setClockTextBlur");
+                    } catch (ReflectiveOperationException | RuntimeException ignored) {
+                    }
+                });
     }
 
     private void suppressImportedStretch(Object draft) throws Exception {
@@ -1690,15 +1766,30 @@ final class NativeClockPanel {
         return String.format(java.util.Locale.ROOT, "%.2f", value).replaceAll("\\.?0+$", "");
     }
 
+    private boolean isManualStretchLocked() {
+        try {
+            Object stretch =
+                    Reflect.call(
+                            Reflect.call(data(), "getClockFontData"), "getClockStretchData");
+            return module.stretchLocks.get(stretch) != null;
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
     private android.os.Bundle fontPreviewSettings() {
         android.os.Bundle profile = new android.os.Bundle();
         profile.putString("fontFile", fontFile);
+        profile.putBoolean(FontAxisSettings.KEY_HEIGHT_AXIS, importedStretchable());
+        profile.putBoolean("manual", isManualStretchLocked());
         profile.putBundle("fontAxes", FontAxisSettings.clean(fontValues));
         return profile;
     }
 
-    private void previewFontAxis(FontAxes.Axis axis, float value) throws Exception {
+    private void previewFontAxis(FontAxes.Axis axis, float value, boolean immediate)
+            throws Exception {
         fontValues.putFloat(axis.tag(), axis.clamp(value));
+        fontAxisDirty = true;
         if (axis.tag().equals("wght") && fontFile.isEmpty())
             edit(
                     "weight",
@@ -1707,8 +1798,33 @@ final class NativeClockPanel {
                                     Reflect.call(draft, "getClockFontData"),
                                     "setFontWeight",
                                     Math.round(value)));
+        if (immediate) {
+            commitPendingFontAxis();
+            return;
+        }
+        if (!(renderer instanceof View clock)) return;
+        if (fontAxisPreviewQueued) return;
+        fontAxisPreviewQueued = true;
+        long session = module.generation();
+        int generation = editGeneration;
+        clock.postOnAnimation(
+                () -> {
+                    fontAxisPreviewQueued = false;
+                    if (session != module.generation()
+                            || generation != editGeneration
+                            || !clock.isAttachedToWindow()) return;
+                    VariableFonts.preview(clock, fontPreviewSettings());
+                });
+    }
+
+    private void commitPendingFontAxis() throws Exception {
+        if (!fontAxisDirty) return;
+        fontAxisDirty = false;
         stage(data());
-        if (renderer instanceof View clock) VariableFonts.preview(clock, fontPreviewSettings());
+        if (renderer instanceof View clock && clock.isAttachedToWindow()) {
+            VariableFonts.preview(clock, fontPreviewSettings());
+            refreshClockBlur(clock);
+        }
     }
 
     private View labelSizeSlider(String name, int percent, boolean weather) throws Exception {
@@ -1816,6 +1932,7 @@ final class NativeClockPanel {
                                                         : format(value, percent)));
                                 edit.apply(value);
                             } else if (method.getName().equals("onStopTrackingTouch")) {
+                                commitPendingFontAxis();
                                 flush();
                                 if (nativeGesture) finishNativeEdit();
                                 else if (renderer instanceof View clock) refreshClockSurface(clock);

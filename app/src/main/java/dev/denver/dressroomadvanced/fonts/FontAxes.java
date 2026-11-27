@@ -11,6 +11,10 @@ import java.util.Map;
 
 /** OpenType fvar/name metadata. No Android font initialization is needed to read it. */
 final class FontAxes {
+    static final float SAMSUNG_MIN_HEGT = 1f;
+    static final float SAMSUNG_HORIZONTAL_MAX_HEGT = 700f;
+    static final float SAMSUNG_VERTICAL_MAX_HEGT = 400f;
+
     record Axis(String tag, String name, float min, float defaultValue, float max, boolean hidden) {
         float clamp(float value) {
             return Math.max(min, Math.min(max, value));
@@ -24,6 +28,9 @@ final class FontAxes {
                 case "slnt" -> "Slant";
                 case "ital" -> "Italic";
                 case "GRAD" -> "Grade";
+                case "HEGT" -> "Height (HEGT)";
+                case "HGHT" -> "Height (HGHT)";
+                case "RNDN" -> "Roundness (RNDN)";
                 case "YTLC" -> "Lowercase height (YTLC)";
                 case "BLED" -> "Bleed";
                 default -> name == null || name.isBlank() ? tag : name + " (" + tag + ")";
@@ -34,6 +41,97 @@ final class FontAxes {
     private record Table(int offset, int length) {}
 
     private FontAxes() {}
+
+    /**
+     * Returns the font's vertical stretch height axis ({@code HEGT} preferred, else {@code HGHT})
+     * when it spans a positive range, or {@code null} if the font has no height stretch axis.
+     */
+    static Axis heightAxis(List<Axis> axes) {
+        if (axes == null || axes.isEmpty()) return null;
+        Axis fallback = null;
+        for (Axis axis : axes) {
+            if (axis == null || axis.max() <= axis.min()) continue;
+            if ("HEGT".equals(axis.tag())) return axis;
+            if ("HGHT".equals(axis.tag()) && fallback == null) fallback = axis;
+        }
+        return fallback;
+    }
+
+    /**
+     * Extracts the numeric value of {@code tag} from an OpenType {@code fontVariationSettings}
+     * string such as {@code "'wght' 700, 'RNDN' 20, 'HEGT' 472"}, or {@link Float#NaN} if absent.
+     */
+    static float parseVariationAxis(String variationSettings, String tag) {
+        if (variationSettings == null
+                || variationSettings.isEmpty()
+                || tag == null
+                || tag.length() != 4) {
+            return Float.NaN;
+        }
+        int length = variationSettings.length();
+        int i = 0;
+        while (i < length) {
+            while (i < length && (variationSettings.charAt(i) <= ' ' || variationSettings.charAt(i) == ',')) {
+                i++;
+            }
+            if (i >= length) break;
+            char quote = variationSettings.charAt(i);
+            int tagStart = i;
+            if (quote == '\'' || quote == '"') {
+                tagStart = ++i;
+                if (tagStart + 4 > length || variationSettings.charAt(tagStart + 4) != quote) {
+                    int comma = variationSettings.indexOf(',', i);
+                    if (comma < 0) break;
+                    i = comma + 1;
+                    continue;
+                }
+                i = tagStart + 5;
+            } else {
+                if (tagStart + 4 > length) break;
+                i = tagStart + 4;
+            }
+            boolean match = variationSettings.regionMatches(tagStart, tag, 0, 4);
+            while (i < length && variationSettings.charAt(i) <= ' ') i++;
+            int valStart = i;
+            while (i < length && variationSettings.charAt(i) != ',') i++;
+            if (match) {
+                String token = variationSettings.substring(valStart, i).trim();
+                if (token.isEmpty()) return Float.NaN;
+                try {
+                    float value = Float.parseFloat(token);
+                    return Float.isFinite(value) ? value : Float.NaN;
+                } catch (NumberFormatException ignored) {
+                    return Float.NaN;
+                }
+            }
+            i++;
+        }
+        return Float.NaN;
+    }
+
+    /**
+     * Maps Samsung's per-digit {@code HEGT} axis value ({@code 1..700} horizontal or {@code
+     * 1..400} vertical) linearly onto an imported font's own height axis range {@code [base, max]},
+     * quantized cleanly for variable-font typeface cache reuse during spring animations.
+     */
+    static float mapStretchAxis(Axis axis, float nativeHegt, boolean vertical) {
+        if (axis == null || !Float.isFinite(nativeHegt)) {
+            return axis == null ? Float.NaN : axis.defaultValue();
+        }
+        float maxHegt = vertical ? SAMSUNG_VERTICAL_MAX_HEGT : SAMSUNG_HORIZONTAL_MAX_HEGT;
+        float t = (nativeHegt - SAMSUNG_MIN_HEGT) / (maxHegt - SAMSUNG_MIN_HEGT);
+        if (t < 0f) t = 0f;
+        else if (t > 1f) t = 1f;
+        float base = axis.defaultValue() < axis.max() ? axis.defaultValue() : axis.min();
+        float mapped = base + t * (axis.max() - base);
+        float span = axis.max() - axis.min();
+        if (span >= 50f) {
+            mapped = Math.round(mapped);
+        } else if (span > 0f) {
+            mapped = axis.min() + Math.round(((mapped - axis.min()) / span) * 200f) * (span / 200f);
+        }
+        return axis.clamp(mapped);
+    }
 
     static boolean validTag(String tag) {
         if (tag == null || tag.length() != 4) return false;

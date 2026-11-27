@@ -368,6 +368,25 @@ public final class DiyNowBarLogicTest {
         check(labs.sameContent(copy), "Copy matches original");
         copy.unlockGoogleFinance = true;
         check(!labs.sameContent(copy), "Content diff detected");
+        labs.unlockGoogleSports = true;
+        labs.unlockNaverSports = true;
+        labs.geminiCommuteRecap = true;
+        labs.budsInMusicCard = true;
+        DiyNowBarLabs sportsCopy = labs.copy();
+        check(
+                sportsCopy.unlockGoogleSports
+                        && sportsCopy.unlockNaverSports
+                        && sportsCopy.geminiCommuteRecap
+                        && sportsCopy.budsInMusicCard
+                        && labs.sameContent(sportsCopy),
+                "Sports, Gemini recap, and Buds Labs flags preserved on copy");
+        sportsCopy.unlockNaverSports = false;
+        check(!labs.sameContent(sportsCopy), "Naver Sports diff detected");
+        sportsCopy.unlockNaverSports = true;
+        sportsCopy.unlockGoogleSports = false;
+        check(!labs.sameContent(sportsCopy), "Google Sports diff detected");
+        DiyNowBarLabs roundTripped = DiyNowBarStore.labsFromJson(DiyNowBarStore.labsToJson(labs));
+        check(labs.sameContent(roundTripped), "Labs JSON round-trip preserves all switches");
         check(DiyNowBarLabs.isNativeLabKey(DiyNowBarLabs.KEY_NATIVE_BATTERY), "Native battery lab key");
         check(DiyNowBarLabs.isNativeLabKey(DiyNowBarLabs.KEY_NATIVE_CONTACT), "Native contact lab key");
         check(!DiyNowBarLabs.isNativeLabKey("dressroom_diy_123"), "DIY key is not a native lab key");

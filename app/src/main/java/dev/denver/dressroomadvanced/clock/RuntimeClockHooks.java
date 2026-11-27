@@ -152,6 +152,7 @@ final class RuntimeClockHooks {
                 NowBarGlass.install(module, loader);
                 NowBarAodOption.install(module, loader);
             }
+            AodTweaksRuntime.installStretchPhysics(module, loader);
             DiyNowBarEffects.install(module, loader, !binding.early);
             ShadowEffects.install(module);
             DigitAlignmentFix.install(module, loader);
@@ -245,11 +246,9 @@ final class RuntimeClockHooks {
                                                 }
                                                 boolean held =
                                                         settings != null
-                                                                && FontAxisSettings.nativeStretch(
-                                                                        settings)
-                                                                && (settings.getBoolean("manual")
-                                                                        || settings.getBoolean(
-                                                                                "depthEnabled"))
+                                                                && FontAxisSettings.stretchAllowed(
+                                                                        view.getContext(), settings)
+                                                                && settings.getBoolean("manual")
                                                                 && settings.getFloatArray(
                                                                                 "manualHeights")
                                                                         != null;
@@ -647,8 +646,11 @@ final class RuntimeClockHooks {
             float dozeAmount = transition.amount.getFloat(clock);
             if ((dozing || dozeAmount > 0f) && !keepStretch) return;
             Bundle profile = profiles.get(clock);
-            boolean manualStretch = profile != null && FontAxisSettings.nativeStretch(profile)
-                    && (profile.getBoolean("manual") || profile.getBoolean("depthEnabled"));
+            boolean manualStretch =
+                    profile != null
+                            && FontAxisSettings.stretchAllowed(clock.getContext(), profile)
+                            && profile.getBoolean("manual")
+                            && profile.getFloatArray("manualHeights") != null;
             if (!manualStretch) {
                 if (((!dozing && dozeAmount == 0f) || keepStretch)
                         && transition.axes.get(controller) instanceof List<?> values
@@ -961,8 +963,8 @@ final class RuntimeClockHooks {
             profiles.put(view, settings);
             DateEffects.bindSettings(view, settings);
             BlurEffects.bindSettings(view, settings);
-            if (FontAxisSettings.nativeStretch(settings)
-                    && (settings.getBoolean("manual") || settings.getBoolean("depthEnabled"))
+            if (FontAxisSettings.stretchAllowed(view.getContext(), settings)
+                    && settings.getBoolean("manual")
                     && settings.getFloatArray("manualHeights") != null
                     && restoringFont.add(view)) {
                 try {

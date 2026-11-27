@@ -534,6 +534,46 @@ public final class NowBarStudioActivity extends Activity {
                             labs.unlockGoogleCommute = checked;
                             persistLabs();
                         }));
+        nativeGroup.addView(ui.insetDivider());
+        nativeGroup.addView(
+                ui.switchRow(
+                        "Unlock Sports from Google",
+                        "Bypass region, MDM & search-engine gates for Google Sports in Now Bar",
+                        labs.unlockGoogleSports,
+                        checked -> {
+                            labs.unlockGoogleSports = checked;
+                            persistLabs();
+                        }));
+        nativeGroup.addView(ui.insetDivider());
+        nativeGroup.addView(
+                ui.switchRow(
+                        "Unlock Naver Sports",
+                        "Bypass region & provider gates for Naver Sports (requires Naver app)",
+                        labs.unlockNaverSports,
+                        checked -> {
+                            labs.unlockNaverSports = checked;
+                            persistLabs();
+                        }));
+        nativeGroup.addView(ui.insetDivider());
+        nativeGroup.addView(
+                ui.switchRow(
+                        "Gemini Space commute recap",
+                        "Turns on Samsung's gemini_space_commute_recap switch",
+                        labs.geminiCommuteRecap,
+                        checked -> {
+                            labs.geminiCommuteRecap = checked;
+                            persistLabs();
+                        }));
+        nativeGroup.addView(ui.insetDivider());
+        nativeGroup.addView(
+                ui.switchRow(
+                        "Galaxy Buds in the music card",
+                        "Turns on Samsung's buds_enable switch for the Now Bar player",
+                        labs.budsInMusicCard,
+                        checked -> {
+                            labs.budsInMusicCard = checked;
+                            persistLabs();
+                        }));
         body.addView(nativeGroup);
 
         body.addView(ui.sectionHeader("Global native GPU shader", "All cards"));

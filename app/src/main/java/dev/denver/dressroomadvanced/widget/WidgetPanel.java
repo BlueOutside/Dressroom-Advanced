@@ -517,25 +517,79 @@ final class WidgetPanel {
     }
 
     private void renderExtras(Bundle b) throws Exception {
+        boolean showAodTab = !editor.earlyClockEditor();
+        String[] tabNames =
+                showAodTab
+                        ? new String[] {"Now Bar", "Media", "Lock", "AOD", "Blur", "More"}
+                        : new String[] {"Now Bar", "Media", "Lock", "Blur", "More"};
+        int blurPage = showAodTab ? 4 : 3;
+        int morePage = showAodTab ? 5 : 4;
+        if (extrasPage >= tabNames.length) extrasPage = 0;
         PanelTabs extraPages =
                 new PanelTabs(
                         context,
-                        new String[] {"General", "Blur"},
+                        tabNames,
                         extrasPage,
                         dp(16),
                         page -> extrasPage = page);
         content.addView(extraPages.strip());
+        if (ScreenIdentity.value(b) != 0) {
+            group = content;
+            label(
+                    ScreenIdentity.value(b) == ScreenIdentity.SUB
+                            ? "Settings for the cover screen"
+                            : "Settings for the inner screen");
+        }
+
+        // Tab 0: Now Bar (DIY Studio, Labs, stack & cards)
         group = extraPages.group(content, 0);
-        if (ScreenIdentity.value(b) != 0)
-            label(ScreenIdentity.value(b) == ScreenIdentity.SUB
-                    ? "Settings for the cover screen" : "Settings for the inner screen");
-        PanelRows.heading(label("Now Bar"));
+        PanelRows.heading(label("DIY Now Bar & Labs"));
+        TextView manageDiy = label("Manage DIY cards");
+        PanelRows.action(manageDiy, "Manage DIY cards & Labs", diyNowBarSummary());
+        manageDiy.setOnClickListener(
+                v -> {
+                    try {
+                        android.content.Intent studio =
+                                new android.content.Intent()
+                                        .setClassName(
+                                                "dev.denver.dressroomadvanced",
+                                                "dev.denver.dressroomadvanced.NowBarStudioActivity")
+                                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+                        context.startActivity(studio);
+                    } catch (RuntimeException error) {
+                        error(error);
+                    }
+                });
+        note("Create custom cards, shaders, and Now Bar Labs unlocks (Sports, Finance, Commute, Buds).");
+
+        PanelRows.heading(label("Now Bar stack"));
         toggle(
                 "Keep charging card",
                 b.getBoolean("keepCharging"),
                 next -> next.putBoolean("keepCharging", !b.getBoolean("keepCharging")),
                 false);
+        if (showAodTab) {
+            boolean nowBarAod = NowBarAodOption.shownInEditor(context, b);
+            toggle(
+                    "Show Now Bar on AOD",
+                    nowBarAod,
+                    next -> NowBarAodOption.setInEditor(next, !nowBarAod),
+                    false);
+        }
+        if (editor.stackAvailable()) {
+            slider(
+                    "Visible cards",
+                    3,
+                    8,
+                    b.getInt("stackCards", 3),
+                    "",
+                    (next, value) -> next.putInt("stackCards", value),
+                    false);
+        }
 
+        // Tab 1: Media (Album artwork, expanded player & lyrics)
+        group = extraPages.group(content, 1);
+        PanelRows.heading(label("Album artwork"));
         extraToggle(b, "Full-screen album artwork", "fullscreenArt");
         if (b.getBoolean("fullscreenArt")) {
             extraToggle(b, "Live animated artwork", LiveCoverController.KEY);
@@ -549,9 +603,14 @@ final class WidgetPanel {
                         false);
             }
         }
+
+        PanelRows.heading(label("Expanded player"));
         extraToggle(b, "Hide clock in expanded player", MediaClockVisibility.KEY);
-        if (!editor.earlyClockEditor())
+        if (showAodTab) {
             extraToggle(b, "Fade widgets when opening the player", MediaWidgetFade.KEY);
+        }
+
+        PanelRows.heading(label("Lyrics"));
         boolean lyricsEnabled = b.getBoolean("lockscreenLyrics", true);
         toggle(
                 "Lockscreen lyrics",
@@ -581,35 +640,9 @@ final class WidgetPanel {
             renderLyricsFontSection(b, lyricsPreview);
             renderLyricsCacheSection();
         }
-        if (editor.stackAvailable()) {
-            slider(
-                    "Visible cards",
-                    3,
-                    8,
-                    b.getInt("stackCards", 3),
-                    "",
-                    (next, value) -> next.putInt("stackCards", value),
-                    false);
-        }
-        PanelRows.heading(label("DIY Now Bar"));
-        TextView manageDiy = label("Manage DIY cards");
-        String diySummary = diyNowBarSummary();
-        PanelRows.action(manageDiy, "Manage DIY cards", diySummary);
-        manageDiy.setOnClickListener(
-                v -> {
-                    try {
-                        android.content.Intent studio =
-                                new android.content.Intent()
-                                        .setClassName(
-                                                "dev.denver.dressroomadvanced",
-                                                "dev.denver.dressroomadvanced.NowBarStudioActivity")
-                                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
-                        context.startActivity(studio);
-                    } catch (RuntimeException error) {
-                        error(error);
-                    }
-                });
-        note("Create custom cards, live timers, goals, stats, launchers, and checklists with animated shaders.");
+
+        // Tab 2: Lock screen (Clock, stretch physics & widgets)
+        group = extraPages.group(content, 2);
         PanelRows.heading(label("Clock"));
         boolean inlineSec = b.getBoolean(ClockInlineSeconds.KEY, true);
         toggle(
@@ -621,47 +654,188 @@ final class WidgetPanel {
                 "Keep seconds open",
                 b.getBoolean(ClockInlineSeconds.KEEP_OPEN),
                 inlineSec,
-                next -> next.putBoolean(ClockInlineSeconds.KEEP_OPEN,
-                        !b.getBoolean(ClockInlineSeconds.KEEP_OPEN)),
+                next ->
+                        next.putBoolean(
+                                ClockInlineSeconds.KEEP_OPEN,
+                                !b.getBoolean(ClockInlineSeconds.KEEP_OPEN)),
                 false);
         note("Replaces the full-screen seconds view when tapping a digital clock.");
+
+        if (android.os.Build.VERSION.SDK_INT >= 37 || showAodTab) {
+            PanelRows.heading(label("Clock stretch"));
+            if (android.os.Build.VERSION.SDK_INT >= 37) {
+                extraToggle(b, "Allow more stretch shapes", StretchSuggestions.KEY);
+            }
+            if (showAodTab) {
+                slider(
+                        "Stretch speed (0 = Samsung)",
+                        0,
+                        AodTweaks.MAX_SPEED_LEVEL,
+                        AodTweaks.speed(b),
+                        "",
+                        (next, value) -> next.putInt(AodTweaks.STRETCH_SPEED, value),
+                        false);
+                slider(
+                        "Stretch bounce",
+                        0,
+                        AodTweaks.MAX_BOUNCE,
+                        AodTweaks.bounce(b),
+                        "%",
+                        (next, value) -> next.putInt(AodTweaks.STRETCH_BOUNCE, value),
+                        false);
+                note("Tunes Samsung's stretch physics. Applies the next time the clock is rebuilt.");
+            }
+        }
+
         PanelRows.heading(label("Widgets"));
         extraToggle(b, "Disable widget clicks", WidgetClickBlock.KEY);
         note("Prevents tapping lockscreen widgets from opening apps while keeping swipe-to-unlock working.");
-        if (!editor.earlyClockEditor()) {
+        if (showAodTab && BlurAppearance.liveWindowBlurAllowed(context)) {
+            extraToggle(b, "Remove Picture Frame dimming", WidgetBackgroundOptions.PICTURE_FRAME);
+        }
+
+        // Tab 3: AOD & StandBy Nightstand
+        if (showAodTab) {
+            group = extraPages.group(content, 3);
             PanelRows.heading(label("Always On Display"));
             if (!editor.legacy()) {
                 toggle(
-                        "Keep clock stretched",
+                        "Keep clock stretched on AOD",
                         b.getBoolean("keepStretch"),
                         next -> next.putBoolean("keepStretch", !b.getBoolean("keepStretch")),
                         false);
             }
-            boolean nowBarAod = NowBarAodOption.shownInEditor(context, b);
-            toggle(
-                    "Show Now Bar on AOD",
-                    nowBarAod,
-                    next -> NowBarAodOption.setInEditor(next, !nowBarAod),
-                    false);
+            extraToggle(b, "Subject-only AOD for any subject", AodTweaks.ERASE_UNLOCK);
+            note("Keeps the subject cutout Samsung rejects so Settings > AOD > Erase background works. Apply the wallpaper again after enabling.");
+            extraToggle(b, "Fullscreen AOD on this device", AodTweaks.FULLSCREEN_UNLOCK);
+            note("Reports fullscreen AOD support across SystemUI, AOD, and wallpaper. Restart SystemUI or reboot to apply.");
+            extraToggle(b, "Unlock Auto AOD option", AodTweaks.AUTO_AOD_UNLOCK);
+            note("Removes the device exclusion that hides Settings > AOD > When to show > Auto. Restart AOD/SystemUI or reboot to apply.");
+
+            PanelRows.heading(label("StandBy nightstand"));
+            boolean lowLightClock = b.getBoolean(AodTweaks.LOW_LIGHT_CLOCK);
+            extraToggle(b, "Low-light bedside clock", AodTweaks.LOW_LIGHT_CLOCK);
+            if (lowLightClock) {
+                choice(
+                        "Color theme",
+                        AodTweaks.LOW_LIGHT_THEME_LABELS,
+                        AodTweaks.lowLightTheme(b),
+                        (next, index) -> next.putInt(AodTweaks.LOW_LIGHT_THEME, index),
+                        false);
+                choice(
+                        "Clock style",
+                        AodTweaks.LOW_LIGHT_FONT_LABELS,
+                        AodTweaks.lowLightFont(b),
+                        (next, index) -> next.putInt(AodTweaks.LOW_LIGHT_FONT, index),
+                        false);
+                boolean showDate = b.getBoolean(AodTweaks.LOW_LIGHT_SHOW_DATE, true);
+                toggle(
+                        "Show date",
+                        showDate,
+                        next -> next.putBoolean(AodTweaks.LOW_LIGHT_SHOW_DATE, !showDate),
+                        false);
+                boolean burnIn = b.getBoolean(AodTweaks.LOW_LIGHT_BURN_IN, true);
+                toggle(
+                        "OLED burn-in drift",
+                        burnIn,
+                        next -> next.putBoolean(AodTweaks.LOW_LIGHT_BURN_IN, !burnIn),
+                        false);
+                slider(
+                        "Clock brightness",
+                        AodTweaks.MIN_LOW_LIGHT_BRIGHTNESS,
+                        AodTweaks.MAX_LOW_LIGHT_BRIGHTNESS,
+                        AodTweaks.lowLightBrightness(b),
+                        "%",
+                        (next, value) -> next.putInt(AodTweaks.LOW_LIGHT_BRIGHTNESS, value),
+                        false);
+                slider(
+                        "Darkness threshold",
+                        AodTweaks.MIN_LOW_LIGHT_LUX,
+                        AodTweaks.MAX_LOW_LIGHT_LUX,
+                        AodTweaks.lowLightLux(b),
+                        " lux",
+                        (next, value) -> next.putInt(AodTweaks.LOW_LIGHT_LUX, value),
+                        false);
+                TextView previewDream = label("Preview bedside clock now");
+                PanelRows.action(
+                        previewDream,
+                        "Preview bedside clock now",
+                        "Launches the styled StandBy clock immediately (tap screen to exit)");
+                previewDream.setOnClickListener(
+                        v -> {
+                            try {
+                                checkScreen();
+                                context.getContentResolver()
+                                        .call(
+                                                SettingsProvider.URI,
+                                                "previewLowLightClock",
+                                                null,
+                                                draft());
+                            } catch (RuntimeException error) {
+                                error(error);
+                            }
+                        });
+                TextView dreamSettings = label("Open Screen saver settings");
+                PanelRows.action(
+                        dreamSettings,
+                        "Open Screen saver settings",
+                        "Pick any screen saver (other than None) to enable while charging");
+                dreamSettings.setOnClickListener(
+                        v -> {
+                            try {
+                                context.startActivity(
+                                        new android.content.Intent(
+                                                        android.provider.Settings
+                                                                .ACTION_DREAM_SETTINGS)
+                                                .addFlags(
+                                                        android.content.Intent
+                                                                .FLAG_ACTIVITY_NEW_TASK));
+                            } catch (RuntimeException error) {
+                                error(error);
+                            }
+                        });
+            }
+            note("Restyles SystemUI's hidden low-light dream into a StandBy nightstand clock while charging in dark rooms.");
         }
-        if (android.os.Build.VERSION.SDK_INT >= 37) {
-            PanelRows.heading(label("Automatic stretch"));
-            extraToggle(b, "Allow more stretch shapes", StretchSuggestions.KEY);
-        }
+
+        // Blur tab
+        renderExtraBlur(b, extraPages, blurPage);
+
+        // More tab (Updates & Reset)
+        group = extraPages.group(content, morePage);
         renderUpdatesSection();
+        PanelRows.heading(label("Reset"));
         TextView reset = label("Reset extra settings");
-        PanelRows.action(reset, "Reset extra settings", "");
+        PanelRows.action(
+                reset, "Reset extra settings", "Restore all Extras options to their defaults");
         reset.setOnClickListener(
                 v -> {
                     try {
                         checkScreen();
-                        editor.extras().update(context, ExtrasPreferences.clean(null));
-                        render();
+                        new android.app.AlertDialog.Builder(context)
+                                .setTitle("Reset extra settings?")
+                                .setMessage("Restore all Extras options on this screen to defaults?")
+                                .setNegativeButton("Cancel", null)
+                                .setPositiveButton(
+                                        "Reset",
+                                        (d, which) -> {
+                                            try {
+                                                checkScreen();
+                                                editor.extras()
+                                                        .update(
+                                                                context,
+                                                                ExtrasPreferences.clean(null));
+                                                render();
+                                            } catch (Exception e) {
+                                                error(e);
+                                            }
+                                        })
+                                .show();
                     } catch (Exception e) {
                         error(e);
                     }
                 });
-        renderExtraBlur(b, extraPages);
+
         group = content;
         status = label("");
         status.setVisibility(View.GONE);
@@ -990,8 +1164,8 @@ final class WidgetPanel {
         return null;
     }
 
-    private void renderExtraBlur(Bundle b, PanelTabs extraPages) throws Exception {
-        group = extraPages.group(content, 1);
+    private void renderExtraBlur(Bundle b, PanelTabs extraPages, int pageIndex) throws Exception {
+        group = extraPages.group(content, pageIndex);
         note("Customizes existing blur. System blur restrictions still apply.");
         if (android.os.Build.VERSION.SDK_INT >= 37) {
             toggle("Keep blur while swiping to unlock", b.getBoolean("swipeBlur"),
@@ -1038,7 +1212,6 @@ final class WidgetPanel {
         if (key.equals("widgetBlur") && !editor.earlyClockEditor()
                 && BlurAppearance.liveWindowBlurAllowed(context)) {
             extraToggle(b, "Blur behind the camera widget", WidgetBackgroundOptions.CAMERA);
-            extraToggle(b, "Remove Picture Frame dimming", WidgetBackgroundOptions.PICTURE_FRAME);
         }
         if (b.getBoolean(key + "Custom")) blurControls(b, key);
         if (key.equals("widgetBlur") && !editor.earlyClockEditor() && WallpaperAod.fullscreenSupported()

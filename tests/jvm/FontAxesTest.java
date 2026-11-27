@@ -41,6 +41,30 @@ public final class FontAxesTest {
         check(axes.get(0).label().equals("Weight"), "Standard axis name");
         check(axes.get(2).label().equals("Optical size"), "Optical size name");
         check(axes.get(6).label().equals("Custom axis (TEST)"), "Custom name table label");
+        List<FontAxes.Axis> oppoAxes = FontAxes.parse(font("wght", "HGHT"));
+        FontAxes.Axis oppoHeight = FontAxes.heightAxis(oppoAxes);
+        check(oppoHeight != null && oppoHeight.tag().equals("HGHT"), "Detects Oppo HGHT height axis");
+        check(oppoHeight.label().equals("Height (HGHT)"), "HGHT label");
+        List<FontAxes.Axis> bothHeight = FontAxes.parse(font("HGHT", "HEGT"));
+        check(FontAxes.heightAxis(bothHeight).tag().equals("HEGT"), "Prefers HEGT when both exist");
+        check(FontAxes.heightAxis(axes) == null, "No height axis for standard axes");
+        check(
+                Math.abs(FontAxes.parseVariationAxis("'wght' 700, 'RNDN' 20, 'HEGT' 472", "HEGT") - 472f) < 1e-4f,
+                "Parses HEGT variation value");
+        check(
+                Math.abs(FontAxes.parseVariationAxis("'wght' 500, \"HEGT\" 350.5", "HEGT") - 350.5f) < 1e-4f,
+                "Parses double-quoted variation value");
+        check(
+                Float.isNaN(FontAxes.parseVariationAxis("'wght' 700, 'RNDN' 20", "HEGT")),
+                "Missing variation tag returns NaN");
+        FontAxes.Axis range0to1000 = new FontAxes.Axis("HGHT", "Height", 0f, 0f, 1000f, false);
+        check(FontAxes.mapStretchAxis(range0to1000, 1f, false) == 0f, "Min HEGT maps to axis base");
+        check(FontAxes.mapStretchAxis(range0to1000, 700f, false) == 1000f, "Max horizontal HEGT maps to axis max");
+        check(FontAxes.mapStretchAxis(range0to1000, 400f, true) == 1000f, "Max vertical HEGT maps to axis max");
+        float midMapped = FontAxes.mapStretchAxis(range0to1000, 350.5f, false);
+        check(Math.abs(midMapped - 500f) <= 1f, "Mid horizontal HEGT maps to midpoint");
+        FontAxes.Axis smallRange = new FontAxes.Axis("HGHT", "Height", 1f, 1f, 3f, false);
+        check(Math.abs(FontAxes.mapStretchAxis(smallRange, 350.5f, false) - 2f) < 0.02f, "Small float range maps accurately");
         check(axes.get(3).min() == -10 && axes.get(3).defaultValue() == 2, "Signed fixed-point metadata");
         check(axes.get(0).clamp(999) == 100 && axes.get(0).clamp(-999) == -10, "Axis clamping");
         byte[] hidden = font("TEST");

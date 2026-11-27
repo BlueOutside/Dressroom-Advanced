@@ -6,10 +6,19 @@ import java.util.ArrayList;
 import java.util.Collections;
 
 public final class FontAxisSettings {
+    static final String KEY_HEIGHT_AXIS = "fontHeightAxis";
+
     private FontAxisSettings() {}
 
     static boolean nativeStretch(Bundle profile) {
         return profile == null || profile.getString("fontFile", "").isEmpty();
+    }
+
+    static boolean stretchAllowed(android.content.Context context, Bundle profile) {
+        if (nativeStretch(profile)) return true;
+        if (profile.getBoolean(KEY_HEIGHT_AXIS)) return true;
+        return context != null
+                && VariableFonts.hasHeightAxis(context, profile.getString("fontFile", ""));
     }
 
     public static Bundle clean(Bundle input) {

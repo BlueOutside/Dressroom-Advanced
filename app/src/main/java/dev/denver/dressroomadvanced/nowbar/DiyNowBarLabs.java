@@ -32,6 +32,10 @@ final class DiyNowBarLabs {
     boolean nativeContactCard;
     boolean unlockGoogleFinance;
     boolean unlockGoogleCommute;
+    boolean unlockGoogleSports;
+    boolean unlockNaverSports;
+    boolean geminiCommuteRecap;
+    boolean budsInMusicCard;
     int globalCardShader = DiyNowBarCard.EFFECT_NONE;
     int globalColor1 = 0xFF4E8CFF;
     int globalColor2 = 0xFFA86BFF;
@@ -45,6 +49,10 @@ final class DiyNowBarLabs {
         c.nativeContactCard = nativeContactCard;
         c.unlockGoogleFinance = unlockGoogleFinance;
         c.unlockGoogleCommute = unlockGoogleCommute;
+        c.unlockGoogleSports = unlockGoogleSports;
+        c.unlockNaverSports = unlockNaverSports;
+        c.geminiCommuteRecap = geminiCommuteRecap;
+        c.budsInMusicCard = budsInMusicCard;
         c.globalCardShader = globalCardShader;
         c.globalColor1 = globalColor1;
         c.globalColor2 = globalColor2;
@@ -73,6 +81,10 @@ final class DiyNowBarLabs {
                 && nativeContactCard == other.nativeContactCard
                 && unlockGoogleFinance == other.unlockGoogleFinance
                 && unlockGoogleCommute == other.unlockGoogleCommute
+                && unlockGoogleSports == other.unlockGoogleSports
+                && unlockNaverSports == other.unlockNaverSports
+                && geminiCommuteRecap == other.geminiCommuteRecap
+                && budsInMusicCard == other.budsInMusicCard
                 && globalCardShader == other.globalCardShader
                 && globalColor1 == other.globalColor1
                 && globalColor2 == other.globalColor2

@@ -1103,10 +1103,15 @@ public final class DressroomModule extends XposedModule {
                 ((Number) Reflect.call(fontData, "getClockFontType")).intValue());
     }
 
+    private android.content.Context activeEditorContext() {
+        if (editorContext != null) return editorContext;
+        return editorActivity.get() instanceof android.content.Context ctx ? ctx : null;
+    }
+
     private void restoreManualData(Object data, android.os.Bundle saved) throws Exception {
         if (saved == null
-                || !FontAxisSettings.nativeStretch(saved)
-                || (!saved.getBoolean("manual") && !saved.getBoolean("depthEnabled"))) return;
+                || !FontAxisSettings.stretchAllowed(activeEditorContext(), saved)
+                || !saved.getBoolean("manual")) return;
         if (!Boolean.TRUE.equals(Reflect.call(data, "getStretchable"))) return;
         Object fontData = Reflect.call(data, "getClockFontData");
         Object stretch = Reflect.call(fontData, "getClockStretchData");
@@ -1224,11 +1229,9 @@ public final class DressroomModule extends XposedModule {
                                                                         : "");
                                                 enabled =
                                                         saved != null
-                                                                && FontAxisSettings.nativeStretch(
-                                                                        saved)
-                                                                && (saved.getBoolean("manual")
-                                                                        || saved.getBoolean(
-                                                                                "depthEnabled"))
+                                                                && FontAxisSettings.stretchAllowed(
+                                                                        view.getContext(), saved)
+                                                                && saved.getBoolean("manual")
                                                                 && saved.getFloatArray(
                                                                                 "manualHeights")
                                                                         != null;
@@ -1286,13 +1289,13 @@ public final class DressroomModule extends XposedModule {
                             .setId("dressroom-advanced.editor-depth-manual-render")
                             .intercept(
                                     chain -> {
+                                        View clockView = (View) chain.getThisObject();
                                         android.os.Bundle saved =
-                                                editorRendererProfiles.get(
-                                                        (View) chain.getThisObject());
+                                                editorRendererProfiles.get(clockView);
                                         if (saved == null
-                                                || !FontAxisSettings.nativeStretch(saved)
-                                                || (!saved.getBoolean("manual")
-                                                        && !saved.getBoolean("depthEnabled")))
+                                                || !FontAxisSettings.stretchAllowed(
+                                                        clockView.getContext(), saved)
+                                                || !saved.getBoolean("manual"))
                                             return chain.proceed();
                                         boolean previous = manualFontCall.get();
                                         manualFontCall.set(true);
@@ -1481,9 +1484,9 @@ public final class DressroomModule extends XposedModule {
                     selectedModel != null
                             && Boolean.TRUE.equals(Reflect.call(selectedModel, "getStretchable"));
             if (settings != null
-                    && FontAxisSettings.nativeStretch(settings)
+                    && FontAxisSettings.stretchAllowed(clock.getContext(), settings)
                     && stretchable
-                    && (settings.getBoolean("manual") || settings.getBoolean("depthEnabled"))) {
+                    && settings.getBoolean("manual")) {
                 setManualRenderer(clock, true);
                 Object owner = activeClockController.get();
                 if (owner != null) {
@@ -1556,6 +1559,13 @@ public final class DressroomModule extends XposedModule {
     @Override
     public void onPackageReady(PackageReadyParam param) {
         if (!PlatformGate.supported()) return;
+        if (Set.of(
+                        "com.samsung.android.wallpaper.live",
+                        "com.android.systemui",
+                        "com.samsung.android.app.aodservice",
+                        "com.samsung.android.app.clockpack",
+                        "com.samsung.android.app.dressroom")
+                .contains(param.getPackageName())) AodTweaksRuntime.installFloatingFeature(this);
         if ("com.samsung.android.wallpaper.live".equals(param.getPackageName())) {
             DexSignatures.cachedRun(
                     () -> WallpaperMotionPublisher.install(this, param.getClassLoader()));
@@ -1591,6 +1601,7 @@ public final class DressroomModule extends XposedModule {
                             BuiltInWallpaperMotion.install(this, classes);
                             UnlockBlur.install(this, classes);
                             DozeBlurRegions.install(this, classes);
+                            LowLightClockController.install(this, classes);
                             try {
                                 MediaStatusBarContrast.install(this, classes);
                             } catch (ReflectiveOperationException | LinkageError error) {
@@ -1653,6 +1664,7 @@ public final class DressroomModule extends XposedModule {
                     }
                 }
                 installCommitHook(loader);
+                AodTweaksRuntime.installEraseUnlock(this, loader);
                 installClockBindingHook(loader);
                 record(
                         hook(open)

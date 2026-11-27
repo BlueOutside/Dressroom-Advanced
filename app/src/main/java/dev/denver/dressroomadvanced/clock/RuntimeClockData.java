@@ -27,10 +27,10 @@ final class RuntimeClockData {
         return Boolean.TRUE.equals(measuringCollapsed.get());
     }
 
-    static List<Float> manualHeights(Bundle settings) {
+    static List<Float> manualHeights(Context context, Bundle settings) {
         return settings != null
-                        && FontAxisSettings.nativeStretch(settings)
-                        && (settings.getBoolean("manual") || settings.getBoolean("depthEnabled"))
+                        && FontAxisSettings.stretchAllowed(context, settings)
+                        && settings.getBoolean("manual")
                         && settings.getFloatArray("manualHeights") != null
                 ? SavedStretch.heights(settings.getFloatArray("manualHeights"))
                 : null;
@@ -65,7 +65,7 @@ final class RuntimeClockData {
                 || entry.orientation != orientation
                 || entry.screen != screen) {
             Bundle settings = settings(context, type, id, path);
-            List<Float> values = manualHeights(settings);
+            List<Float> values = manualHeights(context, settings);
             if (settings == null) return null; // Provider may still be starting after an update.
             entry = new Entry(type, id, path, orientation, screen, values);
             sources.put(provider, entry);
@@ -83,7 +83,7 @@ final class RuntimeClockData {
 
     static List<Float> savedHeights(Context context, int type, int font, String path) {
         return context == null || type <= 0 || font <= 0
-                ? null : manualHeights(settings(context, type, font, path));
+                ? null : manualHeights(context, settings(context, type, font, path));
     }
 
     static void install(DressroomModule module, ClassLoader loader, ClockBinding clock)

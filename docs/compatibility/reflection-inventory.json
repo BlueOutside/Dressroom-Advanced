@@ -6,7 +6,7 @@
     "Constructors, method signatures, enum values and behavioral contracts",
     "Resource names matched by traversal rather than getIdentifier literals"
   ],
-  "sourceFiles": 264,
+  "sourceFiles": 267,
   "entries": [
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/DressroomModule.java",
@@ -22,61 +22,61 @@
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/DressroomModule.java",
-      "line": 1153,
+      "line": 1158,
       "kind": "class",
       "target": "com.samsung.android.uniform.widget.clock.AbsClockView"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/DressroomModule.java",
-      "line": 1167,
+      "line": 1172,
       "kind": "class",
       "target": "com.samsung.android.clockpack.plugins.clock.ClockFontData"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/DressroomModule.java",
-      "line": 1180,
+      "line": 1185,
       "kind": "declared-method",
       "target": "setFontType"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/DressroomModule.java",
-      "line": 1314,
+      "line": 1317,
       "kind": "declared-method",
       "target": "isStretchable"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/DressroomModule.java",
-      "line": 1337,
+      "line": 1340,
       "kind": "declared-method",
       "target": "onAttachedToWindow"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/DressroomModule.java",
-      "line": 1721,
+      "line": 1733,
       "kind": "class",
       "target": "com.samsung.android.lockscreen.editor.item.domain.entity.item.clock.ClockStretchData"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/DressroomModule.java",
-      "line": 1725,
+      "line": 1737,
       "kind": "declared-method",
       "target": "setFontHeight"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/DressroomModule.java",
-      "line": 1809,
+      "line": 1821,
       "kind": "class",
       "target": "com.samsung.android.lockscreen.editor.item.domain.entity.item.clock.ClockData"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/DressroomModule.java",
-      "line": 1836,
+      "line": 1848,
       "kind": "class",
       "target": "com.samsung.android.clockpack.plugins.clock.ClockView"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/DressroomModule.java",
-      "line": 1839,
+      "line": 1851,
       "kind": "class",
       "target": "com.samsung.android.clockpack.plugins.clock.extension.ClockBlurExtension"
     },
@@ -664,61 +664,61 @@
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/NativeClockPanel.java",
-      "line": 134,
+      "line": 138,
       "kind": "resource",
       "target": "tab_layout"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/NativeClockPanel.java",
-      "line": 1097,
+      "line": 1145,
       "kind": "class",
       "target": "com.samsung.android.clockpack.plugins.clock.extension."
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/NativeClockPanel.java",
-      "line": 1134,
+      "line": 1182,
       "kind": "class",
       "target": "kotlin.jvm.functions.Function1"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/NativeClockPanel.java",
-      "line": 1424,
+      "line": 1476,
       "kind": "class",
       "target": "com.samsung.android.clockpack.plugins.clock.ShadowStyle"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/NativeClockPanel.java",
-      "line": 1459,
+      "line": 1511,
       "kind": "class",
       "target": "com.samsung.android.lockscreen.editor.item.domain.entity.item.clock.ClockDataKt"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/NativeClockPanel.java",
-      "line": 1462,
+      "line": 1514,
       "kind": "declared-method",
       "target": "deepCopy"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/NativeClockPanel.java",
-      "line": 1797,
+      "line": 1913,
       "kind": "class",
       "target": "androidx.appcompat.widget.SeslSeekBar$OnSeekBarChangeListener"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/NativeClockPanel.java",
-      "line": 1898,
+      "line": 2015,
       "kind": "class",
       "target": "androidx.picker3.app.SeslColorPickerDialog$OnColorSetListener"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/NativeClockPanel.java",
-      "line": 1919,
+      "line": 2036,
       "kind": "class",
       "target": "androidx.picker3.app.SeslColorPickerDialog"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/NativeClockPanel.java",
-      "line": 1928,
+      "line": 2045,
       "kind": "class",
       "target": "androidx.picker3.widget.SeslColorPicker$OnColorChangedListener"
     },
@@ -742,97 +742,97 @@
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/RuntimeClockHooks.java",
-      "line": 211,
+      "line": 212,
       "kind": "class",
       "target": "com.samsung.android.clockpack.plugins.clock.ClockFontData"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/RuntimeClockHooks.java",
-      "line": 224,
+      "line": 225,
       "kind": "declared-method",
       "target": "setFontType"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/RuntimeClockHooks.java",
-      "line": 302,
+      "line": 301,
       "kind": "declared-method",
       "target": "isStretchable"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/RuntimeClockHooks.java",
-      "line": 329,
+      "line": 328,
       "kind": "declared-method",
       "target": "onAttachedToWindow"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/RuntimeClockHooks.java",
-      "line": 353,
+      "line": 352,
       "kind": "class",
       "target": "com.samsung.android.clockpack.plugins.clock.ShadowStyle"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/RuntimeClockHooks.java",
-      "line": 357,
+      "line": 356,
       "kind": "declared-method",
       "target": "setShadowStyle"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/RuntimeClockHooks.java",
-      "line": 367,
+      "line": 366,
       "kind": "declared-method",
       "target": "setDozing"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/RuntimeClockHooks.java",
-      "line": 412,
+      "line": 411,
       "kind": "declared-method",
       "target": "setMediaExpanded"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/RuntimeClockHooks.java",
-      "line": 458,
+      "line": 457,
       "kind": "class",
       "target": "com.samsung.android.app.facewidget.pages.clock.FaceWidgetClockPage"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/RuntimeClockHooks.java",
-      "line": 536,
+      "line": 535,
       "kind": "declared-method",
       "target": "setDozeAmount"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/RuntimeClockHooks.java",
-      "line": 740,
+      "line": 742,
       "kind": "class",
       "target": "com.samsung.android.app.facewidget.presentation.NowBarCardViewModel"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/RuntimeClockHooks.java",
-      "line": 745,
+      "line": 747,
       "kind": "class",
       "target": "com.samsung.android.app.facewidget.domain.NowBarItemManager"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/RuntimeClockHooks.java",
-      "line": 751,
+      "line": 753,
       "kind": "class",
       "target": "com.samsung.android.app.facewidget.presentation.MediaExpandStateViewModel"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/RuntimeClockHooks.java",
-      "line": 758,
+      "line": 760,
       "kind": "class",
       "target": "com.android.systemui.plugins.keyguardstatusview.NowBarItem"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/RuntimeClockHooks.java",
-      "line": 763,
+      "line": 765,
       "kind": "class",
       "target": "com.android.systemui.plugins.keyguardstatusview.PluginFaceWidgetMediaData"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/clock/RuntimeClockHooks.java",
-      "line": 872,
+      "line": 874,
       "kind": "public-method",
       "target": "get"
     },
@@ -2133,6 +2133,108 @@
       "target": "sesl_recoil_button_selector"
     },
     {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/fonts/VariableFonts.java",
+      "line": 120,
+      "kind": "public-method",
+      "target": "setVariableClockFont"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/labs/AodTweaksRuntime.java",
+      "line": 35,
+      "kind": "class",
+      "target": "android.app.ActivityThread"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/labs/AodTweaksRuntime.java",
+      "line": 36,
+      "kind": "public-method",
+      "target": "currentApplication"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/labs/AodTweaksRuntime.java",
+      "line": 68,
+      "kind": "class",
+      "target": "com.samsung.android.feature.SemFloatingFeature"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/labs/LowLightClockController.java",
+      "line": 160,
+      "kind": "class",
+      "target": "android.app.DreamManager"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/labs/LowLightClockController.java",
+      "line": 162,
+      "kind": "public-method",
+      "target": "setSystemDreamComponent"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/labs/LowLightClockController.java",
+      "line": 163,
+      "kind": "public-method",
+      "target": "isDreaming"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/labs/LowLightClockController.java",
+      "line": 164,
+      "kind": "public-method",
+      "target": "startDream"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/labs/LowLightClockController.java",
+      "line": 179,
+      "kind": "declared-method",
+      "target": "onAttachedToWindow"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/labs/LowLightClockController.java",
+      "line": 192,
+      "kind": "declared-method",
+      "target": "onDreamingStarted"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/labs/LowLightClockController.java",
+      "line": 205,
+      "kind": "declared-method",
+      "target": "onWakeUp"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/labs/LowLightClockController.java",
+      "line": 217,
+      "kind": "declared-method",
+      "target": "onDetachedFromWindow"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/labs/LowLightClockController.java",
+      "line": 251,
+      "kind": "resource",
+      "target": "low_light_text_clock"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/labs/LowLightClockController.java",
+      "line": 253,
+      "kind": "resource",
+      "target": "charging_status_text_view"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/labs/LowLightClockController.java",
+      "line": 520,
+      "kind": "class",
+      "target": "android.app.ActivityThread"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/labs/LowLightClockController.java",
+      "line": 521,
+      "kind": "public-method",
+      "target": "currentApplication"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/labs/LowLightClockController.java",
+      "line": 623,
+      "kind": "class",
+      "target": "android.app.DreamManager"
+    },
+    {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/lyrics/LyricsController.java",
       "line": 854,
       "kind": "resource",
@@ -2824,49 +2926,49 @@
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/nowbar/DiyNowBarEffects.java",
-      "line": 462,
+      "line": 589,
       "kind": "declared-method",
       "target": "clone"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/nowbar/DiyNowBarEffects.java",
-      "line": 619,
+      "line": 746,
       "kind": "class",
       "target": "android.app.ActivityThread"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/nowbar/DiyNowBarEffects.java",
-      "line": 620,
+      "line": 747,
       "kind": "public-method",
       "target": "currentApplication"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/nowbar/DiyNowBarEffects.java",
-      "line": 1034,
+      "line": 1161,
       "kind": "declared-method",
       "target": "setNotificationIcon"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/nowbar/DiyNowBarEffects.java",
-      "line": 1081,
+      "line": 1208,
       "kind": "declared-method",
       "target": "getListenerInfo"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/nowbar/DiyNowBarEffects.java",
-      "line": 1085,
+      "line": 1212,
       "kind": "declared-field",
       "target": "mOnClickListener"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/nowbar/DiyNowBarEffects.java",
-      "line": 1128,
+      "line": 1255,
       "kind": "declared-method",
       "target": "onAttachedToWindow"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/nowbar/DiyNowBarEffects.java",
-      "line": 1139,
+      "line": 1266,
       "kind": "declared-method",
       "target": "onDetachedFromWindow"
     },
@@ -3310,25 +3412,25 @@
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/widget/WidgetPanel.java",
-      "line": 848,
+      "line": 1022,
       "kind": "class",
       "target": "androidx.appcompat.widget.SeslSeekBar$OnSeekBarChangeListener"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/widget/WidgetPanel.java",
-      "line": 1232,
+      "line": 1405,
       "kind": "class",
       "target": "androidx.appcompat.widget.SeslSeekBar$OnSeekBarChangeListener"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/widget/WidgetPanel.java",
-      "line": 1297,
+      "line": 1470,
       "kind": "resource",
       "target": "clock_panel_item_divider"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/widget/WidgetPanel.java",
-      "line": 1338,
+      "line": 1511,
       "kind": "resource",
       "target": "clock_panel_layout"
     },

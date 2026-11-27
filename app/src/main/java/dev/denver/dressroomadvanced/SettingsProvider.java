@@ -21,6 +21,10 @@ public final class SettingsProvider extends ContentProvider {
             java.util.concurrent.Executors.newSingleThreadExecutor();
     private android.os.Handler maskCloseHandler;
     static final Uri URI = Uri.parse("content://dev.denver.dressroomadvanced.settings");
+    static final Uri LOW_LIGHT_PREVIEW_URI =
+            URI.buildUpon().appendPath("lowlight-preview").build();
+    private volatile Bundle lowLightPreviewBundle;
+    private volatile long lowLightPreviewAtMs;
     private static final Set<String> READERS =
             new HashSet<>(
                     Arrays.asList(
@@ -153,6 +157,24 @@ public final class SettingsProvider extends ContentProvider {
             result.putBoolean("cleared", true);
             return result;
         }
+        if ("previewLowLightClock".equals(method)) {
+            checkCaller(true);
+            lowLightPreviewBundle = ExtrasPreferences.clean(extras);
+            lowLightPreviewAtMs = android.os.SystemClock.uptimeMillis();
+            getContext().getContentResolver().notifyChange(LOW_LIGHT_PREVIEW_URI, null);
+            Bundle result = new Bundle();
+            result.putBoolean("queued", true);
+            return result;
+        }
+        if ("readLowLightPreview".equals(method)) {
+            checkCaller(false);
+            Bundle preview = lowLightPreviewBundle;
+            if (preview == null
+                    || android.os.SystemClock.uptimeMillis() - lowLightPreviewAtMs > 15000L) {
+                return Bundle.EMPTY;
+            }
+            return new Bundle(preview);
+        }
         if (DiyNowBarStore.METHOD_READ.equals(method)
                 || DiyNowBarStore.METHOD_READ_STACK_ORDER.equals(method)
                 || DiyNowBarStore.METHOD_READ_LIVE_STACK.equals(method)
@@ -269,7 +291,9 @@ public final class SettingsProvider extends ContentProvider {
                 json.put("fontFile", importedFont);
                 json.put("fontFileName", extras.getString("fontFileName", ""));
                 json.put("fontNativeStretch", extras.getBoolean("fontNativeStretch"));
-                if (!importedFont.isEmpty()) {
+                boolean fontHeightAxis = extras.getBoolean(FontAxisSettings.KEY_HEIGHT_AXIS);
+                json.put(FontAxisSettings.KEY_HEIGHT_AXIS, fontHeightAxis);
+                if (!importedFont.isEmpty() && !fontHeightAxis) {
                     json.put("manual", false);
                     json.put("depthOwnsManual", false);
                     json.remove("manualHeights");
@@ -385,7 +409,10 @@ public final class SettingsProvider extends ContentProvider {
             result.putString("fontFileName", json.optString("fontFileName", ""));
             if (json.has("fontNativeStretch"))
                 result.putBoolean("fontNativeStretch", json.optBoolean("fontNativeStretch"));
-            if (!importedFont.isEmpty()) {
+            boolean fontHeightAxis = json.optBoolean(FontAxisSettings.KEY_HEIGHT_AXIS);
+            if (json.has(FontAxisSettings.KEY_HEIGHT_AXIS))
+                result.putBoolean(FontAxisSettings.KEY_HEIGHT_AXIS, fontHeightAxis);
+            if (!importedFont.isEmpty() && !fontHeightAxis) {
                 result.putBoolean("manual", false);
                 result.putBoolean("depthOwnsManual", false);
                 result.remove("manualHeights");

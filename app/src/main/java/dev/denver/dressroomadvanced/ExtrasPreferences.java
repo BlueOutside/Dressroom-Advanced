@@ -19,12 +19,15 @@ public final class ExtrasPreferences {
         ClockBlurDelays.KEY, NotificationBlurOptions.COLORIZED, NotificationBlurOptions.CUSTOM,
         BlurAppearanceSettings.NEUTRAL_CLOCK, MediaWidgetFade.KEY, AodWidgetAppearance.NEUTRAL,
         NowBarGlass.KEY, ClockInlineSeconds.KEEP_OPEN, MediaClockVisibility.KEY,
-        WidgetClickBlock.KEY, LockStarClockBlur.KEY, NowBarAodOption.OVERRIDE_KEY
+        WidgetClickBlock.KEY, LockStarClockBlur.KEY, NowBarAodOption.OVERRIDE_KEY,
+        AodTweaks.ERASE_UNLOCK, AodTweaks.FULLSCREEN_UNLOCK, AodTweaks.AUTO_AOD_UNLOCK,
+        AodTweaks.LOW_LIGHT_CLOCK
     };
 
     static final String[] DEFAULT_TRUE_FLAGS = {
         ClockInlineSeconds.KEY, LiveCoverController.WIFI_ONLY, "lockscreenLyrics",
-        "lyricsSyncedHighlight", NowBarAodOption.ENABLED_KEY
+        "lyricsSyncedHighlight", NowBarAodOption.ENABLED_KEY,
+        AodTweaks.LOW_LIGHT_SHOW_DATE, AodTweaks.LOW_LIGHT_BURN_IN
     };
 
     private ExtrasPreferences() {}
@@ -92,6 +95,7 @@ public final class ExtrasPreferences {
         b.putString("title", text(input == null ? null : input.getString("title"), 80));
         b.putString("message", text(input == null ? null : input.getString("message"), 180));
         BlurAppearanceSettings.clean(input, b);
+        AodTweaks.clean(input, b);
         return b;
     }
 
@@ -192,6 +196,7 @@ public final class ExtrasPreferences {
             json.put("title", b.getString("title"));
             json.put("message", b.getString("message"));
             BlurAppearanceSettings.write(b, json);
+            AodTweaks.write(b, json);
             if (!prefs.edit().putString(key, json.toString()).commit())
                 throw new IllegalStateException("Could not save lockscreen extras");
             Bundle result = new Bundle();
@@ -229,6 +234,7 @@ public final class ExtrasPreferences {
         b.putString("title", json.optString("title"));
         b.putString("message", json.optString("message"));
         BlurAppearanceSettings.read(json, b);
+        AodTweaks.read(json, b);
         return clean(b);
     }
 }
