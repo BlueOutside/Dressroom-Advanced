@@ -57,6 +57,8 @@ final class ClockSecondsBinding {
     final Field originalFontType;
     final Field pathMode;
     final Field pathTextColor;
+    final Method setVariableClockFont;
+    final Field isVariableClockFont;
     final ClockBlurRetryBinding blurRetry;
     final ClockBlurBinding clockBlur;
     final Method applyAnimatedAlpha;
@@ -104,6 +106,8 @@ final class ClockSecondsBinding {
             Field originalFontType,
             Field pathMode,
             Field pathTextColor,
+            Method setVariableClockFont,
+            Field isVariableClockFont,
             ClockBlurRetryBinding blurRetry,
             ClockBlurBinding clockBlur,
             Method applyAnimatedAlpha,
@@ -132,6 +136,8 @@ final class ClockSecondsBinding {
         this.originalFontType = originalFontType;
         this.pathMode = pathMode;
         this.pathTextColor = pathTextColor;
+        this.setVariableClockFont = setVariableClockFont;
+        this.isVariableClockFont = isVariableClockFont;
         this.blurRetry = blurRetry;
         this.clockBlur = clockBlur;
         this.applyAnimatedAlpha = applyAnimatedAlpha;
@@ -206,12 +212,27 @@ final class ClockSecondsBinding {
 
         Field pathMode = null;
         Field pathTextColor = null;
+        String noneDesc = DexSignatures.descriptor(nonePaddingClass);
         Method setColor = nonePaddingClass.getMethod("setTextColor", int.class);
         if (setColor.getDeclaringClass() == nonePaddingClass) {
-            String noneDesc = DexSignatures.descriptor(nonePaddingClass);
             DexSignatures.Body colorBody = DexSignatures.body(setColor);
             pathMode = colorBody.uniqueRead(noneDesc, "Z", null).field(loader);
             pathTextColor = colorBody.uniqueWrite(noneDesc, "I", null).field(loader);
+        }
+
+        Method setVariableClockFont = null;
+        Field isVariableClockFont = null;
+        try {
+            Method setter = nonePaddingClass.getMethod("setVariableClockFont", boolean.class);
+            if (setter.getDeclaringClass() == nonePaddingClass) {
+                setter.setAccessible(true);
+                Field flag =
+                        DexSignatures.body(setter).uniqueWrite(noneDesc, "Z", null).field(loader);
+                flag.setAccessible(true);
+                setVariableClockFont = setter;
+                isVariableClockFont = flag;
+            }
+        } catch (ReflectiveOperationException | IOException | RuntimeException ignored) {
         }
 
         ClockBlurRetryBinding blurRetry = null;
@@ -273,6 +294,8 @@ final class ClockSecondsBinding {
                 originalFontType,
                 pathMode,
                 pathTextColor,
+                setVariableClockFont,
+                isVariableClockFont,
                 blurRetry,
                 clockBlur,
                 applyAnimatedAlpha,

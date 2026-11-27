@@ -146,6 +146,9 @@ public final class ClockInlineSecondsGeometryTest {
         check(
                 !applied.matches(801, "'HEGT' 2.3457, 'wght' 300", dummyFace),
                 "GlyphFontCache.Applied preserves sub-step spring precision");
+        check(
+                VariableFonts.compactTypeface(null, null) == null,
+                "compactTypeface safely returns fallback for null clock");
 
         System.out.println("Inline clock seconds geometry: " + checks + " checks passed");
     }

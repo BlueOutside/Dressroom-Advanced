@@ -420,6 +420,39 @@ public final class VariableFonts {
         return typeface(context, font, values, imported, Float.NaN, false, false);
     }
 
+    static Typeface compactTypeface(View clock, Typeface fallback) {
+        if (clock == null) return fallback;
+        try {
+            Bundle settings = configured.get(clock);
+            String imported = fileId(settings);
+            if (imported.isEmpty()) return fallback;
+            Source source = imported(clock.getContext(), imported);
+            if (source == null || source.axes == null || source.axes.heightAxis() == null) {
+                return fallback;
+            }
+            Bundle values = FontAxisSettings.values(settings);
+            boolean manualStretch = settings != null && settings.getBoolean("manual");
+            Object clockFont = font(clock);
+            if (!manualStretch
+                    && (hasCustomAxisValue(source.axes.heightAxis(), values)
+                            || !hasActiveDynamicStretch(clockFont, Float.NaN))) {
+                return fallback;
+            }
+            Typeface compact =
+                    typeface(
+                            clock.getContext(),
+                            clockFont,
+                            values,
+                            imported,
+                            FontAxes.SAMSUNG_MIN_HEGT,
+                            isVerticalClock(clock),
+                            true);
+            return compact != null ? compact : fallback;
+        } catch (RuntimeException ignored) {
+            return fallback;
+        }
+    }
+
     static Typeface typeface(
             Context context,
             Object font,

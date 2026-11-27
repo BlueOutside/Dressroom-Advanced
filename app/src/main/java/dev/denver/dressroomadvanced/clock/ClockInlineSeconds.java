@@ -1374,7 +1374,7 @@ final class ClockInlineSeconds {
         if (shown(stretchGroup)) {
             TextView ref =
                     firstShownText(stretchGroup, ids.stretchMinute1st(), ids.stretchMinute10th());
-            TextView colon = firstShownText(stretchGroup, ids.stretchColon());
+            TextView colon = firstShownText(stretchGroup, ids.stretchColon(), ids.colon());
             if (ref != null && stretchGroup.getWidth() > 0 && stretchGroup.getHeight() > 0) {
                 return new Target(stage, stretchGroup, ref, colon, stretchGroup, false, true);
             }
@@ -1496,12 +1496,17 @@ final class ClockInlineSeconds {
         ValueAnimator animator;
         ValueAnimator ghostAnimator;
         ValueAnimator mediaFollowAnimator;
+        private record FontSig(
+                Typeface typeface,
+                Object fixedTypeface,
+                int fixedFontType,
+                float textSize,
+                String axes,
+                boolean variableClockFont) {}
+
         ClockSecondsLayout.Plan plan;
-        Typeface lastSyncedTypeface;
-        Object lastSyncedFixedTypeface;
-        int lastSyncedFixedType = Integer.MIN_VALUE;
-        float lastSyncedTextSize = -1f;
-        String lastSyncedAxes;
+        FontSig lastDigitSig;
+        FontSig lastColonSig;
         String lastTimeGroupSignature;
         boolean hasInitialSecondsText;
         boolean fontPreDrawPending;
@@ -1767,7 +1772,7 @@ final class ClockInlineSeconds {
             LockscreenFrameBoost.pulse(clock);
             LockscreenFrameBoost.pulse(host);
             if (ensureTarget() == null) return;
-            if (didFontSignatureChange(target.refDigit) || !hasInitialSecondsText) {
+            if (didFontSignatureChange() || !hasInitialSecondsText) {
                 syncStyleAndText(true);
                 measureSecondsAndBuildPlan(true);
             } else {
@@ -1820,7 +1825,7 @@ final class ClockInlineSeconds {
             LockscreenFrameBoost.pulse(clock);
             LockscreenFrameBoost.pulse(host);
             if (ensureTarget() == null) return;
-            if (didFontSignatureChange(target.refDigit) || !hasInitialSecondsText) {
+            if (didFontSignatureChange() || !hasInitialSecondsText) {
                 syncStyleAndText(true);
                 measureSecondsAndBuildPlan(true);
                 applyFrame(progress, false);
@@ -1858,7 +1863,7 @@ final class ClockInlineSeconds {
                 lastTimeGroupSignature = null;
                 colorsInitialized = false;
                 lastShadowRadius = Float.NaN;
-            } else if (fresh.refDigit != target.refDigit) {
+            } else if (fresh.refDigit != target.refDigit || fresh.refColon != target.refColon) {
                 target = fresh;
                 colorsInitialized = false;
                 lastShadowRadius = Float.NaN;
@@ -1867,14 +1872,43 @@ final class ClockInlineSeconds {
             }
         }
 
-        private boolean didFontSignatureChange(TextView ref) {
+        private boolean didFontSignatureChange() {
+            TextView ref = target.refDigit;
             if (ref == null) return false;
-            String axes = readRefAxes(ref);
-            return ref.getTypeface() != lastSyncedTypeface
-                    || readFixedTypeface(ref) != lastSyncedFixedTypeface
-                    || readFixedFontType(ref) != lastSyncedFixedType
-                    || Float.compare(ref.getTextSize(), lastSyncedTextSize) != 0
-                    || !Objects.equals(axes, lastSyncedAxes);
+            TextView colonRef = target.refColon != null ? target.refColon : ref;
+            return !readFontSig(ref).equals(lastDigitSig)
+                    || !readFontSig(colonRef).equals(lastColonSig);
+        }
+
+        private FontSig readFontSig(TextView tv) {
+            return new FontSig(
+                    tv.getTypeface(),
+                    readFixedTypeface(tv),
+                    readFixedFontType(tv),
+                    tv.getTextSize(),
+                    readRefAxes(tv),
+                    readVariableClockFont(tv));
+        }
+
+        private boolean readVariableClockFont(TextView tv) {
+            try {
+                if (binding.isVariableClockFont != null
+                        && binding.isVariableClockFont.getDeclaringClass().isInstance(tv)) {
+                    return binding.isVariableClockFont.getBoolean(tv);
+                }
+            } catch (IllegalAccessException | RuntimeException ignored) {
+            }
+            return false;
+        }
+
+        private void writeVariableClockFont(TextView tv, boolean enabled) {
+            try {
+                if (binding.setVariableClockFont != null
+                        && binding.setVariableClockFont.getDeclaringClass().isInstance(tv)) {
+                    binding.setVariableClockFont.invoke(tv, enabled);
+                }
+            } catch (ReflectiveOperationException | RuntimeException ignored) {
+            }
         }
 
         private Object readFixedTypeface(TextView tv) {
@@ -2439,20 +2473,20 @@ final class ClockInlineSeconds {
                     target.vertical
                             ? Math.max(22f * density, ref.getTextSize() * 0.44f)
                             : ref.getTextSize();
-            int bottomPad = target.vertical ? 0 : ref.getPaddingBottom();
+            float colonSize = target.vertical ? digitSize : colonRef.getTextSize();
+            int digitBottomPad = target.vertical ? 0 : ref.getPaddingBottom();
+            int colonBottomPad = target.vertical ? 0 : colonRef.getPaddingBottom();
 
             boolean colonStyleChanged =
                     copyGlyphFontAndSize(
-                            colonRef, colonView, digitSize, bottomPad, target.vertical);
+                            colonRef, colonView, colonSize, colonBottomPad, target.vertical);
             boolean s10StyleChanged =
-                    copyGlyphFontAndSize(ref, sec10View, digitSize, bottomPad, target.vertical);
+                    copyGlyphFontAndSize(
+                            ref, sec10View, digitSize, digitBottomPad, target.vertical);
             boolean s1StyleChanged =
-                    copyGlyphFontAndSize(ref, sec1View, digitSize, bottomPad, target.vertical);
-            lastSyncedTypeface = ref.getTypeface();
-            lastSyncedFixedTypeface = readFixedTypeface(ref);
-            lastSyncedFixedType = readFixedFontType(ref);
-            lastSyncedTextSize = ref.getTextSize();
-            lastSyncedAxes = readRefAxes(ref);
+                    copyGlyphFontAndSize(ref, sec1View, digitSize, digitBottomPad, target.vertical);
+            lastDigitSig = readFontSig(ref);
+            lastColonSig = readFontSig(colonRef);
 
             if (syncColorsAndShadows) {
                 syncColorsFromRef();
@@ -2507,6 +2541,7 @@ final class ClockInlineSeconds {
             Object prevFixedTf = readFixedTypeface(dest);
             int prevFixedType = readFixedFontType(dest);
             String prevAxes = readRefAxes(dest);
+            boolean prevVarFont = readVariableClockFont(dest);
             float prevSize = dest.getTextSize();
 
             try {
@@ -2519,10 +2554,21 @@ final class ClockInlineSeconds {
                     Object fixedTypeface = binding.glyphFont.fixed().get(source);
                     int fixedType = binding.glyphFont.fontType().getInt(source);
                     String axes = (String) binding.glyphFont.variation().get(source);
-                    if (fixedTypeface != null) {
-                        if (binding.glyphFont.fixed().get(dest) != fixedTypeface) {
-                            binding.glyphFont.fixed().set(dest, fixedTypeface);
+                    boolean srcVarFont = readVariableClockFont(source);
+                    if (fixedTypeface instanceof Typeface srcFixedTf) {
+                        Typeface targetTf =
+                                compactVertical
+                                        ? VariableFonts.compactTypeface(clock, srcFixedTf)
+                                        : srcFixedTf;
+                        if (binding.glyphFont.fixed().get(dest) != targetTf
+                                || dest.getTypeface() != targetTf) {
+                            binding.glyphFont.fixed().set(dest, targetTf);
+                            binding.glyphFont.fontType().setInt(dest, fixedType);
+                            binding.glyphFont.variation().set(dest, null);
                             binding.glyphFont.update().invoke(dest);
+                        }
+                        if (readVariableClockFont(dest) != srcVarFont) {
+                            writeVariableClockFont(dest, srcVarFont);
                         }
                     } else if (fixedType > 0) {
                         int mappedType =
@@ -2532,9 +2578,14 @@ final class ClockInlineSeconds {
                         String mappedAxes =
                                 compactVertical ? ClockSecondsLayout.stripStretchAxis(axes) : axes;
                         binding.glyphFont.fix().invoke(dest, mappedType, mappedAxes);
-                    } else if (dest.getTypeface() != source.getTypeface()) {
-                        dest.setTypeface(source.getTypeface());
-                        binding.glyphFont.update().invoke(dest);
+                    } else {
+                        if (dest.getTypeface() != source.getTypeface()) {
+                            dest.setTypeface(source.getTypeface());
+                            binding.glyphFont.update().invoke(dest);
+                        }
+                        if (readVariableClockFont(dest) != srcVarFont) {
+                            writeVariableClockFont(dest, srcVarFont);
+                        }
                     }
                 } else {
                     if (dest.getTypeface() != source.getTypeface()) {
@@ -2559,6 +2610,7 @@ final class ClockInlineSeconds {
                     || readFixedTypeface(dest) != prevFixedTf
                     || readFixedFontType(dest) != prevFixedType
                     || !Objects.equals(readRefAxes(dest), prevAxes)
+                    || readVariableClockFont(dest) != prevVarFont
                     || Float.compare(dest.getTextSize(), prevSize) != 0;
         }
 

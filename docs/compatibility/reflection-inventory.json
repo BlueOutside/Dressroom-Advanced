@@ -1234,121 +1234,127 @@
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/ClockSecondsBinding.java",
-      "line": 200,
+      "line": 206,
       "kind": "declared-method",
       "target": "getPathForBlur"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/ClockSecondsBinding.java",
-      "line": 209,
+      "line": 216,
       "kind": "public-method",
       "target": "setTextColor"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/ClockSecondsBinding.java",
-      "line": 244,
+      "line": 226,
+      "kind": "public-method",
+      "target": "setVariableClockFont"
+    },
+    {
+      "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/ClockSecondsBinding.java",
+      "line": 265,
       "kind": "class",
       "target": "android.view.SemBlurInfo"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/ClockSecondsBinding.java",
-      "line": 245,
+      "line": 266,
       "kind": "class",
       "target": "android.view.SemBlurInfo$Builder"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/ClockSecondsBinding.java",
-      "line": 248,
+      "line": 269,
       "kind": "declared-method",
       "target": "semSetBlurInfo"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/ClockSecondsBinding.java",
-      "line": 251,
+      "line": 272,
       "kind": "public-method",
       "target": "setRadius"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/ClockSecondsBinding.java",
-      "line": 252,
+      "line": 273,
       "kind": "public-method",
       "target": "build"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/ClockSecondsBinding.java",
-      "line": 403,
+      "line": 426,
       "kind": "resource",
       "target": "common_time_area_container"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/ClockSecondsBinding.java",
-      "line": 404,
+      "line": 427,
       "kind": "resource",
       "target": "common_time_area"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/ClockSecondsBinding.java",
-      "line": 405,
+      "line": 428,
       "kind": "resource",
       "target": "common_time_area_hour_min"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/ClockSecondsBinding.java",
-      "line": 406,
+      "line": 429,
       "kind": "resource",
       "target": "common_stretch_time_area"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/ClockSecondsBinding.java",
-      "line": 407,
+      "line": 430,
       "kind": "resource",
       "target": "common_minute_container"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/ClockSecondsBinding.java",
-      "line": 408,
+      "line": 431,
       "kind": "resource",
       "target": "common_colon"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/ClockSecondsBinding.java",
-      "line": 409,
+      "line": 432,
       "kind": "resource",
       "target": "common_minute10th"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/ClockSecondsBinding.java",
-      "line": 410,
+      "line": 433,
       "kind": "resource",
       "target": "common_minute1st"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/ClockSecondsBinding.java",
-      "line": 411,
+      "line": 434,
       "kind": "resource",
       "target": "common_hourMin"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/ClockSecondsBinding.java",
-      "line": 412,
+      "line": 435,
       "kind": "resource",
       "target": "common_minute"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/ClockSecondsBinding.java",
-      "line": 413,
+      "line": 436,
       "kind": "resource",
       "target": "common_stretch_colon"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/ClockSecondsBinding.java",
-      "line": 414,
+      "line": 437,
       "kind": "resource",
       "target": "common_stretch_minute10th"
     },
     {
       "file": "app/src/main/java/dev/denver/dressroomadvanced/compat/shared/ClockSecondsBinding.java",
-      "line": 415,
+      "line": 438,
       "kind": "resource",
       "target": "common_stretch_minute1st"
     },
