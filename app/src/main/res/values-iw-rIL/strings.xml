@@ -1,0 +1,715 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Module metadata shown in LSPosed and Samsung Now Bar Settings -->
+    <string name="module_description">Your lockscreen, your way!</string>
+    <string name="diy_nowbar_setting_title">DIY Now Bar</string>
+    <!-- Shared labels and buttons used across multiple panels -->
+    <!-- Tab / toolbar button that opens Dressroom Advanced controls inside Samsung's lockscreen editor -->
+    <string name="common_advanced">Advanced</string>
+    <string name="common_cancel">Cancel</string>
+    <string name="common_ok">OK</string>
+    <string name="common_done">Done</string>
+    <string name="common_save">Save</string>
+    <string name="common_apply">Apply</string>
+    <string name="common_close">Close</string>
+    <string name="common_reset">Reset</string>
+    <string name="common_delete">Delete</string>
+    <string name="common_edit">Edit</string>
+    <string name="common_clear">Clear</string>
+    <string name="common_start">Start</string>
+    <string name="common_pause">Pause</string>
+    <string name="common_restart">Restart</string>
+    <string name="common_open">Open</string>
+    <string name="common_none">None</string>
+    <string name="common_on">On</string>
+    <string name="common_off">Off</string>
+    <string name="common_samsung_default">Samsung default</string>
+    <string name="common_custom_font">Custom font</string>
+    <string name="common_font_file_types">TTF, OTF or TTC</string>
+    <string name="common_widgets">Widgets</string>
+    <string name="common_extras">Extras</string>
+    <string name="common_widgets_and_extras">Widgets and Extras</string>
+    <string name="common_clock">Clock</string>
+    <string name="common_now_bar">Now Bar</string>
+    <string name="common_appearance">Appearance</string>
+    <string name="common_layout">Layout</string>
+    <string name="common_effects">Effects</string>
+    <string name="common_depth">Depth</string>
+    <string name="common_date">Date</string>
+    <string name="common_disable_depth_on_aod">Disable depth on AOD</string>
+    <string name="common_font_no_adjustable_axes">This font has no adjustable axes.</string>
+    <string name="common_depth_requires_still_wallpaper">Depth requires a still-image wallpaper. Gyro, video and live wallpapers are not supported.</string>
+    <string name="common_depth_libraries_missing">Depth is unavailable: Samsung\'s subject detection libraries are missing.</string>
+    <!-- Short badge on live Now Bar pills and cards -->
+    <string name="common_badge_live">LIVE</string>
+    <!-- Clock Advanced Panel (inside Samsung Dressroom clock editor) -->
+    <string name="clock_section_size_position">Size &amp; position</string>
+    <string name="clock_size">Clock size</string>
+    <string name="clock_move_horizontal">Move left / right</string>
+    <string name="clock_move_vertical">Move up / down</string>
+    <string name="clock_adaptive_color">Adaptive color</string>
+    <string name="clock_color">Clock color</string>
+    <string name="clock_custom_shadow">Custom shadow</string>
+    <string name="clock_shadow_softness">Shadow softness</string>
+    <string name="clock_shadow_offset_x">Shadow horizontal offset</string>
+    <string name="clock_shadow_offset_y">Shadow vertical offset</string>
+    <string name="clock_shadow_color">Shadow color</string>
+    <string name="clock_blur">Clock blur</string>
+    <string name="clock_blur_unavailable">Blur is unavailable for this clock.</string>
+    <string name="clock_blur_radius_in_extras">Radius is set in Advanced -&gt; Extras -&gt; Blur.</string>
+    <string name="clock_blur_strength">Blur strength</string>
+    <string name="clock_custom_text_visibility">Custom text visibility</string>
+    <string name="clock_text_visibility_over_blur">Text visibility over blur</string>
+    <string name="clock_section_depth">Depth effect</string>
+    <string name="clock_behind_subject">Clock behind subject</string>
+    <string name="clock_detect_subject_again">Detect wallpaper subject again</string>
+    <string name="clock_status_detecting_subject">Detecting subject...</string>
+    <string name="clock_depth_source_not_loaded">The wallpaper source has not loaded. Reopen the clock panel once the wallpaper preview is visible.</string>
+    <string name="clock_depth_not_available">Depth is not available for this clock</string>
+    <string name="clock_depth_provider_binding_failed">Clock provider binding failed: %1$s</string>
+    <string name="clock_depth_editor_binding_failed">Depth editor binding failed: %1$s</string>
+    <string name="clock_section_typography">Typography</string>
+    <string name="clock_choose_font_file">Choose font file</string>
+    <string name="clock_use_samsung_font">Use Samsung font</string>
+    <string name="clock_corner_rounding">Corner rounding</string>
+    <string name="clock_section_date_weather">Date &amp; weather</string>
+    <string name="clock_show_date">Show date</string>
+    <string name="clock_date_above_time">Date above the time</string>
+    <string name="clock_weather_unavailable">Weather controls are unavailable for this clock.</string>
+    <string name="clock_date_size">Date size</string>
+    <string name="clock_weather_size">Weather size</string>
+    <string name="clock_weather_info">Weather information</string>
+    <string name="clock_weather_add_city">Add a city in Samsung Weather to show weather information.</string>
+    <string name="clock_section_dynamic_stretch">Dynamic stretch</string>
+    <string name="clock_stretch_requires_height_axis">Samsung dynamic stretching requires a font with a HEGT or HGHT height axis.</string>
+    <!-- %1$s is the OpenType axis tag such as HGHT or HEGT -->
+    <string name="clock_stretch_pick_samsung_font">Pick a stretchable Samsung clock font (first two) to drive this font\'s %1$s axis with Dynamic stretch.</string>
+    <string name="clock_stretch_choose_dynamic_clock">Choose a dynamic clock with a stretchable font to adjust its shape.</string>
+    <string name="clock_stretch_waiting_measure">Stretch controls appear after the clock finishes measuring.</string>
+    <string name="clock_stretch_incompatible_measurements">This clock does not expose compatible stretch measurements.</string>
+    <!-- %1$s is the OpenType axis tag such as HGHT or HEGT -->
+    <string name="clock_stretch_using_axis">Using this font\'s %1$s axis for native dynamic stretching.</string>
+    <string name="clock_stretch_manual">Manual stretch</string>
+    <!-- Slider that stretches every digit segment of the clock equally -->
+    <string name="clock_stretch_all_segments">All segments</string>
+    <!-- %1$d is the 1-based digit segment index -->
+    <string name="clock_stretch_segment">Segment %1$d</string>
+    <string name="clock_stretch_rejected">This clock rejected that stretch amount.</string>
+    <string name="clock_restore_session">Restore this editing session</string>
+    <string name="clock_restore_session_summary">Undo changes made since opening Advanced</string>
+    <string name="clock_error_changed">Clock changed. Select Advanced again.</string>
+    <string name="clock_error_select_again">select Advanced again</string>
+    <!-- %1$s is the error detail -->
+    <string name="clock_error_update_failed">Could not update: %1$s</string>
+    <string name="editor_error_prepare_settings">Could not prepare settings. Try Apply again.</string>
+    <string name="editor_error_reopen_after_screen_switch">Reopen Advanced after switching screens.</string>
+    <string name="editor_error_open_widgets_first">Open the lockscreen editor with widgets available first.</string>
+    <string name="editor_error_open_extras_failed">Could not open Extras.</string>
+    <!-- OpenType variable font axis labels -->
+    <string name="font_axis_weight">Weight</string>
+    <string name="font_axis_width">Width</string>
+    <string name="font_axis_optical_size">Optical size</string>
+    <string name="font_axis_slant">Slant</string>
+    <string name="font_axis_italic">Italic</string>
+    <!-- Typography axis controlling weight without changing width -->
+    <string name="font_axis_grade">Grade</string>
+    <string name="font_axis_height_hegt">Height (HEGT)</string>
+    <string name="font_axis_height_hght">Height (HGHT)</string>
+    <string name="font_axis_roundness_rndn">Roundness (RNDN)</string>
+    <string name="font_axis_lowercase_height_ytlc">Lowercase height (YTLC)</string>
+    <!-- Typography axis controlling ink bleed -->
+    <string name="font_axis_bleed">Bleed</string>
+    <!-- %1$s is the font's axis display name, %2$s is the 4-character OpenType tag -->
+    <string name="font_axis_custom_named">%1$s (%2$s)</string>
+    <!-- Font import errors -->
+    <string name="font_import_interrupted">Font import was interrupted. Please choose the file again.</string>
+    <string name="font_import_no_picker">No file picker is available</string>
+    <string name="font_import_load_failed">Could not load this font</string>
+    <string name="font_import_open_picker_failed">Could not open font picker</string>
+    <string name="font_import_store_failed">Could not store font</string>
+    <string name="font_import_read_failed">Could not read font</string>
+    <string name="font_import_too_large">Font exceeds 32 MB</string>
+    <string name="font_import_not_font">Not a font file</string>
+    <string name="font_import_unsupported_format">Choose a TTF, OTF or TTC font</string>
+    <string name="font_import_android_load_failed">Android could not load this font</string>
+    <string name="font_import_failed">Could not import font</string>
+    <!-- Wallpaper subject depth status messages -->
+    <string name="depth_status_preview_unavailable">Wallpaper preview is unavailable. Tap Detect wallpaper subject when it is visible.</string>
+    <string name="depth_status_reused">Subject reused for this clock style</string>
+    <string name="depth_status_preview_not_ready">Clock preview was not ready to receive the subject</string>
+    <string name="depth_status_restored">Subject restored &#183; follows wallpaper movement</string>
+    <string name="depth_status_detecting_full">Detecting the full wallpaper subject...</string>
+    <!-- %1$s is the error detail -->
+    <string name="depth_status_failed">Depth detection failed: %1$s</string>
+    <string name="depth_status_superseded">Subject scan was superseded before its result was applied</string>
+    <string name="depth_status_detector_timeout">Samsung\'s subject detector has not finished. If it stays here, restart Dressroom.</string>
+    <string name="depth_status_waiting_preview">Waiting for the wallpaper preview...</string>
+    <!-- %1$s is the failure reason -->
+    <string name="depth_status_retry_hint">%1$s. Tap Detect wallpaper subject to retry.</string>
+    <!-- %1$s is the error detail -->
+    <string name="depth_status_apply_failed">Could not apply subject: %1$s</string>
+    <string name="depth_toast_not_ready">Subject detection is not ready yet. Apply again after it finishes.</string>
+    <!-- Widgets Panel (inside Advanced bottom-bar sheet) -->
+    <string name="widget_tab_position">Position</string>
+    <string name="widget_section_layout_size">Layout &amp; size</string>
+    <string name="widget_custom_grid">Custom grid</string>
+    <string name="widget_rotate_arrangement">Rotate arrangement</string>
+    <string name="widget_orientation_vertical">Vertical</string>
+    <string name="widget_orientation_horizontal">Horizontal</string>
+    <string name="widget_rotate_native_note">Rotate using Samsung\'s layout control.</string>
+    <string name="widget_columns">Columns</string>
+    <string name="widget_rows">Rows</string>
+    <!-- %1$d is columns, %2$d is rows -->
+    <string name="widget_grid_capacity">Grid capacity: %1$d &#215; %2$d.</string>
+    <string name="widget_custom_grid_unavailable">Custom grid is unavailable for this editor/provider combination.</string>
+    <string name="widget_scale">Widget scale</string>
+    <string name="widget_section_placement">Placement</string>
+    <string name="widget_attach_to_clock">Attach to clock</string>
+    <string name="widget_attach_below">Below</string>
+    <string name="widget_attach_above">Above</string>
+    <string name="widget_attach_left">Left</string>
+    <string name="widget_attach_right">Right</string>
+    <string name="widget_attach_free">Free position</string>
+    <string name="widget_placement_drag_note">Drag in the preview. Attached groups move along the clock edge.</string>
+    <string name="widget_gap_from_clock">Gap from clock</string>
+    <string name="widget_along_clock_edge">Along clock edge</string>
+    <string name="widget_horizontal_position">Horizontal position</string>
+    <string name="widget_vertical_position">Vertical position</string>
+    <string name="widget_subject_depth">Subject depth</string>
+    <string name="widget_depth_follow_clock">Follow clock</string>
+    <string name="widget_depth_applies_to">Depth applies to</string>
+    <string name="widget_depth_separate_orientation">Separate per orientation</string>
+    <string name="widget_depth_portrait_only">Portrait only</string>
+    <string name="widget_depth_landscape_only">Landscape only</string>
+    <string name="widget_depth_both_orientations">Both orientations</string>
+    <string name="widget_live_background_blur">Live background blur</string>
+    <string name="widget_reset_adjustments">Reset widget adjustments</string>
+    <string name="widget_wipe_all">Wipe all widgets</string>
+    <string name="widget_wipe_all_summary">Remove all lockscreen widgets and reset layout</string>
+    <string name="widget_wipe_dialog_title">Wipe all widgets?</string>
+    <string name="widget_wipe_dialog_message">Removes all lockscreen widgets, clears orphaned widget hosts, and resets widget layout adjustments immediately.</string>
+    <string name="widget_wipe_confirm">Wipe</string>
+    <string name="widget_wiped_status">Widgets wiped.</string>
+    <string name="widget_wiped_toast">All lockscreen widgets wiped.</string>
+    <string name="widget_grid_too_small_toast">These widgets need a larger grid for this arrangement.</string>
+    <!-- Extras Panel (Now Bar, Media, Lock, AOD, Blur, More) -->
+    <string name="extras_tab_media">Media</string>
+    <string name="extras_tab_lock">Lock</string>
+    <string name="extras_tab_aod">AOD</string>
+    <string name="extras_tab_blur">Blur</string>
+    <string name="extras_tab_more">More</string>
+    <string name="extras_fold_cover_screen">Settings for the cover screen</string>
+    <string name="extras_fold_inner_screen">Settings for the inner screen</string>
+    <!-- Extras: Now Bar -->
+    <string name="extras_section_diy_nowbar_labs">DIY Now Bar &amp; Labs</string>
+    <string name="extras_manage_diy_cards_labs">Manage DIY cards &amp; Labs</string>
+    <string name="extras_diy_nowbar_empty_summary">Tap to create custom Now Bar cards</string>
+    <!-- %1$d is active count, %2$d is saved count -->
+    <string name="extras_diy_nowbar_active_summary">%1$d active / %2$d saved</string>
+    <string name="extras_diy_nowbar_note">Create custom cards, shaders, and Now Bar Labs unlocks (Sports, Finance, Commute, Buds).</string>
+    <string name="extras_section_nowbar_stack">Now Bar stack</string>
+    <string name="extras_keep_charging_card">Keep charging card</string>
+    <string name="extras_show_nowbar_on_aod">Show Now Bar on AOD</string>
+    <string name="extras_visible_cards">Visible cards</string>
+    <!-- Extras: Media & Lyrics -->
+    <string name="extras_section_album_artwork">Album artwork</string>
+    <string name="extras_fullscreen_album_art">Full-screen album artwork</string>
+    <string name="extras_live_animated_art">Live animated artwork</string>
+    <string name="extras_live_animated_art_note">Uses Apple Music motion covers when available.</string>
+    <string name="extras_live_art_wifi_only">Only download on Wi-Fi</string>
+    <string name="extras_section_expanded_player">Expanded player</string>
+    <string name="extras_hide_clock_expanded_player">Hide clock in expanded player</string>
+    <string name="extras_fade_widgets_player">Fade widgets when opening the player</string>
+    <string name="extras_section_lyrics">Lyrics</string>
+    <string name="extras_lockscreen_lyrics">Lockscreen lyrics</string>
+    <string name="extras_lockscreen_lyrics_note">Displays synced or plain lyrics in the expanded media player.</string>
+    <string name="extras_lyrics_auto_scroll">Synced lyrics auto-scroll</string>
+    <string name="extras_lyrics_text_size">Lyrics text size</string>
+    <string name="extras_lyrics_preview">Synced lyrics preview</string>
+    <string name="extras_lyrics_choose_font">Choose lyrics font</string>
+    <string name="extras_lyrics_default_font">Use default lyrics font</string>
+    <string name="extras_lyrics_font_weight">Font weight</string>
+    <string name="extras_lyrics_clear_cache">Clear lyrics cache</string>
+    <!-- %1$d is track count, %2$s is formatted size like 1.2 MB -->
+    <plurals name="extras_lyrics_cache_summary">
+        <item quantity="one">Cached: %1$d track (%2$s)</item>
+        <item quantity="two">Cached: %1$d tracks (%2$s)</item>
+        <item quantity="other">Cached: %1$d tracks (%2$s)</item>
+    </plurals>
+    <string name="extras_lyrics_clear_cache_title">Clear lyrics cache?</string>
+    <!-- %1$s is formatted cache size -->
+    <string name="extras_lyrics_clear_cache_message">Delete all saved offline lyrics (%1$s)?</string>
+    <string name="extras_lyrics_cache_cleared_status">Lyrics cache cleared.</string>
+    <string name="extras_lyrics_cache_cleared_toast">Lyrics cache cleared</string>
+    <!-- Lockscreen Lyrics Overlay -->
+    <string name="lyrics_keep_screen_on">Keep screen on</string>
+    <string name="lyrics_close">Close lyrics</string>
+    <string name="lyrics_loading">Loading lyrics...</string>
+    <string name="lyrics_not_found">No lyrics found</string>
+    <!-- %1$s is the lyrics provider name -->
+    <string name="lyrics_synced_attribution">%1$s &#8226; Synced</string>
+    <!-- %1$s is the lyrics provider name -->
+    <string name="lyrics_plain_attribution">%1$s &#8226; Plain</string>
+    <!-- Extras: Lock screen (Clock, stretch physics & widgets) -->
+    <string name="extras_inline_clock_seconds">Inline clock seconds</string>
+    <string name="extras_keep_seconds_open">Keep seconds open</string>
+    <string name="extras_inline_seconds_note">Replaces the full-screen seconds view when tapping a digital clock.</string>
+    <string name="extras_section_clock_stretch">Clock stretch</string>
+    <string name="extras_allow_more_stretch_shapes">Allow more stretch shapes</string>
+    <string name="extras_stretch_speed">Stretch speed (0 = Samsung)</string>
+    <string name="extras_stretch_bounce">Stretch bounce</string>
+    <string name="extras_stretch_physics_note">Tunes Samsung\'s stretch physics. Applies the next time the clock is rebuilt.</string>
+    <string name="extras_disable_widget_clicks">Disable widget clicks</string>
+    <string name="extras_disable_widget_clicks_note">Prevents tapping lockscreen widgets from opening apps while keeping swipe-to-unlock working.</string>
+    <string name="extras_remove_picture_frame_dimming">Remove Picture Frame dimming</string>
+    <!-- Extras: Always On Display & StandBy Nightstand -->
+    <string name="extras_section_aod">Always On Display</string>
+    <string name="extras_keep_clock_stretched_aod">Keep clock stretched on AOD</string>
+    <string name="extras_aod_erase_unlock">Subject-only AOD for any subject</string>
+    <string name="extras_aod_erase_unlock_note">Keeps the subject cutout Samsung rejects so Settings &gt; AOD &gt; Erase background works. Apply the wallpaper again after enabling.</string>
+    <string name="extras_aod_fullscreen_unlock">Fullscreen AOD on this device</string>
+    <string name="extras_aod_fullscreen_unlock_note">Reports fullscreen AOD support across SystemUI, AOD, and wallpaper. Restart SystemUI or reboot to apply.</string>
+    <string name="extras_aod_auto_unlock">Unlock Auto AOD option</string>
+    <string name="extras_aod_auto_unlock_note">Removes the device exclusion that hides Settings &gt; AOD &gt; When to show &gt; Auto. Restart AOD/SystemUI or reboot to apply.</string>
+    <string name="extras_section_standby">StandBy nightstand</string>
+    <string name="extras_low_light_clock">Low-light bedside clock</string>
+    <string name="extras_standby_color_theme">Color theme</string>
+    <string name="extras_standby_clock_style">Clock style</string>
+    <string name="extras_standby_burn_in_drift">OLED burn-in drift</string>
+    <string name="extras_standby_clock_brightness">Clock brightness</string>
+    <string name="extras_standby_darkness_threshold">Darkness threshold</string>
+    <string name="extras_standby_preview_now">Preview bedside clock now</string>
+    <string name="extras_standby_preview_now_summary">Launches the styled StandBy clock immediately (tap screen to exit)</string>
+    <string name="extras_standby_screen_saver_settings">Open Screen saver settings</string>
+    <string name="extras_standby_screen_saver_settings_summary">Pick any screen saver (other than None) to enable while charging</string>
+    <string name="extras_standby_note">Restyles SystemUI\'s hidden low-light dream into a StandBy nightstand clock while charging in dark rooms.</string>
+    <string name="standby_theme_red">StandBy Red</string>
+    <string name="standby_theme_amber">Warm Amber</string>
+    <string name="standby_theme_blue">Moonlight Blue</string>
+    <string name="standby_theme_emerald">Emerald</string>
+    <string name="standby_theme_white">Soft White</string>
+    <string name="standby_font_bold">StandBy Bold</string>
+    <string name="standby_font_thin">Minimal Thin</string>
+    <string name="standby_font_serif">Editorial Serif</string>
+    <string name="standby_font_mono">Retro Mono</string>
+    <!-- Extras: Blur -->
+    <string name="extras_blur_disclaimer">Customizes existing blur. System blur restrictions still apply.</string>
+    <string name="extras_blur_keep_swipe_unlock">Keep blur while swiping to unlock</string>
+    <string name="extras_blur_customize_clock">Customize clock blur</string>
+    <string name="extras_blur_customize_widgets">Customize widgets blur</string>
+    <string name="extras_blur_customize_now_bar">Customize Now Bar blur</string>
+    <string name="extras_blur_unavailable">Blur is unavailable or disabled by the system.</string>
+    <string name="extras_blur_neutral_colors">Neutral blur colors</string>
+    <string name="extras_blur_shorter_return_delay">Shorter blur return delay</string>
+    <string name="extras_blur_keep_with_lockstar">Keep clock blur with LockStar</string>
+    <string name="extras_blur_keep_clock_aod">Keep clock blur on AOD</string>
+    <string name="extras_blur_applies_wallpaper_aod">Applies when AOD shows your wallpaper.</string>
+    <string name="extras_blur_glass_colored_pills">Glass backgrounds for colored pills</string>
+    <string name="extras_blur_behind_camera_widget">Blur behind the camera widget</string>
+    <string name="extras_section_widgets_on_aod">Widgets on AOD</string>
+    <string name="extras_widgets_aod_apply_note">Apply, then enter AOD with your wallpaper showing to see changes.</string>
+    <string name="extras_keep_widget_blur_colors_aod">Keep widget blur colors on AOD</string>
+    <string name="extras_customize_aod_widget_blur">Customize AOD widget blur</string>
+    <string name="extras_section_lockscreen_notifications">Lockscreen notifications</string>
+    <string name="extras_blur_colorized_cards">Blur behind colorized cards</string>
+    <string name="extras_blur_custom_cards">Blur behind custom cards</string>
+    <string name="extras_blur_radius">Radius</string>
+    <string name="extras_blur_saturation">Saturation adjustment</string>
+    <string name="extras_blur_tone_curve">Tone curve adjustment</string>
+    <string name="extras_blur_brightness">Brightness adjustment</string>
+    <string name="extras_blur_tint_window_only">Tint requires window blur. Only radius and saturation are available here.</string>
+    <string name="extras_blur_tint">Tint</string>
+    <string name="extras_blur_tint_dark">Dark</string>
+    <string name="extras_blur_tint_light">Light</string>
+    <string name="extras_blur_tint_aod_note">Replaces Samsung\'s brightness preset. Opacity controls the tint over wallpaper blur.</string>
+    <string name="extras_blur_tint_clock_note">Tint applies to window blur on the lockscreen.</string>
+    <string name="extras_blur_tint_opacity">Tint opacity</string>
+    <!-- Extras: Updates & Reset -->
+    <string name="extras_section_updates">Updates</string>
+    <string name="extras_prerelease_updates">Pre-release updates</string>
+    <string name="extras_prerelease_note">Receive dev pre-release builds and newer stable releases. Defaults to on for dev builds.</string>
+    <!-- %1$s is the installed version name, %2$s is the prerelease note -->
+    <string name="extras_prerelease_note_installed">Installed: %1$s. %2$s</string>
+    <string name="extras_check_for_updates">Check for updates</string>
+    <string name="extras_reopen_editor_updates">Reopen the editor to check for updates</string>
+    <string name="extras_reset_settings">Reset extra settings</string>
+    <string name="extras_reset_settings_summary">Restore all Extras options to their defaults</string>
+    <string name="extras_reset_dialog_title">Reset extra settings?</string>
+    <string name="extras_reset_dialog_message">Restore all Extras options on this screen to defaults?</string>
+    <!-- Updater Dialogs & Download Activity -->
+    <string name="update_already_checking">Already checking for updates</string>
+    <string name="update_up_to_date">You are up to date</string>
+    <!-- %1$s is the installed version -->
+    <string name="update_up_to_date_version">You are up to date (%1$s)</string>
+    <string name="update_check_failed">Could not check for updates</string>
+    <string name="update_dialog_title_both">Dressroom Advanced updates</string>
+    <!-- %1$s is stable version, %2$s is pre-release version, %3$s is installed version -->
+    <string name="update_dialog_message_both">Both a stable release (%1$s) and a pre-release (%2$s) are available.\nInstalled: %3$s\n\nChoose which version to install:</string>
+    <!-- %1$s is pre-release version -->
+    <string name="update_button_prerelease">Pre-release (%1$s)</string>
+    <!-- %1$s is stable version -->
+    <string name="update_button_stable">Stable (%1$s)</string>
+    <string name="update_dialog_title_prerelease">Dressroom Advanced pre-release</string>
+    <!-- %1$s is pre-release version, %2$s is installed version -->
+    <string name="update_dialog_message_prerelease">Pre-release %1$s is available. Installed: %2$s. Download and install it?</string>
+    <string name="update_dialog_title_stable">Dressroom Advanced update</string>
+    <!-- %1$s is new version, %2$s is installed version -->
+    <string name="update_dialog_message_stable">%1$s is available. Installed: %2$s. Download and install it?</string>
+    <string name="update_button_update">Update</string>
+    <string name="update_open_updater_failed">Could not open the updater</string>
+    <string name="update_downloading_title">Downloading update</string>
+    <string name="update_installing_title">Installing update</string>
+    <string name="update_checking_root">Checking root access...</string>
+    <string name="update_installing_root">Installing with root...</string>
+    <string name="update_file_unavailable">The downloaded update is no longer available</string>
+    <string name="update_installer_open_failed">Could not open Android\'s package installer</string>
+    <string name="update_allow_install_permission">Allow Dressroom Advanced to install updates, then try again.</string>
+    <string name="update_failed_title">Update failed</string>
+    <string name="update_failed_generic">Could not download the update. Please try again later.</string>
+    <string name="update_error_expired">This update request expired. Reopen the editor to check again.</string>
+    <string name="update_error_check_failed">Release check failed</string>
+    <string name="update_error_response_too_large">Release response too large</string>
+    <string name="update_error_multiple_apks">Release contains more than one APK</string>
+    <string name="update_error_cancelled">Download cancelled</string>
+    <string name="update_error_no_apk">No update APK is available</string>
+    <string name="update_error_create_folder">Could not create update folder</string>
+    <string name="update_error_download_failed">Update download failed</string>
+    <string name="update_error_timed_out">Download timed out</string>
+    <string name="update_error_size_mismatch">Update size mismatch</string>
+    <string name="update_error_incomplete">Update download was incomplete</string>
+    <string name="update_error_checksum_mismatch">Update checksum mismatch</string>
+    <string name="update_error_not_newer">The downloaded APK is not a newer Dressroom Advanced release</string>
+    <string name="update_error_different_key">The update was signed with a different key</string>
+    <string name="update_error_missing_signature">Update signature is missing</string>
+    <string name="update_error_untrusted_url">Untrusted update URL</string>
+    <string name="update_error_missing_redirect">Update redirect is missing</string>
+    <string name="update_error_too_many_redirects">Too many update redirects</string>
+    <!-- DIY Now Bar Studio: Tabs & Manager -->
+    <string name="nowbar_navigate_up">Navigate up</string>
+    <string name="nowbar_add_card">Add card</string>
+    <!-- %1$d is the maximum card count -->
+    <string name="nowbar_max_cards_reached">Maximum of %1$d cards reached</string>
+    <string name="nowbar_tab_cards">Cards</string>
+    <string name="nowbar_tab_stack_order">Stack order</string>
+    <string name="nowbar_tab_labs">Labs</string>
+    <string name="nowbar_choose_template">Choose a template</string>
+    <string name="nowbar_empty_footer">Cards appear immediately in your Lock screen and Always On Display Now Bar stack.</string>
+    <!-- %1$d is active count, %2$d is total count, %3$d is max count -->
+    <string name="nowbar_cards_count_header">%1$d active &#183; %2$d / %3$d</string>
+    <string name="nowbar_cards_footer">Tap a card to customize it. Toggle switches sync live to Lock screen and AOD without restarting SystemUI.</string>
+    <string name="nowbar_card_options">Card options</string>
+    <string name="nowbar_menu_move_up">Move up</string>
+    <string name="nowbar_menu_move_down">Move down</string>
+    <string name="nowbar_menu_duplicate">Duplicate</string>
+    <!-- %1$s is the original card title -->
+    <string name="nowbar_card_copy_title">%1$s Copy</string>
+    <string name="nowbar_new_card_dialog_title">New Now Bar card</string>
+    <!-- %1$s is the card title -->
+    <string name="nowbar_delete_card_title">Delete \"%1$s\"?</string>
+    <string name="nowbar_delete_card_message">This removes the card from your Lock screen and AOD Now Bar.</string>
+    <string name="nowbar_delete_card">Delete card</string>
+    <string name="nowbar_new_card_title">New card</string>
+    <string name="nowbar_edit_card_title">Edit card</string>
+    <string name="nowbar_save_cards_failed">Could not save DIY Now Bar cards</string>
+    <string name="nowbar_saved_toast">Saved to Now Bar</string>
+    <!-- DIY Now Bar Studio: Stack Order -->
+    <string name="nowbar_stack_priority">Stack priority</string>
+    <string name="nowbar_stack_state_active">Active</string>
+    <string name="nowbar_stack_state_default">Default</string>
+    <string name="nowbar_custom_stack_order">Custom stack order</string>
+    <string name="nowbar_custom_stack_order_summary">Choose which Now Bar cards stay on top</string>
+    <string name="nowbar_reset_top_screen_off">Reset to top on screen off</string>
+    <string name="nowbar_reset_top_screen_off_summary">Swipes stay while awake, then restore order on AOD</string>
+    <string name="nowbar_drag_pills_header">Drag pills to reorder</string>
+    <!-- %1$d is the number of live pills currently on the Now Bar -->
+    <string name="nowbar_stack_live_trailing">%1$d live now &#183; Top = front</string>
+    <string name="nowbar_stack_default_trailing">Top = front card</string>
+    <string name="nowbar_stack_footer">Drag the grip handle (or hold any pill) to reorder. Media, Do Not Disturb, Modes, Charging, apps, and DIY cards currently on your Now Bar are detected live.</string>
+    <string name="nowbar_reset_stack_button">Reset to Samsung default</string>
+    <string name="nowbar_reset_stack_toast">Restored default Now Bar stack order</string>
+    <string name="nowbar_save_stack_failed">Could not save Now Bar stack order</string>
+    <string name="nowbar_drag_to_reorder">Drag to reorder</string>
+    <!-- %1$s is the card subtitle -->
+    <string name="nowbar_on_nowbar_detail">On Now Bar &#183; %1$s</string>
+    <string name="nowbar_currently_on_nowbar">Currently on Now Bar</string>
+    <!-- %1$s is the DIY card type name -->
+    <string name="nowbar_diy_card_type">DIY %1$s card</string>
+    <string name="nowbar_applies_when_active">Applies when active</string>
+    <string name="nowbar_slot_diy_card">DIY Card</string>
+    <string name="nowbar_slot_media">Media Player</string>
+    <string name="nowbar_slot_call">Ongoing Call</string>
+    <string name="nowbar_slot_dnd">Do Not Disturb</string>
+    <string name="nowbar_slot_flashlight">Flashlight</string>
+    <string name="nowbar_slot_modes">Modes &amp; Routines</string>
+    <string name="nowbar_slot_brief">Now Brief</string>
+    <string name="nowbar_slot_native_battery">Native Battery</string>
+    <string name="nowbar_slot_contact_info">Contact Info</string>
+    <string name="nowbar_slot_charging">Charging</string>
+    <string name="nowbar_slot_sports">Live Sports</string>
+    <string name="nowbar_slot_finance">Finance</string>
+    <string name="nowbar_slot_commute">Commute</string>
+    <string name="nowbar_slot_clock_timer">Clock / Timer</string>
+    <string name="nowbar_slot_voice_recorder">Voice Recorder</string>
+    <string name="nowbar_slot_live_card">Live Card</string>
+    <!-- DIY Now Bar Studio: Labs -->
+    <string name="nowbar_save_labs_failed">Could not save Now Bar Labs settings</string>
+    <string name="nowbar_labs_section_native">Hidden native Samsung cards</string>
+    <string name="nowbar_labs_one_ui_9">One UI 9</string>
+    <string name="nowbar_labs_native_battery">Native Battery card</string>
+    <string name="nowbar_labs_native_battery_summary">Revive Samsung\'s scrapped persistent battery pill &amp; expandable bar</string>
+    <string name="nowbar_labs_battery_unplugged">Show battery card when unplugged</string>
+    <string name="nowbar_labs_battery_unplugged_summary">Keep the native battery card pinned even off the charger</string>
+    <string name="nowbar_labs_contact_card">Lock screen Contact Info card</string>
+    <string name="nowbar_labs_contact_card_summary">Show Samsung\'s built-in owner contact info card in Now Bar</string>
+    <string name="nowbar_labs_google_finance">Unlock Google Finance</string>
+    <string name="nowbar_labs_google_finance_summary">Bypass feature gates in Samsung Now Bar Settings &amp; live stack</string>
+    <string name="nowbar_labs_google_commute">Unlock Google Commute</string>
+    <string name="nowbar_labs_google_commute_summary">Bypass SCPM policy &amp; AI version check for Google Maps commute</string>
+    <string name="nowbar_labs_google_sports">Unlock Sports from Google</string>
+    <string name="nowbar_labs_google_sports_summary">Bypass region, MDM &amp; search-engine gates for Google Sports in Now Bar</string>
+    <string name="nowbar_labs_naver_sports">Unlock Naver Sports</string>
+    <string name="nowbar_labs_naver_sports_summary">Bypass region &amp; provider gates for Naver Sports (requires Naver app)</string>
+    <string name="nowbar_labs_gemini_commute">Gemini Space commute recap</string>
+    <string name="nowbar_labs_gemini_commute_summary">Turns on Samsung\'s gemini_space_commute_recap switch</string>
+    <string name="nowbar_labs_buds_music">Galaxy Buds in the music card</string>
+    <string name="nowbar_labs_buds_music_summary">Turns on Samsung\'s buds_enable switch for the Now Bar player</string>
+    <string name="nowbar_labs_section_global_shader">Global native GPU shader</string>
+    <string name="nowbar_labs_all_cards">All cards</string>
+    <string name="nowbar_labs_shader_non_diy">Shader on non-DIY cards</string>
+    <string name="nowbar_labs_global_shader_title">Global Now Bar shader</string>
+    <string name="nowbar_labs_shader_off">Off (Samsung default)</string>
+    <string name="nowbar_labs_shader_ai_presence_sweep">AI Presence (Snake Sweep)</string>
+    <string name="nowbar_labs_section_studio">Studio integration</string>
+    <string name="nowbar_labs_long_press_studio">Long-press Settings opens Studio</string>
+    <string name="nowbar_labs_long_press_studio_summary">Tapping Settings on a long-pressed DIY card jumps straight to its editor</string>
+    <string name="nowbar_labs_footer">Native Battery, Contact Info, and GPU shader overrides sync live to your Lock screen and AOD. Reopen Samsung Now Bar Settings after toggling Finance or Commute.</string>
+    <!-- DIY Now Bar Studio: Card Types, Effects & Presets -->
+    <string name="nowbar_type_custom">Custom</string>
+    <string name="nowbar_type_timer">Timer</string>
+    <string name="nowbar_type_goal">Goal</string>
+    <string name="nowbar_type_stats">Stats</string>
+    <string name="nowbar_type_launcher">Launcher</string>
+    <string name="nowbar_type_checklist">Checklist</string>
+    <string name="nowbar_type_controls">Controls</string>
+    <string name="nowbar_template_summary_custom">Icon, text, notes &amp; optional progress bar</string>
+    <string name="nowbar_template_summary_timer">Live ticking D-Day countdown or stopwatch</string>
+    <string name="nowbar_template_summary_goal">Daily goal counter with lockscreen +step button</string>
+    <string name="nowbar_template_summary_stats">Live battery, memory, storage, network &amp; sparkline</string>
+    <string name="nowbar_template_summary_launcher">Up to 4 app shortcuts, URLs &amp; flashlight toggle</string>
+    <string name="nowbar_template_summary_checklist">Check off up to 6 tasks directly on lock screen</string>
+    <string name="nowbar_template_summary_controls">Live brightness &amp; volume sliders plus quick toggles</string>
+    <string name="nowbar_effect_clean_glass">Clean Glass</string>
+    <string name="nowbar_effect_radial_glow">Radial Glow</string>
+    <string name="nowbar_effect_ai_presence">AI Presence (Snake)</string>
+    <string name="nowbar_effect_outer_glow">Outer Glow Ring</string>
+    <string name="nowbar_effect_gradient_fill">Gradient Fill</string>
+    <string name="nowbar_effect_ai_border">AI Border Travel</string>
+    <string name="nowbar_effect_guiding_light">Guiding Light</string>
+    <string name="nowbar_effect_summary_clean_glass">Minimal translucent glass surface</string>
+    <string name="nowbar_effect_summary_radial_glow">Native Samsung radial accent glow behind the icon</string>
+    <string name="nowbar_effect_summary_ai_presence">Native Samsung AIPresenceView metaball snake sweep</string>
+    <string name="nowbar_effect_summary_outer_glow">Native Samsung OuterGlowView dual-pass AGSL halo</string>
+    <string name="nowbar_effect_summary_gradient_fill">Native linear gradient wash across the card</string>
+    <string name="nowbar_effect_summary_ai_border">Samsung\'s moving color border around the pill</string>
+    <string name="nowbar_effect_summary_guiding_light">Samsung\'s soft, animated edge lighting</string>
+    <string name="nowbar_preset_galaxy_ai">Galaxy AI</string>
+    <string name="nowbar_preset_cyber_neon">Cyber Neon</string>
+    <string name="nowbar_preset_sunset">Sunset</string>
+    <string name="nowbar_preset_aurora">Aurora</string>
+    <string name="nowbar_preset_emerald">Emerald</string>
+    <string name="nowbar_preset_rose_gold">Rose Gold</string>
+    <!-- DIY Now Bar Studio: Card Editor -->
+    <string name="nowbar_editor_tab_content">Content</string>
+    <string name="nowbar_editor_tab_icon">Icon</string>
+    <string name="nowbar_editor_tab_effects">Effects</string>
+    <string name="nowbar_editor_tab_actions">Actions</string>
+    <!-- %1$s is the card type name such as Custom, Timer, Goal -->
+    <string name="nowbar_editor_type_details">%1$s details</string>
+    <string name="nowbar_field_title">Title</string>
+    <string name="nowbar_field_title_hint">Card title</string>
+    <string name="nowbar_field_subtitle">Subtitle</string>
+    <string name="nowbar_field_subtitle_collapsed_hint">Second line on collapsed pill</string>
+    <string name="nowbar_field_subtitle_expanded_hint">Shown in expanded header</string>
+    <string name="nowbar_field_subtitle_stats_hint">Live telemetry (or use {bat}, {temp}, {ram}...)</string>
+    <string name="nowbar_field_subtitle_launcher_hint">e.g. Tap to expand</string>
+    <string name="nowbar_field_secondary_icon">Subtitle mini-icon</string>
+    <string name="nowbar_field_expanded_note">Expanded note</string>
+    <string name="nowbar_field_expanded_note_hint">Optional multi-line text shown when expanded</string>
+    <string name="nowbar_field_show_progress">Show progress bar</string>
+    <string name="nowbar_field_show_progress_summary">Display a progress bar when expanded</string>
+    <string name="nowbar_field_progress_label">Progress label</string>
+    <string name="nowbar_field_progress_label_hint">e.g. Reading progress</string>
+    <string name="nowbar_field_current">Current</string>
+    <string name="nowbar_field_target">Target</string>
+    <string name="nowbar_timer_countdown">Countdown</string>
+    <string name="nowbar_timer_stopwatch">Stopwatch</string>
+    <string name="nowbar_timer_big_clock">Big primary-line clock</string>
+    <string name="nowbar_timer_big_clock_summary">Put the live ticking chronometer on the bold main line of the pill</string>
+    <string name="nowbar_timer_target_date">Target date</string>
+    <string name="nowbar_timer_target_time">Target time</string>
+    <string name="nowbar_goal_unit">Unit</string>
+    <string name="nowbar_goal_unit_hint">e.g. glasses, pages, reps, km</string>
+    <string name="nowbar_goal_step_size">Step size (+ / -)</string>
+    <string name="nowbar_stats_custom_pill_text">Custom pill text (optional)</string>
+    <string name="nowbar_stats_custom_pill_text_hint">Blank = primary metric, or e.g. {bat} &#183; {temp} &#183; {ram}</string>
+    <string name="nowbar_stats_sparkline">Live sparkline graph</string>
+    <string name="nowbar_stats_sparkline_summary">Render a real-time Canvas telemetry chart inside the expanded card</string>
+    <string name="nowbar_stats_collapsed_metric">Collapsed pill metric</string>
+    <string name="nowbar_stats_custom_text_active">Custom pill text active</string>
+    <string name="nowbar_stats_keep_one_metric">Keep at least one metric enabled</string>
+    <!-- %1$d is 1-based shortcut slot number -->
+    <string name="nowbar_shortcut_slot">Shortcut %1$d</string>
+    <string name="nowbar_shortcut_not_set">Not set</string>
+    <string name="nowbar_shortcut_open_app">Open installed app</string>
+    <string name="nowbar_shortcut_flashlight_no_unlock">Toggle flashlight (no unlock)</string>
+    <string name="nowbar_shortcut_open_url">Open URL</string>
+    <string name="nowbar_shortcut_open_studio">Open DIY Studio</string>
+    <string name="nowbar_shortcut_clear">Clear shortcut</string>
+    <!-- %1$d is 1-based task index -->
+    <string name="nowbar_checklist_task_hint">Task %1$d</string>
+    <string name="nowbar_checklist_remove_item">Remove item</string>
+    <string name="nowbar_checklist_add_task">+ Add task</string>
+    <!-- %1$d is current item count, %2$d is max items -->
+    <string name="nowbar_checklist_count_of">%1$d of %2$d</string>
+    <string name="nowbar_checklist_new_task">New task</string>
+    <string name="nowbar_controls_subtitle_label">Collapsed subtitle (optional)</string>
+    <string name="nowbar_controls_subtitle_hint">Blank = live Brightness &amp; Volume readout</string>
+    <string name="nowbar_controls_expanded_live_view">Expanded live view</string>
+    <string name="nowbar_controls_expanded_live_view_summary">Interactive Brightness &amp; Media sliders + Torch, Ringer &amp; Auto toggles</string>
+    <!-- DIY Now Bar Studio: Icon, Effects, Actions & Pickers -->
+    <string name="nowbar_icon_source_symbol">Symbol</string>
+    <string name="nowbar_icon_source_emoji">Emoji</string>
+    <string name="nowbar_icon_source_app">App</string>
+    <string name="nowbar_icon_source_photo">Photo</string>
+    <string name="nowbar_icon_none_selected">None selected</string>
+    <string name="nowbar_icon_installed_app">Installed app</string>
+    <string name="nowbar_icon_photo_active">Custom photo active</string>
+    <string name="nowbar_icon_photo_pick">Tap to pick an image</string>
+    <string name="nowbar_icon_photo_title">Photo icon</string>
+    <string name="nowbar_icon_shape_accent">Shape &amp; accent</string>
+    <string name="nowbar_icon_shape_squircle">Squircle</string>
+    <string name="nowbar_icon_shape_circle">Circle</string>
+    <string name="nowbar_icon_emoji_label">Emoji or short monogram</string>
+    <string name="nowbar_icon_emoji_hint">Type any emoji</string>
+    <string name="nowbar_icon_photo_picker_failed">Could not open photo picker</string>
+    <!-- %1$s is the error detail -->
+    <string name="nowbar_icon_photo_import_failed">Could not import photo: %1$s</string>
+    <string name="nowbar_shader_presets">Shader presets</string>
+    <string name="nowbar_shader_primary_color">Primary shader color</string>
+    <string name="nowbar_shader_secondary_color">Secondary shader color</string>
+    <string name="nowbar_action_auto_smart">Auto (smart)</string>
+    <string name="nowbar_action_open_app">Open app</string>
+    <string name="nowbar_action_open_url">Open URL</string>
+    <string name="nowbar_action_toggle_flashlight">Toggle flashlight</string>
+    <string name="nowbar_action_open_editor">Open editor</string>
+    <string name="nowbar_action_collapsed_quick_button">Collapsed quick button</string>
+    <string name="nowbar_action_expanded_tap">Expanded card tap action</string>
+    <string name="nowbar_behavior_section">Behavior</string>
+    <string name="nowbar_behavior_expandable">Expandable card</string>
+    <string name="nowbar_behavior_expandable_summary">Allow tapping the Now Bar pill to open the expanded card</string>
+    <string name="nowbar_behavior_fullscreen">Fullscreen expanded card</string>
+    <string name="nowbar_behavior_fullscreen_summary">Open a full-screen interactive lock screen overlay when expanded</string>
+    <string name="nowbar_behavior_skip_bouncer">Skip lock screen bouncer</string>
+    <string name="nowbar_behavior_skip_bouncer_summary">Run card tap and quick actions directly without asking to unlock</string>
+    <string name="nowbar_behavior_hide_sensitive">Hide sensitive content on lock screen</string>
+    <string name="nowbar_behavior_hide_sensitive_summary">Follow Samsung lockscreen privacy settings</string>
+    <string name="nowbar_select_app">Select an app</string>
+    <string name="nowbar_target_app">Target app</string>
+    <string name="nowbar_target_url">Target URL</string>
+    <string name="nowbar_hex_color_error">Enter a 6-digit hex color like #3B82F6</string>
+    <string name="nowbar_enter_url_title">Enter URL</string>
+    <string name="nowbar_loading_apps">Loading apps...</string>
+    <string name="nowbar_search_apps_hint">Search apps</string>
+    <string name="nowbar_choose_app_title">Choose app</string>
+    <!-- DIY Now Bar: Live Views, Preview, Fullscreen Card & Publisher -->
+    <string name="nowbar_edit_in_studio">Edit in Studio</string>
+    <string name="nowbar_timer_completed">Completed</string>
+    <string name="nowbar_timer_elapsed">Elapsed</string>
+    <string name="nowbar_timer_running">Running</string>
+    <string name="nowbar_timer_stopwatch_running">Stopwatch running</string>
+    <string name="nowbar_timer_stopwatch_paused">Stopwatch paused</string>
+    <string name="nowbar_badge_paused">PAUSED</string>
+    <string name="nowbar_badge_done">DONE</string>
+    <string name="nowbar_badge_timer">TIMER</string>
+    <string name="nowbar_progress_default">Progress</string>
+    <string name="nowbar_uncheck_all">Uncheck all</string>
+    <string name="nowbar_check_next">Check next</string>
+    <!-- Short button label to add a step value, e.g. "Add 1" -->
+    <string name="nowbar_goal_add_step">Add %1$d</string>
+    <string name="nowbar_checklist_empty_studio">Add checklist items in DIY Now Bar Studio.</string>
+    <string name="nowbar_checklist_empty_below">Add checklist items below.</string>
+    <string name="nowbar_launcher_empty_below">Configure up to 4 quick launcher tiles below.</string>
+    <string name="nowbar_checklist_no_items">No items yet</string>
+    <!-- %1$d is total checklist items -->
+    <string name="nowbar_checklist_all_done">All %1$d done</string>
+    <!-- %1$d is completed count, %2$d is total count -->
+    <string name="nowbar_checklist_progress_done">%1$d/%2$d done</string>
+    <!-- Short label for flashlight shortcut button -->
+    <string name="nowbar_short_torch">Torch</string>
+    <string name="nowbar_short_torch_on">Torch On</string>
+    <!-- Short label for DIY Now Bar Studio shortcut button -->
+    <string name="nowbar_short_studio">Studio</string>
+    <string name="nowbar_short_link">Link</string>
+    <string name="nowbar_short_action">Action</string>
+    <string name="nowbar_short_open_app">Open App</string>
+    <string name="nowbar_short_open_link">Open Link</string>
+    <string name="nowbar_controls_brightness">Brightness</string>
+    <string name="nowbar_controls_sound">Sound</string>
+    <string name="nowbar_controls_mute">Mute</string>
+    <string name="nowbar_controls_vibrate">Vibrate</string>
+    <string name="nowbar_controls_auto">Auto</string>
+    <string name="nowbar_controls_auto_on">Auto On</string>
+    <!-- Compact readout for brightness and media volume, %1$d is brightness %, %2$d is volume % -->
+    <string name="nowbar_controls_summary">Bright %1$d%% &#183; Vol %2$d%%</string>
+    <string name="nowbar_preview_collapsed_only">Collapsed pill only</string>
+    <string name="nowbar_preview_tap_collapse">Tap card to collapse</string>
+    <string name="nowbar_preview_tap_expand">Tap pill to preview expanded</string>
+    <string name="nowbar_preview_aod">AOD preview</string>
+    <string name="nowbar_preview_lockscreen">Lock screen</string>
+    <string name="nowbar_preview_native_unavailable">Native preview unavailable on this provider</string>
+    <!-- Number of active launcher shortcuts -->
+    <plurals name="nowbar_shortcuts_count">
+        <item quantity="one">%1$d shortcut</item>
+        <item quantity="two">%1$d shortcuts</item>
+        <item quantity="other">%1$d shortcuts</item>
+    </plurals>
+    <string name="nowbar_stat_battery">Battery</string>
+    <string name="nowbar_stat_memory">Memory</string>
+    <string name="nowbar_stat_storage">Storage</string>
+    <string name="nowbar_stat_network">Network</string>
+    <string name="nowbar_stat_uptime">Uptime</string>
+    <string name="nowbar_stat_generic">Stat</string>
+    <string name="nowbar_stat_bat_pct" formatted="false">Bat %</string>
+    <string name="nowbar_stat_power">Power</string>
+    <string name="nowbar_stat_temp">Temp</string>
+    <string name="nowbar_stat_ram_pct" formatted="false">RAM %</string>
+    <!-- %1$s is formatted gigabytes, e.g. 42.5 GB free -->
+    <string name="nowbar_stat_storage_free">%1$s free</string>
+    <!-- %1$s is formatted device uptime, e.g. Up 3h 20m -->
+    <string name="nowbar_stat_uptime_compact">Up %1$s</string>
+    <string name="nowbar_net_offline">Offline</string>
+    <string name="nowbar_net_wifi">Wi-Fi</string>
+    <string name="nowbar_net_mobile">Mobile Data</string>
+    <string name="nowbar_net_ethernet">Ethernet</string>
+    <string name="nowbar_net_connected">Connected</string>
+    <!-- %1$s is the network transport name, e.g. Wi-Fi -->
+    <string name="nowbar_net_with_vpn">%1$s &#183; VPN</string>
+    <!-- DIY Now Bar: Default template card content -->
+    <string name="nowbar_default_title_custom">My Now Bar</string>
+    <string name="nowbar_default_subtitle_tap_expand">Tap to expand</string>
+    <string name="nowbar_default_body_custom">Customize this card with icons, progress bars, quick actions, and live AGSL shaders.</string>
+    <string name="nowbar_default_subtitle_event_timer">Event timer</string>
+    <string name="nowbar_default_title_water">Water Intake</string>
+    <string name="nowbar_default_subtitle_daily_goal">Daily goal</string>
+    <string name="nowbar_default_unit_glasses">glasses</string>
+    <string name="nowbar_default_title_device_stats">Device Stats</string>
+    <string name="nowbar_default_subtitle_live_telemetry">Live telemetry</string>
+    <string name="nowbar_default_title_quick_actions">Quick Actions</string>
+    <string name="nowbar_default_title_todays_tasks">Today\'s Tasks</string>
+    <string name="nowbar_default_subtitle_check_off">Tap to check off</string>
+    <string name="nowbar_default_task_stretch">Morning stretch</string>
+    <string name="nowbar_default_task_water">Drink water</string>
+    <string name="nowbar_default_task_messages">Reply to messages</string>
+    <string name="nowbar_default_title_live_controls">Live Controls</string>
+    <string name="nowbar_default_subtitle_brightness_volume">Brightness &amp; Volume</string>
+</resources>
