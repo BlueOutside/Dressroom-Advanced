@@ -57,6 +57,26 @@ final class AodTweaks {
         "StandBy Bold", "Minimal Thin", "Editorial Serif", "Retro Mono", "Custom font"
     };
 
+    static String[] lowLightThemeLabels(android.content.Context context) {
+        return new String[] {
+            ModuleStrings.getOrFallback(context, R.string.standby_theme_red, LOW_LIGHT_THEME_LABELS[0]),
+            ModuleStrings.getOrFallback(context, R.string.standby_theme_amber, LOW_LIGHT_THEME_LABELS[1]),
+            ModuleStrings.getOrFallback(context, R.string.standby_theme_blue, LOW_LIGHT_THEME_LABELS[2]),
+            ModuleStrings.getOrFallback(context, R.string.standby_theme_emerald, LOW_LIGHT_THEME_LABELS[3]),
+            ModuleStrings.getOrFallback(context, R.string.standby_theme_white, LOW_LIGHT_THEME_LABELS[4])
+        };
+    }
+
+    static String[] lowLightFontLabels(android.content.Context context) {
+        return new String[] {
+            ModuleStrings.getOrFallback(context, R.string.standby_font_bold, LOW_LIGHT_FONT_LABELS[0]),
+            ModuleStrings.getOrFallback(context, R.string.standby_font_thin, LOW_LIGHT_FONT_LABELS[1]),
+            ModuleStrings.getOrFallback(context, R.string.standby_font_serif, LOW_LIGHT_FONT_LABELS[2]),
+            ModuleStrings.getOrFallback(context, R.string.standby_font_mono, LOW_LIGHT_FONT_LABELS[3]),
+            ModuleStrings.getOrFallback(context, R.string.common_custom_font, LOW_LIGHT_FONT_LABELS[4])
+        };
+    }
+
     static final String FULLSCREEN_FEATURE = "SEC_FLOATING_FEATURE_LCD_CONFIG_AOD_FULLSCREEN";
     static final String AOD_ITEM_FEATURE = "SEC_FLOATING_FEATURE_FRAMEWORK_CONFIG_AOD_ITEM";
     static final String AUTO_AOD_EXCLUDED_TOKEN = "m55";

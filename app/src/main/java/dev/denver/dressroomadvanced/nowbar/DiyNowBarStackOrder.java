@@ -604,6 +604,59 @@ final class DiyNowBarStackOrder {
         return new LiveEntry(slotId, slotId, "", KIND_APP, "", 0xFF64748B, false);
     }
 
+    static String displayLabel(android.content.Context context, LiveEntry entry) {
+        if (entry == null) return "";
+        if (SLOT_MEDIA.equals(entry.slotId)) {
+            return ModuleStrings.getOrFallback(context, R.string.nowbar_slot_media, entry.label);
+        }
+        if (SLOT_CALL.equals(entry.slotId)) {
+            return ModuleStrings.getOrFallback(context, R.string.nowbar_slot_call, entry.label);
+        }
+        if (SLOT_DND.equals(entry.slotId)) {
+            return ModuleStrings.getOrFallback(context, R.string.nowbar_slot_dnd, entry.label);
+        }
+        if (SLOT_FLASHLIGHT.equals(entry.slotId)) {
+            return ModuleStrings.getOrFallback(context, R.string.nowbar_slot_flashlight, entry.label);
+        }
+        if (SLOT_MODE.equals(entry.slotId)) {
+            return ModuleStrings.getOrFallback(context, R.string.nowbar_slot_modes, entry.label);
+        }
+        if (SLOT_BRIEF.equals(entry.slotId)) {
+            return ModuleStrings.getOrFallback(context, R.string.nowbar_slot_brief, entry.label);
+        }
+        if (SLOT_NATIVE_BATTERY.equals(entry.slotId)) {
+            return ModuleStrings.getOrFallback(context, R.string.nowbar_slot_native_battery, entry.label);
+        }
+        if (SLOT_CONTACT_INFO.equals(entry.slotId)) {
+            return ModuleStrings.getOrFallback(context, R.string.nowbar_slot_contact_info, entry.label);
+        }
+        if (SLOT_CHARGING.equals(entry.slotId)) {
+            return ModuleStrings.getOrFallback(context, R.string.nowbar_slot_charging, entry.label);
+        }
+        if (SLOT_SPORTS.equals(entry.slotId)) {
+            return ModuleStrings.getOrFallback(context, R.string.nowbar_slot_sports, entry.label);
+        }
+        if (SLOT_FINANCE.equals(entry.slotId)) {
+            return ModuleStrings.getOrFallback(context, R.string.nowbar_slot_finance, entry.label);
+        }
+        if (SLOT_COMMUTE.equals(entry.slotId)) {
+            return ModuleStrings.getOrFallback(context, R.string.nowbar_slot_commute, entry.label);
+        }
+        if (SLOT_CLOCK.equals(entry.slotId)) {
+            return ModuleStrings.getOrFallback(context, R.string.nowbar_slot_clock_timer, entry.label);
+        }
+        if (SLOT_RECORDER.equals(entry.slotId)) {
+            return ModuleStrings.getOrFallback(context, R.string.nowbar_slot_voice_recorder, entry.label);
+        }
+        if ("DIY Card".equals(entry.label)) {
+            return ModuleStrings.getOrFallback(context, R.string.nowbar_slot_diy_card, entry.label);
+        }
+        if ("Live Card".equals(entry.label)) {
+            return ModuleStrings.getOrFallback(context, R.string.nowbar_slot_live_card, entry.label);
+        }
+        return entry.label;
+    }
+
     static String friendlyPackageName(String pkg) {
         if (pkg == null || pkg.isEmpty()) return "";
         int dot = pkg.lastIndexOf('.');

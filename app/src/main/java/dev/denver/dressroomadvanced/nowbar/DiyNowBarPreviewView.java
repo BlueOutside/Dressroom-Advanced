@@ -254,11 +254,23 @@ final class DiyNowBarPreviewView extends LinearLayout {
     private void updateStageChrome() {
         boolean canExpand = card == null || card.expandable;
         if (!canExpand) {
-            hintLabel.setText("Collapsed pill only");
+            hintLabel.setText(
+                    ModuleStrings.getOrFallback(
+                            ui.host, R.string.nowbar_preview_collapsed_only, "Collapsed pill only"));
         } else {
-            hintLabel.setText(expanded ? "Tap card to collapse" : "Tap pill to preview expanded");
+            hintLabel.setText(
+                    ModuleStrings.getOrFallback(
+                            ui.host,
+                            expanded
+                                    ? R.string.nowbar_preview_tap_collapse
+                                    : R.string.nowbar_preview_tap_expand,
+                            expanded ? "Tap card to collapse" : "Tap pill to preview expanded"));
         }
-        modeToggle.setText(aodMode ? "AOD preview" : "Lock screen");
+        modeToggle.setText(
+                ModuleStrings.getOrFallback(
+                        ui.host,
+                        aodMode ? R.string.nowbar_preview_aod : R.string.nowbar_preview_lockscreen,
+                        aodMode ? "AOD preview" : "Lock screen"));
 
         GradientDrawable stageBg = new GradientDrawable();
         stageBg.setCornerRadius(ui.dp(26));
@@ -331,7 +343,11 @@ final class DiyNowBarPreviewView extends LinearLayout {
 
     private void showUnavailablePreview() {
         if (hintLabel != null && card != null && DiyNowBarNativeShaders.isNativeCapableEffect(card.effect))
-            hintLabel.setText("Native preview unavailable on this provider");
+            hintLabel.setText(
+                    ModuleStrings.getOrFallback(
+                            ui.host,
+                            R.string.nowbar_preview_native_unavailable,
+                            "Native preview unavailable on this provider"));
     }
 
     private void renderContent() {
@@ -523,7 +539,10 @@ final class DiyNowBarPreviewView extends LinearLayout {
                 if (card.showProgress) {
                     addProgressBlock(
                             root,
-                            card.progressLabel.isEmpty() ? "Progress" : card.progressLabel,
+                            card.progressLabel.isEmpty()
+                                    ? ModuleStrings.getOrFallback(
+                                            ui.host, R.string.nowbar_progress_default, "Progress")
+                                    : card.progressLabel,
                             card.goalSummary(),
                             card.goalPercent());
                 }
@@ -534,7 +553,10 @@ final class DiyNowBarPreviewView extends LinearLayout {
                         card.timerMode == DiyNowBarCard.TIMER_STOPWATCH
                                 ? DiyNowBarCard.formatDuration(card.stopwatchElapsedMs(now))
                                 : (card.countdownRemainingMs(now) <= 0L
-                                        ? "Completed"
+                                        ? ModuleStrings.getOrFallback(
+                                                ui.host,
+                                                R.string.nowbar_timer_completed,
+                                                "Completed")
                                         : DiyNowBarCard.formatDuration(
                                                 card.countdownRemainingMs(now)));
                 big.setText(readout);
@@ -549,21 +571,47 @@ final class DiyNowBarPreviewView extends LinearLayout {
                 root.addView(big, bigLp);
                 if (card.timerMode == DiyNowBarCard.TIMER_COUNTDOWN) {
                     int pct = card.countdownProgress(now);
-                    addProgressBlock(root, "Elapsed", pct + "%", pct);
-                    addPreviewButtons(root, List.of("Restart"));
+                    addProgressBlock(
+                            root,
+                            ModuleStrings.getOrFallback(
+                                    ui.host, R.string.nowbar_timer_elapsed, "Elapsed"),
+                            pct + "%",
+                            pct);
+                    addPreviewButtons(
+                            root,
+                            List.of(
+                                    ModuleStrings.getOrFallback(
+                                            ui.host, R.string.common_restart, "Restart")));
                 } else {
                     addPreviewButtons(
-                            root, List.of(card.timerRunning ? "Pause" : "Start", "Reset"));
+                            root,
+                            List.of(
+                                    ModuleStrings.getOrFallback(
+                                            ui.host,
+                                            card.timerRunning
+                                                    ? R.string.common_pause
+                                                    : R.string.common_start,
+                                            card.timerRunning ? "Pause" : "Start"),
+                                    ModuleStrings.getOrFallback(
+                                            ui.host, R.string.common_reset, "Reset")));
                 }
             }
             case DiyNowBarCard.TYPE_GOAL -> {
                 addProgressBlock(
                         root,
-                        card.unit.isEmpty() ? "Progress" : card.unit,
+                        card.unit.isEmpty()
+                                ? ModuleStrings.getOrFallback(
+                                        ui.host, R.string.nowbar_progress_default, "Progress")
+                                : card.unit,
                         card.goalSummary(),
                         card.goalPercent());
                 addPreviewButtons(
-                        root, List.of("-" + card.stepValue, "+" + card.stepValue, "Reset"));
+                        root,
+                        List.of(
+                                "-" + card.stepValue,
+                                "+" + card.stepValue,
+                                ModuleStrings.getOrFallback(
+                                        ui.host, R.string.common_reset, "Reset")));
             }
             case DiyNowBarCard.TYPE_STATS -> {
                 if (stats != null) addStatsGrid(root, stats);
@@ -574,7 +622,12 @@ final class DiyNowBarPreviewView extends LinearLayout {
             }
             case DiyNowBarCard.TYPE_CHECKLIST -> {
                 addChecklistRows(root);
-                if (card.checklistDoneCount() > 0) addPreviewButtons(root, List.of("Uncheck all"));
+                if (card.checklistDoneCount() > 0)
+                    addPreviewButtons(
+                            root,
+                            List.of(
+                                    ModuleStrings.getOrFallback(
+                                            ui.host, R.string.nowbar_uncheck_all, "Uncheck all")));
             }
             default -> {}
         }
@@ -678,13 +731,13 @@ final class DiyNowBarPreviewView extends LinearLayout {
                 if (idx < count) {
                     int bit = bits.get(idx);
                     TextView l = new TextView(ui.host);
-                    l.setText(DiyNowBarCard.statName(bit));
+                    l.setText(DiyNowBarCard.statName(ui.host, bit));
                     l.setTextColor(0xB3FFFFFF);
                     l.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
                     tile.addView(l);
 
                     TextView v = new TextView(ui.host);
-                    v.setText(stats.detail(bit));
+                    v.setText(stats.detail(ui.host, bit));
                     v.setTextColor(Color.WHITE);
                     v.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
                     v.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
@@ -707,7 +760,12 @@ final class DiyNowBarPreviewView extends LinearLayout {
             if (slot.action != DiyNowBarCard.ACTION_NONE) active.add(slot);
         }
         if (active.isEmpty()) {
-            addBodyText(root, "Configure up to 4 quick launcher tiles below.");
+            addBodyText(
+                    root,
+                    ModuleStrings.getOrFallback(
+                            ui.host,
+                            R.string.nowbar_launcher_empty_below,
+                            "Configure up to 4 quick launcher tiles below."));
             return;
         }
         LinearLayout row = new LinearLayout(ui.host);
@@ -758,7 +816,10 @@ final class DiyNowBarPreviewView extends LinearLayout {
 
     private void addChecklistRows(LinearLayout root) {
         if (card.checklist.isEmpty()) {
-            addBodyText(root, "Add checklist items below.");
+            addBodyText(
+                    root,
+                    ModuleStrings.getOrFallback(
+                            ui.host, R.string.nowbar_checklist_empty_below, "Add checklist items below."));
             return;
         }
         LinearLayout list = new LinearLayout(ui.host);
@@ -834,14 +895,19 @@ final class DiyNowBarPreviewView extends LinearLayout {
 
     private String shortcutFallbackLabel(DiyNowBarCard.ShortcutSlot slot) {
         return switch (slot.action) {
-            case DiyNowBarCard.ACTION_FLASHLIGHT -> "Torch";
-            case DiyNowBarCard.ACTION_OPEN_EDITOR -> "Studio";
-            case DiyNowBarCard.ACTION_OPEN_URL -> "Link";
+            case DiyNowBarCard.ACTION_FLASHLIGHT ->
+                    ModuleStrings.getOrFallback(ui.host, R.string.nowbar_short_torch, "Torch");
+            case DiyNowBarCard.ACTION_OPEN_EDITOR ->
+                    ModuleStrings.getOrFallback(ui.host, R.string.nowbar_short_studio, "Studio");
+            case DiyNowBarCard.ACTION_OPEN_URL ->
+                    ModuleStrings.getOrFallback(ui.host, R.string.nowbar_short_link, "Link");
             case DiyNowBarCard.ACTION_OPEN_APP -> {
                 String lbl = DiyNowBarIcons.loadAppLabel(ui.host, slot.target);
-                yield lbl.isEmpty() ? "App" : lbl;
+                yield lbl.isEmpty()
+                        ? ModuleStrings.getOrFallback(ui.host, R.string.nowbar_icon_source_app, "App")
+                        : lbl;
             }
-            default -> "Action";
+            default -> ModuleStrings.getOrFallback(ui.host, R.string.nowbar_short_action, "Action");
         };
     }
 
@@ -854,24 +920,29 @@ final class DiyNowBarPreviewView extends LinearLayout {
             Context ctx, DiyNowBarCard card, DiyNowBarPublisher.StatsSnapshot stats, long now) {
         return switch (card.type) {
             case DiyNowBarCard.TYPE_GOAL -> card.goalSummary();
-            case DiyNowBarCard.TYPE_CHECKLIST -> card.checklistSummary();
+            case DiyNowBarCard.TYPE_CHECKLIST -> card.checklistSummary(ctx);
             case DiyNowBarCard.TYPE_STATS -> {
                 if (!card.statsFormat.isEmpty()) {
                     yield stats == null ? card.statsFormat : stats.format(card.statsFormat);
                 }
-                yield stats == null ? card.subtitle : stats.compact(card.statsPrimary);
+                yield stats == null ? card.subtitle : stats.compact(ctx, card.statsPrimary);
             }
             case DiyNowBarCard.TYPE_LAUNCHER -> {
                 if (!card.subtitle.isEmpty()) yield card.subtitle;
                 int count = card.activeShortcutCount();
-                yield count + (count == 1 ? " shortcut" : " shortcuts");
+                yield ModuleStrings.quantity(
+                        ctx,
+                        R.plurals.nowbar_shortcuts_count,
+                        count,
+                        count == 1 ? "%1$d shortcut" : "%1$d shortcuts",
+                        count);
             }
             case DiyNowBarCard.TYPE_TIMER -> {
                 if (card.timerMode == DiyNowBarCard.TIMER_STOPWATCH) {
                     yield DiyNowBarCard.formatDuration(card.stopwatchElapsedMs(now));
                 }
                 long rem = card.countdownRemainingMs(now);
-                if (rem <= 0L) yield "Done";
+                if (rem <= 0L) yield ModuleStrings.getOrFallback(ctx, R.string.common_done, "Done");
                 yield rem < 86_400_000L
                         ? DiyNowBarCard.formatDuration(rem)
                         : DiyNowBarCard.formatCountdownBadge(rem);
@@ -881,34 +952,49 @@ final class DiyNowBarPreviewView extends LinearLayout {
                             ? card.subtitle
                             : (ctx != null
                                     ? DiyNowBarLiveViews.controlsSummary(ctx)
-                                    : "Bright 65% \u00B7 Vol 50%");
+                                    : ModuleStrings.getOrFallback(
+                                            null,
+                                            R.string.nowbar_controls_summary,
+                                            "Bright %1$d%% \u00B7 Vol %2$d%%",
+                                            65,
+                                            50));
             default -> card.subtitle;
         };
     }
 
-    private static String previewExpandedSubtitle(
+    private String previewExpandedSubtitle(
             DiyNowBarCard card, DiyNowBarPublisher.StatsSnapshot stats, long now) {
         if (card.type == DiyNowBarCard.TYPE_STATS) {
             if (!card.subtitle.isEmpty()) {
                 return stats == null ? card.subtitle : stats.format(card.subtitle);
             }
-            return previewPillSubtitle(card, stats, now);
+            return previewPillSubtitle(ui.host, card, stats, now);
         }
         if (!card.subtitle.isEmpty() && card.type != DiyNowBarCard.TYPE_GOAL) return card.subtitle;
-        return previewPillSubtitle(card, stats, now);
+        return previewPillSubtitle(ui.host, card, stats, now);
     }
 
-    private static String previewBadge(DiyNowBarCard card, long now) {
+    private String previewBadge(DiyNowBarCard card, long now) {
         return switch (card.type) {
             case DiyNowBarCard.TYPE_GOAL -> card.goalPercent() + "%";
             case DiyNowBarCard.TYPE_CHECKLIST ->
                     card.checklistDoneCount() + "/" + card.checklist.size();
             case DiyNowBarCard.TYPE_TIMER ->
                     card.timerMode == DiyNowBarCard.TIMER_STOPWATCH
-                            ? (card.timerRunning ? "LIVE" : "PAUSED")
-                            : (card.countdownRemainingMs(now) <= 0L ? "DONE" : "TIMER");
-            case DiyNowBarCard.TYPE_STATS -> "LIVE";
-            case DiyNowBarCard.TYPE_CONTROLS -> "LIVE";
+                            ? ModuleStrings.getOrFallback(
+                                    ui.host,
+                                    card.timerRunning
+                                            ? R.string.common_badge_live
+                                            : R.string.nowbar_badge_paused,
+                                    card.timerRunning ? "LIVE" : "PAUSED")
+                            : ModuleStrings.getOrFallback(
+                                    ui.host,
+                                    card.countdownRemainingMs(now) <= 0L
+                                            ? R.string.nowbar_badge_done
+                                            : R.string.nowbar_badge_timer,
+                                    card.countdownRemainingMs(now) <= 0L ? "DONE" : "TIMER");
+            case DiyNowBarCard.TYPE_STATS, DiyNowBarCard.TYPE_CONTROLS ->
+                    ModuleStrings.getOrFallback(ui.host, R.string.common_badge_live, "LIVE");
             default -> "";
         };
     }

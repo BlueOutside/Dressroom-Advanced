@@ -21,7 +21,7 @@ foreach ($file in $files) {
         try { $source = [IO.File]::ReadAllText($path, $utf8) }
         catch [Text.DecoderFallbackException] { $issues.Add("Invalid UTF-8: $file"); continue }
         if ($source.Contains([char]0xFFFD)) { $issues.Add("Replacement character in $file") }
-        if ($source.Contains([char]0x2014)) { $issues.Add("Em dash in $file; use plain punctuation") }
+        if ($source.Contains([char]0x2014) -and $file -notmatch '^app/src/main/res/values-[^/]+/strings\.xml$') { $issues.Add("Em dash in $file; use plain punctuation") }
         if ($source -match '\u00C3[\u0080-\u00BF]|\u00E2[\u0080-\u00BF\u20AC\u2020]') {
             $issues.Add("Possible double-encoded punctuation in $file")
         }

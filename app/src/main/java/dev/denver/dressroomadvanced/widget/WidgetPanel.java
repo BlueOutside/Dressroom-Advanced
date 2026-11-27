@@ -53,8 +53,8 @@ final class WidgetPanel {
         layout.setMarginEnd(dp(24));
         tabs.setLayoutParams(layout);
         NativeTabs nativeTabs = NativeTabs.of(tabs);
-        nativeTabs.add(tabs, "Widgets", true);
-        nativeTabs.add(tabs, "Extras", false);
+        nativeTabs.add(tabs, str(R.string.common_widgets), true);
+        nativeTabs.add(tabs, str(R.string.common_extras), false);
         nativeTabs.applyClockStyle(context, tabs, true);
         Class<?> listener = nativeTabs.listener;
         Object events =
@@ -93,9 +93,13 @@ final class WidgetPanel {
         panel.addView(scroll, new LinearLayout.LayoutParams(-1, -2));
         render();
         android.app.AlertDialog dialog = new android.app.AlertDialog.Builder(context)
-                .setTitle(widgetsAvailable ? "Widgets and Extras" : "Extras")
+                .setTitle(
+                        str(
+                                widgetsAvailable
+                                        ? R.string.common_widgets_and_extras
+                                        : R.string.common_extras))
                 .setView(panel)
-                .setPositiveButton("Done", null)
+                .setPositiveButton(str(R.string.common_done), null)
                 .create();
         if (dialog.getWindow() != null)
             dialog.getWindow().setSoftInputMode(
@@ -276,8 +280,15 @@ final class WidgetPanel {
                 new PanelTabs(
                         context,
                         !editor.scaleAvailable()
-                                ? new String[] {"Position", "Effects"}
-                                : new String[] {"Layout", "Position", "Effects"},
+                                ? new String[] {
+                                    str(R.string.widget_tab_position),
+                                    str(R.string.common_effects)
+                                }
+                                : new String[] {
+                                    str(R.string.common_layout),
+                                    str(R.string.widget_tab_position),
+                                    str(R.string.common_effects)
+                                },
                         widgetPage,
                         dp(16),
                         page -> {
@@ -290,10 +301,10 @@ final class WidgetPanel {
     }
 
     private void renderWidgetSizing(Bundle b) throws Exception {
-        section("Layout & size");
+        section(0, R.string.widget_section_layout_size);
         if (editor.customGridAvailable()) {
             toggle(
-                    "Custom grid",
+                    str(R.string.widget_custom_grid),
                     b.getBoolean("layout"),
                     next -> {
                         next.putBoolean("layout", !b.getBoolean("layout"));
@@ -306,15 +317,13 @@ final class WidgetPanel {
                     true);
             if (b.getBoolean("layout")) {
                 if (!editor.nativeRotationAvailable()) {
-                    TextView rotate =
-                            label(
-                                    "Arrangement: "
-                                            + (editor.vertical() ? "Vertical" : "Horizontal")
-                                            + "  •  Rotate");
-                    PanelRows.action(
-                            rotate,
-                            "Rotate arrangement",
-                            editor.vertical() ? "Vertical" : "Horizontal");
+                    String orientation =
+                            str(
+                                    editor.vertical()
+                                            ? R.string.widget_orientation_vertical
+                                            : R.string.widget_orientation_horizontal);
+                    TextView rotate = label(str(R.string.widget_rotate_arrangement));
+                    PanelRows.action(rotate, str(R.string.widget_rotate_arrangement), orientation);
                     rotate.setOnClickListener(
                             v -> {
                                 try {
@@ -332,9 +341,9 @@ final class WidgetPanel {
                                     error(e);
                                 }
                             });
-                } else note("Rotate using Samsung's layout control.");
+                } else note(str(R.string.widget_rotate_native_note));
                 slider(
-                        "Columns",
+                        str(R.string.widget_columns),
                         1,
                         8,
                         b.getInt("columns"),
@@ -342,43 +351,49 @@ final class WidgetPanel {
                         (next, value) -> next.putInt("columns", value),
                         true);
                 slider(
-                        "Rows",
+                        str(R.string.widget_rows),
                         1,
                         Math.min(8, 32 / b.getInt("columns")),
                         b.getInt("rows"),
                         "",
                         (next, value) -> next.putInt("rows", value),
                         true);
-                note("Grid capacity: " + b.getInt("columns") + " × " + b.getInt("rows") + ".");
+                note(str(R.string.widget_grid_capacity, b.getInt("columns"), b.getInt("rows")));
             }
         } else if (!editor.earlyClockEditor()) {
-            note("Custom grid is unavailable for this editor/provider combination.");
+            note(str(R.string.widget_custom_grid_unavailable));
         }
         slider(
-                "Widget scale",
+                str(R.string.widget_scale),
                 50,
                 200,
                 Math.round(b.getFloat("scale", 1) * 100),
                 "%",
                 (next, value) -> next.putFloat("scale", value / 100f),
-                false);
+                false,
+                true);
     }
 
     private void renderWidgetPlacement(Bundle b) throws Exception {
-        section("Placement");
+        section(1, R.string.widget_section_placement);
         choice(
-                "Attach to clock",
+                str(R.string.widget_attach_to_clock),
                 new String[] {
-                    "Samsung default", "Below", "Above", "Left", "Right", "Free position"
+                    str(R.string.common_samsung_default),
+                    str(R.string.widget_attach_below),
+                    str(R.string.widget_attach_above),
+                    str(R.string.widget_attach_left),
+                    str(R.string.widget_attach_right),
+                    str(R.string.widget_attach_free)
                 },
                 b.getInt("anchor"),
                 (next, index) -> next.putInt("anchor", index),
                 false);
         int anchor = b.getInt("anchor");
-        note("Drag in the preview. Attached groups move along the clock edge.");
+        note(str(R.string.widget_placement_drag_note));
         if (anchor >= 1 && anchor <= 4) {
             slider(
-                    "Gap from clock",
+                    str(R.string.widget_gap_from_clock),
                     0,
                     64,
                     Math.round(b.getFloat("gap", 8)),
@@ -386,7 +401,7 @@ final class WidgetPanel {
                     (next, value) -> next.putFloat("gap", value),
                     false);
             slider(
-                    "Along clock edge",
+                    str(R.string.widget_along_clock_edge),
                     -600,
                     600,
                     Math.round(b.getFloat("dockOffset")),
@@ -396,7 +411,7 @@ final class WidgetPanel {
         }
         if (anchor == 5) {
             slider(
-                    "Horizontal position",
+                    str(R.string.widget_horizontal_position),
                     0,
                     100,
                     Math.round(b.getFloat("freeX", .5f) * 100),
@@ -404,7 +419,7 @@ final class WidgetPanel {
                     (next, value) -> next.putFloat("freeX", value / 100f),
                     false);
             slider(
-                    "Vertical position",
+                    str(R.string.widget_vertical_position),
                     0,
                     100,
                     Math.round(b.getFloat("freeY", .4f) * 100),
@@ -413,50 +428,51 @@ final class WidgetPanel {
                     false);
         }
         if (editor.depthAvailable()) {
-            section("Appearance");
+            section(2, R.string.common_appearance);
             boolean hardwareAvailable = editor.depthHardwareAvailable();
             boolean imageAvailable = hardwareAvailable && editor.depthImageAvailable();
             int mode = b.getInt("depth");
             choice(
-                    "Subject depth",
-                    new String[] {"Follow clock", "On", "Off"},
+                    str(R.string.widget_subject_depth),
+                    new String[] {
+                        str(R.string.widget_depth_follow_clock),
+                        str(R.string.common_on),
+                        str(R.string.common_off)
+                    },
                     mode,
                     (next, index) -> next.putInt("depth", index),
                     false,
                     imageAvailable);
             toggle(
-                    "Disable depth on AOD",
+                    str(R.string.common_disable_depth_on_aod),
                     b.getBoolean("depthOffAod"),
                     imageAvailable && mode != 2,
                     next -> next.putBoolean("depthOffAod", !next.getBoolean("depthOffAod")),
                     false);
             choice(
-                    "Depth applies to",
+                    str(R.string.widget_depth_applies_to),
                     new String[] {
-                        "Separate per orientation",
-                        "Portrait only",
-                        "Landscape only",
-                        "Both orientations"
+                        str(R.string.widget_depth_separate_orientation),
+                        str(R.string.widget_depth_portrait_only),
+                        str(R.string.widget_depth_landscape_only),
+                        str(R.string.widget_depth_both_orientations)
                     },
                     b.getInt("depthLayouts"),
                     (next, index) -> next.putInt("depthLayouts", index),
                     false,
                     imageAvailable);
-            if (!hardwareAvailable) note(ObjectCaptureBackend.unavailableReason());
-            else if (!imageAvailable)
-                note(
-                        "Depth requires a still-image wallpaper. Gyro, video and live wallpapers"
-                                + " are not supported.");
+            if (!hardwareAvailable) note(ObjectCaptureBackend.unavailableReason(context));
+            else if (!imageAvailable) note(str(R.string.common_depth_requires_still_wallpaper));
 
             toggle(
-                    "Live background blur",
+                    str(R.string.widget_live_background_blur),
                     !b.getBoolean("blurOff"),
                     next -> next.putBoolean("blurOff", !b.getBoolean("blurOff")),
                     false);
         }
-        section("Reset");
-        TextView reset = label("Reset widget adjustments");
-        PanelRows.action(reset, "Reset widget adjustments", "");
+        section(0, 0);
+        TextView reset = label(str(R.string.widget_reset_adjustments));
+        PanelRows.action(reset, str(R.string.widget_reset_adjustments), "");
         reset.setOnClickListener(
                 v -> {
                     try {
@@ -468,9 +484,9 @@ final class WidgetPanel {
                     }
                 });
         if (!editor.earlyClockEditor()) {
-            TextView wipe = label("Wipe all widgets");
+            TextView wipe = label(str(R.string.widget_wipe_all));
             PanelRows.action(
-                    wipe, "Wipe all widgets", "Remove all lockscreen widgets and reset layout");
+                    wipe, str(R.string.widget_wipe_all), str(R.string.widget_wipe_all_summary));
             wipe.setOnClickListener(v -> confirmWipeWidgets());
         }
         group = content;
@@ -484,22 +500,20 @@ final class WidgetPanel {
         try {
             checkScreen();
             new android.app.AlertDialog.Builder(context)
-                    .setTitle("Wipe all widgets?")
-                    .setMessage(
-                            "Removes all lockscreen widgets, clears orphaned widget hosts, and"
-                                + " resets widget layout adjustments immediately.")
-                    .setNegativeButton("Cancel", null)
+                    .setTitle(str(R.string.widget_wipe_dialog_title))
+                    .setMessage(str(R.string.widget_wipe_dialog_message))
+                    .setNegativeButton(str(R.string.common_cancel), null)
                     .setPositiveButton(
-                            "Wipe",
+                            str(R.string.widget_wipe_confirm),
                             (dialog, which) -> {
                                 try {
                                     checkScreen();
                                     editor.wipeWidgets(context);
                                     render();
-                                    setStatus("Widgets wiped.");
+                                    setStatus(str(R.string.widget_wiped_status));
                                     android.widget.Toast.makeText(
                                                     context,
-                                                    "All lockscreen widgets wiped.",
+                                                    str(R.string.widget_wiped_toast),
                                                     android.widget.Toast.LENGTH_SHORT)
                                             .show();
                                 } catch (Exception e) {
@@ -520,8 +534,21 @@ final class WidgetPanel {
         boolean showAodTab = !editor.earlyClockEditor();
         String[] tabNames =
                 showAodTab
-                        ? new String[] {"Now Bar", "Media", "Lock", "AOD", "Blur", "More"}
-                        : new String[] {"Now Bar", "Media", "Lock", "Blur", "More"};
+                        ? new String[] {
+                            str(R.string.common_now_bar),
+                            str(R.string.extras_tab_media),
+                            str(R.string.extras_tab_lock),
+                            str(R.string.extras_tab_aod),
+                            str(R.string.extras_tab_blur),
+                            str(R.string.extras_tab_more)
+                        }
+                        : new String[] {
+                            str(R.string.common_now_bar),
+                            str(R.string.extras_tab_media),
+                            str(R.string.extras_tab_lock),
+                            str(R.string.extras_tab_blur),
+                            str(R.string.extras_tab_more)
+                        };
         int blurPage = showAodTab ? 4 : 3;
         int morePage = showAodTab ? 5 : 4;
         if (extrasPage >= tabNames.length) extrasPage = 0;
@@ -536,16 +563,17 @@ final class WidgetPanel {
         if (ScreenIdentity.value(b) != 0) {
             group = content;
             label(
-                    ScreenIdentity.value(b) == ScreenIdentity.SUB
-                            ? "Settings for the cover screen"
-                            : "Settings for the inner screen");
+                    str(
+                            ScreenIdentity.value(b) == ScreenIdentity.SUB
+                                    ? R.string.extras_fold_cover_screen
+                                    : R.string.extras_fold_inner_screen));
         }
 
         // Tab 0: Now Bar (DIY Studio, Labs, stack & cards)
         group = extraPages.group(content, 0);
-        PanelRows.heading(label("DIY Now Bar & Labs"));
-        TextView manageDiy = label("Manage DIY cards");
-        PanelRows.action(manageDiy, "Manage DIY cards & Labs", diyNowBarSummary());
+        PanelRows.heading(label(str(R.string.extras_section_diy_nowbar_labs)));
+        TextView manageDiy = label(str(R.string.extras_manage_diy_cards_labs));
+        PanelRows.action(manageDiy, str(R.string.extras_manage_diy_cards_labs), diyNowBarSummary());
         manageDiy.setOnClickListener(
                 v -> {
                     try {
@@ -560,25 +588,25 @@ final class WidgetPanel {
                         error(error);
                     }
                 });
-        note("Create custom cards, shaders, and Now Bar Labs unlocks (Sports, Finance, Commute, Buds).");
+        note(str(R.string.extras_diy_nowbar_note));
 
-        PanelRows.heading(label("Now Bar stack"));
+        PanelRows.heading(label(str(R.string.extras_section_nowbar_stack)));
         toggle(
-                "Keep charging card",
+                str(R.string.extras_keep_charging_card),
                 b.getBoolean("keepCharging"),
                 next -> next.putBoolean("keepCharging", !b.getBoolean("keepCharging")),
                 false);
         if (showAodTab) {
             boolean nowBarAod = NowBarAodOption.shownInEditor(context, b);
             toggle(
-                    "Show Now Bar on AOD",
+                    str(R.string.extras_show_nowbar_on_aod),
                     nowBarAod,
                     next -> NowBarAodOption.setInEditor(next, !nowBarAod),
                     false);
         }
         if (editor.stackAvailable()) {
             slider(
-                    "Visible cards",
+                    str(R.string.extras_visible_cards),
                     3,
                     8,
                     b.getInt("stackCards", 3),
@@ -589,45 +617,45 @@ final class WidgetPanel {
 
         // Tab 1: Media (Album artwork, expanded player & lyrics)
         group = extraPages.group(content, 1);
-        PanelRows.heading(label("Album artwork"));
-        extraToggle(b, "Full-screen album artwork", "fullscreenArt");
+        PanelRows.heading(label(str(R.string.extras_section_album_artwork)));
+        extraToggle(b, str(R.string.extras_fullscreen_album_art), "fullscreenArt");
         if (b.getBoolean("fullscreenArt")) {
-            extraToggle(b, "Live animated artwork", LiveCoverController.KEY);
-            note("Uses Apple Music motion covers when available.");
+            extraToggle(b, str(R.string.extras_live_animated_art), LiveCoverController.KEY);
+            note(str(R.string.extras_live_animated_art_note));
             if (b.getBoolean(LiveCoverController.KEY)) {
                 boolean wifiOnly = b.getBoolean(LiveCoverController.WIFI_ONLY, true);
                 toggle(
-                        "Only download on Wi-Fi",
+                        str(R.string.extras_live_art_wifi_only),
                         wifiOnly,
                         next -> next.putBoolean(LiveCoverController.WIFI_ONLY, !wifiOnly),
                         false);
             }
         }
 
-        PanelRows.heading(label("Expanded player"));
-        extraToggle(b, "Hide clock in expanded player", MediaClockVisibility.KEY);
+        PanelRows.heading(label(str(R.string.extras_section_expanded_player)));
+        extraToggle(b, str(R.string.extras_hide_clock_expanded_player), MediaClockVisibility.KEY);
         if (showAodTab) {
-            extraToggle(b, "Fade widgets when opening the player", MediaWidgetFade.KEY);
+            extraToggle(b, str(R.string.extras_fade_widgets_player), MediaWidgetFade.KEY);
         }
 
-        PanelRows.heading(label("Lyrics"));
+        PanelRows.heading(label(str(R.string.extras_section_lyrics)));
         boolean lyricsEnabled = b.getBoolean("lockscreenLyrics", true);
         toggle(
-                "Lockscreen lyrics",
+                str(R.string.extras_lockscreen_lyrics),
                 lyricsEnabled,
                 next -> next.putBoolean("lockscreenLyrics", !lyricsEnabled),
                 false);
-        note("Displays synced or plain lyrics in the expanded media player.");
+        note(str(R.string.extras_lockscreen_lyrics_note));
         if (lyricsEnabled) {
             boolean syncedHighlight = b.getBoolean("lyricsSyncedHighlight", true);
             toggle(
-                    "Synced lyrics auto-scroll",
+                    str(R.string.extras_lyrics_auto_scroll),
                     syncedHighlight,
                     next -> next.putBoolean("lyricsSyncedHighlight", !syncedHighlight),
                     false);
             TextView lyricsPreview = renderLyricsFontPreview(b);
             slider(
-                    "Lyrics text size",
+                    str(R.string.extras_lyrics_text_size),
                     16,
                     38,
                     b.getInt("lyricsTextSize", 28),
@@ -643,15 +671,15 @@ final class WidgetPanel {
 
         // Tab 2: Lock screen (Clock, stretch physics & widgets)
         group = extraPages.group(content, 2);
-        PanelRows.heading(label("Clock"));
+        PanelRows.heading(label(str(R.string.common_clock)));
         boolean inlineSec = b.getBoolean(ClockInlineSeconds.KEY, true);
         toggle(
-                "Inline clock seconds",
+                str(R.string.extras_inline_clock_seconds),
                 inlineSec,
                 next -> next.putBoolean(ClockInlineSeconds.KEY, !inlineSec),
                 false);
         toggle(
-                "Keep seconds open",
+                str(R.string.extras_keep_seconds_open),
                 b.getBoolean(ClockInlineSeconds.KEEP_OPEN),
                 inlineSec,
                 next ->
@@ -659,16 +687,16 @@ final class WidgetPanel {
                                 ClockInlineSeconds.KEEP_OPEN,
                                 !b.getBoolean(ClockInlineSeconds.KEEP_OPEN)),
                 false);
-        note("Replaces the full-screen seconds view when tapping a digital clock.");
+        note(str(R.string.extras_inline_seconds_note));
 
         if (android.os.Build.VERSION.SDK_INT >= 37 || showAodTab) {
-            PanelRows.heading(label("Clock stretch"));
+            PanelRows.heading(label(str(R.string.extras_section_clock_stretch)));
             if (android.os.Build.VERSION.SDK_INT >= 37) {
-                extraToggle(b, "Allow more stretch shapes", StretchSuggestions.KEY);
+                extraToggle(b, str(R.string.extras_allow_more_stretch_shapes), StretchSuggestions.KEY);
             }
             if (showAodTab) {
                 slider(
-                        "Stretch speed (0 = Samsung)",
+                        str(R.string.extras_stretch_speed),
                         0,
                         AodTweaks.MAX_SPEED_LEVEL,
                         AodTweaks.speed(b),
@@ -676,72 +704,75 @@ final class WidgetPanel {
                         (next, value) -> next.putInt(AodTweaks.STRETCH_SPEED, value),
                         false);
                 slider(
-                        "Stretch bounce",
+                        str(R.string.extras_stretch_bounce),
                         0,
                         AodTweaks.MAX_BOUNCE,
                         AodTweaks.bounce(b),
                         "%",
                         (next, value) -> next.putInt(AodTweaks.STRETCH_BOUNCE, value),
                         false);
-                note("Tunes Samsung's stretch physics. Applies the next time the clock is rebuilt.");
+                note(str(R.string.extras_stretch_physics_note));
             }
         }
 
-        PanelRows.heading(label("Widgets"));
-        extraToggle(b, "Disable widget clicks", WidgetClickBlock.KEY);
-        note("Prevents tapping lockscreen widgets from opening apps while keeping swipe-to-unlock working.");
+        PanelRows.heading(label(str(R.string.common_widgets)));
+        extraToggle(b, str(R.string.extras_disable_widget_clicks), WidgetClickBlock.KEY);
+        note(str(R.string.extras_disable_widget_clicks_note));
         if (showAodTab && BlurAppearance.liveWindowBlurAllowed(context)) {
-            extraToggle(b, "Remove Picture Frame dimming", WidgetBackgroundOptions.PICTURE_FRAME);
+            extraToggle(
+                    b,
+                    str(R.string.extras_remove_picture_frame_dimming),
+                    WidgetBackgroundOptions.PICTURE_FRAME);
         }
 
         // Tab 3: AOD & StandBy Nightstand
         if (showAodTab) {
             group = extraPages.group(content, 3);
-            PanelRows.heading(label("Always On Display"));
+            PanelRows.heading(label(str(R.string.extras_section_aod)));
             if (!editor.legacy()) {
                 toggle(
-                        "Keep clock stretched on AOD",
+                        str(R.string.extras_keep_clock_stretched_aod),
                         b.getBoolean("keepStretch"),
                         next -> next.putBoolean("keepStretch", !b.getBoolean("keepStretch")),
                         false);
             }
-            extraToggle(b, "Subject-only AOD for any subject", AodTweaks.ERASE_UNLOCK);
-            note("Keeps the subject cutout Samsung rejects so Settings > AOD > Erase background works. Apply the wallpaper again after enabling.");
-            extraToggle(b, "Fullscreen AOD on this device", AodTweaks.FULLSCREEN_UNLOCK);
-            note("Reports fullscreen AOD support across SystemUI, AOD, and wallpaper. Restart SystemUI or reboot to apply.");
-            extraToggle(b, "Unlock Auto AOD option", AodTweaks.AUTO_AOD_UNLOCK);
-            note("Removes the device exclusion that hides Settings > AOD > When to show > Auto. Restart AOD/SystemUI or reboot to apply.");
+            extraToggle(b, str(R.string.extras_aod_erase_unlock), AodTweaks.ERASE_UNLOCK);
+            note(str(R.string.extras_aod_erase_unlock_note));
+            extraToggle(b, str(R.string.extras_aod_fullscreen_unlock), AodTweaks.FULLSCREEN_UNLOCK);
+            note(str(R.string.extras_aod_fullscreen_unlock_note));
+            extraToggle(b, str(R.string.extras_aod_auto_unlock), AodTweaks.AUTO_AOD_UNLOCK);
+            note(str(R.string.extras_aod_auto_unlock_note));
 
-            PanelRows.heading(label("StandBy nightstand"));
+            PanelRows.heading(label(str(R.string.extras_section_standby)));
             boolean lowLightClock = b.getBoolean(AodTweaks.LOW_LIGHT_CLOCK);
-            extraToggle(b, "Low-light bedside clock", AodTweaks.LOW_LIGHT_CLOCK);
+            extraToggle(b, str(R.string.extras_low_light_clock), AodTweaks.LOW_LIGHT_CLOCK);
             if (lowLightClock) {
                 choice(
-                        "Color theme",
-                        AodTweaks.LOW_LIGHT_THEME_LABELS,
+                        str(R.string.extras_standby_color_theme),
+                        AodTweaks.lowLightThemeLabels(context),
                         AodTweaks.lowLightTheme(b),
                         (next, index) -> next.putInt(AodTweaks.LOW_LIGHT_THEME, index),
                         false);
                 choice(
-                        "Clock style",
-                        AodTweaks.LOW_LIGHT_FONT_LABELS,
+                        str(R.string.extras_standby_clock_style),
+                        AodTweaks.lowLightFontLabels(context),
                         AodTweaks.lowLightFont(b),
                         (next, index) -> next.putInt(AodTweaks.LOW_LIGHT_FONT, index),
                         false);
                 boolean showDate = b.getBoolean(AodTweaks.LOW_LIGHT_SHOW_DATE, true);
                 toggle(
-                        "Show date",
+                        str(R.string.clock_show_date),
                         showDate,
                         next -> next.putBoolean(AodTweaks.LOW_LIGHT_SHOW_DATE, !showDate),
                         false);
                 boolean burnIn = b.getBoolean(AodTweaks.LOW_LIGHT_BURN_IN, true);
                 toggle(
-                        "OLED burn-in drift",
+                        str(R.string.extras_standby_burn_in_drift),
                         burnIn,
                         next -> next.putBoolean(AodTweaks.LOW_LIGHT_BURN_IN, !burnIn),
                         false);
                 slider(
-                        "Clock brightness",
+                        str(R.string.extras_standby_clock_brightness),
                         AodTweaks.MIN_LOW_LIGHT_BRIGHTNESS,
                         AodTweaks.MAX_LOW_LIGHT_BRIGHTNESS,
                         AodTweaks.lowLightBrightness(b),
@@ -749,18 +780,18 @@ final class WidgetPanel {
                         (next, value) -> next.putInt(AodTweaks.LOW_LIGHT_BRIGHTNESS, value),
                         false);
                 slider(
-                        "Darkness threshold",
+                        str(R.string.extras_standby_darkness_threshold),
                         AodTweaks.MIN_LOW_LIGHT_LUX,
                         AodTweaks.MAX_LOW_LIGHT_LUX,
                         AodTweaks.lowLightLux(b),
                         " lux",
                         (next, value) -> next.putInt(AodTweaks.LOW_LIGHT_LUX, value),
                         false);
-                TextView previewDream = label("Preview bedside clock now");
+                TextView previewDream = label(str(R.string.extras_standby_preview_now));
                 PanelRows.action(
                         previewDream,
-                        "Preview bedside clock now",
-                        "Launches the styled StandBy clock immediately (tap screen to exit)");
+                        str(R.string.extras_standby_preview_now),
+                        str(R.string.extras_standby_preview_now_summary));
                 previewDream.setOnClickListener(
                         v -> {
                             try {
@@ -775,11 +806,11 @@ final class WidgetPanel {
                                 error(error);
                             }
                         });
-                TextView dreamSettings = label("Open Screen saver settings");
+                TextView dreamSettings = label(str(R.string.extras_standby_screen_saver_settings));
                 PanelRows.action(
                         dreamSettings,
-                        "Open Screen saver settings",
-                        "Pick any screen saver (other than None) to enable while charging");
+                        str(R.string.extras_standby_screen_saver_settings),
+                        str(R.string.extras_standby_screen_saver_settings_summary));
                 dreamSettings.setOnClickListener(
                         v -> {
                             try {
@@ -795,7 +826,7 @@ final class WidgetPanel {
                             }
                         });
             }
-            note("Restyles SystemUI's hidden low-light dream into a StandBy nightstand clock while charging in dark rooms.");
+            note(str(R.string.extras_standby_note));
         }
 
         // Blur tab
@@ -804,20 +835,22 @@ final class WidgetPanel {
         // More tab (Updates & Reset)
         group = extraPages.group(content, morePage);
         renderUpdatesSection();
-        PanelRows.heading(label("Reset"));
-        TextView reset = label("Reset extra settings");
+        PanelRows.heading(label(str(R.string.common_reset)));
+        TextView reset = label(str(R.string.extras_reset_settings));
         PanelRows.action(
-                reset, "Reset extra settings", "Restore all Extras options to their defaults");
+                reset,
+                str(R.string.extras_reset_settings),
+                str(R.string.extras_reset_settings_summary));
         reset.setOnClickListener(
                 v -> {
                     try {
                         checkScreen();
                         new android.app.AlertDialog.Builder(context)
-                                .setTitle("Reset extra settings?")
-                                .setMessage("Restore all Extras options on this screen to defaults?")
-                                .setNegativeButton("Cancel", null)
+                                .setTitle(str(R.string.extras_reset_dialog_title))
+                                .setMessage(str(R.string.extras_reset_dialog_message))
+                                .setNegativeButton(str(R.string.common_cancel), null)
                                 .setPositiveButton(
-                                        "Reset",
+                                        str(R.string.common_reset),
                                         (d, which) -> {
                                             try {
                                                 checkScreen();
@@ -842,7 +875,7 @@ final class WidgetPanel {
     }
 
     private TextView renderLyricsFontPreview(Bundle b) {
-        TextView preview = label("Synced lyrics preview");
+        TextView preview = label(str(R.string.extras_lyrics_preview));
         preview.setPadding(dp(4), dp(8), dp(4), dp(8));
         preview.setSingleLine(false);
         preview.setMaxLines(2);
@@ -868,16 +901,16 @@ final class WidgetPanel {
         String fontFileName = b.getString(ExtrasPreferences.LYRICS_FONT_FILE_NAME, "");
         Bundle fontAxesBundle = FontAxisSettings.clean(b.getBundle(ExtrasPreferences.LYRICS_FONT_AXES));
 
-        TextView chooseFont = label("Choose lyrics font");
+        TextView chooseFont = label(str(R.string.extras_lyrics_choose_font));
         PanelRows.action(
                 chooseFont,
-                "Choose lyrics font",
-                fontFile.isEmpty() ? "TTF, OTF or TTC" : fontFileName);
+                str(R.string.extras_lyrics_choose_font),
+                fontFile.isEmpty() ? str(R.string.common_font_file_types) : fontFileName);
         chooseFont.setOnClickListener(v -> pickLyricsFont());
 
         if (!fontFile.isEmpty()) {
-            TextView useDefault = label("Use default lyrics font");
-            PanelRows.action(useDefault, "Use default lyrics font", "");
+            TextView useDefault = label(str(R.string.extras_lyrics_default_font));
+            PanelRows.action(useDefault, str(R.string.extras_lyrics_default_font), "");
             useDefault.setOnClickListener(
                     v ->
                             change(
@@ -901,7 +934,7 @@ final class WidgetPanel {
                     if (axis.tag().equals("ital") && axis.min() == 0 && axis.max() == 1) {
                         boolean italic = current >= 0.5f;
                         toggle(
-                                axis.label(),
+                                axis.label(context),
                                 italic,
                                 next -> {
                                     Bundle updated =
@@ -914,7 +947,7 @@ final class WidgetPanel {
                                 false);
                     } else {
                         floatSlider(
-                                axis.label(),
+                                axis.label(context),
                                 axis.min(),
                                 axis.max(),
                                 current,
@@ -930,11 +963,11 @@ final class WidgetPanel {
                     }
                 }
             } else {
-                note("This font has no adjustable axes.");
+                note(str(R.string.common_font_no_adjustable_axes));
             }
         } else {
             slider(
-                    "Font weight",
+                    str(R.string.extras_lyrics_font_weight),
                     100,
                     900,
                     b.getInt(
@@ -968,7 +1001,9 @@ final class WidgetPanel {
                         }
                         String file = result.getString("fontFile", "");
                         if (file.isEmpty()) return;
-                        String name = result.getString("fontFileName", "Custom font");
+                        String name =
+                                result.getString(
+                                        "fontFileName", panel.str(R.string.common_custom_font));
                         Bundle defaultAxes = new Bundle();
                         VariableFonts.Axes importedAxes = VariableFonts.importedAxes(panel.context, file);
                         if (importedAxes != null) {
@@ -1063,24 +1098,36 @@ final class WidgetPanel {
             }
         } catch (Exception ignored) {}
 
-        TextView clearBtn = label("Clear lyrics cache");
-        PanelRows.action(clearBtn, "Clear lyrics cache", "Cached: " + count + " tracks (" + formattedSize + ")");
+        TextView clearBtn = label(str(R.string.extras_lyrics_clear_cache));
+        PanelRows.action(
+                clearBtn,
+                str(R.string.extras_lyrics_clear_cache),
+                ModuleStrings.quantity(
+                        context,
+                        R.plurals.extras_lyrics_cache_summary,
+                        count,
+                        count == 1 ? "Cached: %1$d track (%2$s)" : "Cached: %1$d tracks (%2$s)",
+                        count,
+                        formattedSize));
         final String sizeForDialog = formattedSize;
         clearBtn.setOnClickListener(v -> {
             try {
                 checkScreen();
                 new android.app.AlertDialog.Builder(context)
-                        .setTitle("Clear lyrics cache?")
-                        .setMessage("Delete all saved offline lyrics (" + sizeForDialog + ")?")
-                        .setNegativeButton("Cancel", null)
-                        .setPositiveButton("Clear", (dialog, which) -> {
+                        .setTitle(str(R.string.extras_lyrics_clear_cache_title))
+                        .setMessage(str(R.string.extras_lyrics_clear_cache_message, sizeForDialog))
+                        .setNegativeButton(str(R.string.common_cancel), null)
+                        .setPositiveButton(str(R.string.common_clear), (dialog, which) -> {
                             try {
                                 checkScreen();
                                 context.getContentResolver()
                                         .call(SettingsProvider.URI, "clearLyricsCache", null, null);
                                 render();
-                                setStatus("Lyrics cache cleared.");
-                                android.widget.Toast.makeText(context, "Lyrics cache cleared", android.widget.Toast.LENGTH_SHORT).show();
+                                setStatus(str(R.string.extras_lyrics_cache_cleared_status));
+                                android.widget.Toast.makeText(
+                                        context,
+                                        str(R.string.extras_lyrics_cache_cleared_toast),
+                                        android.widget.Toast.LENGTH_SHORT).show();
                             } catch (Exception e) {
                                 error(e);
                             }
@@ -1094,14 +1141,14 @@ final class WidgetPanel {
 
     private String diyNowBarSummary() {
         java.util.List<DiyNowBarCard> saved = DiyNowBarStore.read(context);
-        if (saved.isEmpty()) return "Tap to create custom Now Bar cards";
+        if (saved.isEmpty()) return str(R.string.extras_diy_nowbar_empty_summary);
         int active = 0;
         for (DiyNowBarCard c : saved) if (c.enabled) active++;
-        return active + " active / " + saved.size() + " saved";
+        return str(R.string.extras_diy_nowbar_active_summary, active, saved.size());
     }
 
     private void renderUpdatesSection() {
-        PanelRows.heading(label("Updates"));
+        PanelRows.heading(label(str(R.string.extras_section_updates)));
         boolean prerelease = false;
         String installed = "";
         try {
@@ -1115,7 +1162,7 @@ final class WidgetPanel {
         } catch (RuntimeException ignored) {
         }
         CompoundButton pre = (CompoundButton) nativeView(EditorBinding.Row.TOGGLE);
-        pre.setText("Pre-release updates");
+        pre.setText(str(R.string.extras_prerelease_updates));
         pre.setChecked(prerelease);
         add(pre);
         boolean[] updating = {false};
@@ -1135,19 +1182,20 @@ final class WidgetPanel {
                         updating[0] = false;
                     }
                 });
-        String baseNote =
-                "Receive dev pre-release builds and newer stable releases. Defaults to on for dev"
-                        + " builds.";
-        note(installed.isEmpty() ? baseNote : "Installed: " + installed + ". " + baseNote);
-        TextView check = label("Check for updates");
-        PanelRows.action(check, "Check for updates", "");
+        String baseNote = str(R.string.extras_prerelease_note);
+        note(
+                installed.isEmpty()
+                        ? baseNote
+                        : str(R.string.extras_prerelease_note_installed, installed, baseNote));
+        TextView check = label(str(R.string.extras_check_for_updates));
+        PanelRows.action(check, str(R.string.extras_check_for_updates), "");
         check.setOnClickListener(
                 v -> {
                     android.app.Activity activity = findActivity(context);
                     if (activity == null) {
                         android.widget.Toast.makeText(
                                         context,
-                                        "Reopen the editor to check for updates",
+                                        str(R.string.extras_reopen_editor_updates),
                                         android.widget.Toast.LENGTH_SHORT)
                                 .show();
                         return;
@@ -1166,63 +1214,65 @@ final class WidgetPanel {
 
     private void renderExtraBlur(Bundle b, PanelTabs extraPages, int pageIndex) throws Exception {
         group = extraPages.group(content, pageIndex);
-        note("Customizes existing blur. System blur restrictions still apply.");
+        note(str(R.string.extras_blur_disclaimer));
         if (android.os.Build.VERSION.SDK_INT >= 37) {
-            toggle("Keep blur while swiping to unlock", b.getBoolean("swipeBlur"),
+            toggle(str(R.string.extras_blur_keep_swipe_unlock), b.getBoolean("swipeBlur"),
                     next -> next.putBoolean("swipeBlur", !b.getBoolean("swipeBlur")), false);
             if (!BlurAppearance.available(context, "clockBlur"))
                 group.getChildAt(group.getChildCount() - 1).setEnabled(false);
         }
-        if (!editor.earlyClockEditor()) blurSection(b, "Clock", "clockBlur");
-        blurSection(b, "Widgets", "widgetBlur");
-        blurSection(b, "Now Bar", "nowBarBlur");
+        if (!editor.earlyClockEditor()) {
+            blurSection(b, R.string.common_clock, R.string.extras_blur_customize_clock, "clockBlur");
+        }
+        blurSection(b, R.string.common_widgets, R.string.extras_blur_customize_widgets, "widgetBlur");
+        blurSection(b, R.string.common_now_bar, R.string.extras_blur_customize_now_bar, "nowBarBlur");
         if (android.os.Build.VERSION.SDK_INT >= 37 && BlurAppearance.liveWindowBlurAllowed(context)) {
-            PanelRows.heading(label("Lockscreen notifications"));
-            extraToggle(b, "Blur behind colorized cards", NotificationBlurOptions.COLORIZED);
-            extraToggle(b, "Blur behind custom cards", NotificationBlurOptions.CUSTOM);
+            PanelRows.heading(label(str(R.string.extras_section_lockscreen_notifications)));
+            extraToggle(b, str(R.string.extras_blur_colorized_cards), NotificationBlurOptions.COLORIZED);
+            extraToggle(b, str(R.string.extras_blur_custom_cards), NotificationBlurOptions.CUSTOM);
         }
     }
 
-    private void blurSection(Bundle b, String title, String key) throws Exception {
-        PanelRows.heading(label(title));
+    private void blurSection(Bundle b, int titleRes, int customizeRes, String key) throws Exception {
+        PanelRows.heading(label(str(titleRes)));
         boolean available = BlurAppearance.available(context, key);
-        toggle("Customize " + title.toLowerCase(java.util.Locale.ROOT) + " blur",
+        toggle(str(customizeRes),
                 b.getBoolean(key + "Custom"),
                 next -> next.putBoolean(key + "Custom", !b.getBoolean(key + "Custom")), false);
         if (!available) {
             group.getChildAt(group.getChildCount() - 1).setEnabled(false);
-            note("Blur is unavailable or disabled by the system.");
+            note(str(R.string.extras_blur_unavailable));
             return;
         }
         if (key.equals("clockBlur")) {
-            extraToggle(b, "Neutral blur colors", BlurAppearanceSettings.NEUTRAL_CLOCK);
+            extraToggle(b, str(R.string.extras_blur_neutral_colors), BlurAppearanceSettings.NEUTRAL_CLOCK);
             if (android.os.Build.VERSION.SDK_INT >= 37) {
-                extraToggle(b, "Shorter blur return delay", ClockBlurDelays.KEY);
-                extraToggle(b, "Keep clock blur with LockStar", LockStarClockBlur.KEY);
+                extraToggle(b, str(R.string.extras_blur_shorter_return_delay), ClockBlurDelays.KEY);
+                extraToggle(b, str(R.string.extras_blur_keep_with_lockstar), LockStarClockBlur.KEY);
                 if (WallpaperAod.supported() && ScreenIdentity.value(b) != ScreenIdentity.SUB
                         && BlurAppearance.windowBlur(context)) {
-                    extraToggle(b, "Keep clock blur on AOD", WallpaperAod.CLOCK_BLUR);
-                    note("Applies when AOD shows your wallpaper.");
+                    extraToggle(b, str(R.string.extras_blur_keep_clock_aod), WallpaperAod.CLOCK_BLUR);
+                    note(str(R.string.extras_blur_applies_wallpaper_aod));
                 }
             }
         }
         if (key.equals("nowBarBlur") && android.os.Build.VERSION.SDK_INT >= 37
                 && BlurAppearance.liveWindowBlurAllowed(context))
-            extraToggle(b, "Glass backgrounds for colored pills", NowBarGlass.KEY);
+            extraToggle(b, str(R.string.extras_blur_glass_colored_pills), NowBarGlass.KEY);
         if (key.equals("widgetBlur") && !editor.earlyClockEditor()
                 && BlurAppearance.liveWindowBlurAllowed(context)) {
-            extraToggle(b, "Blur behind the camera widget", WidgetBackgroundOptions.CAMERA);
+            extraToggle(b, str(R.string.extras_blur_behind_camera_widget), WidgetBackgroundOptions.CAMERA);
         }
         if (b.getBoolean(key + "Custom")) blurControls(b, key);
         if (key.equals("widgetBlur") && !editor.earlyClockEditor() && WallpaperAod.fullscreenSupported()
                 && BlurAppearance.windowBlur(context)) {
-            PanelRows.heading(label("Widgets on AOD"));
-            note("Apply, then enter AOD with your wallpaper showing to see changes.");
-            extraToggle(b, "Keep widget blur colors on AOD", AodWidgetAppearance.KEY);
+            PanelRows.heading(label(str(R.string.extras_section_widgets_on_aod)));
+            note(str(R.string.extras_widgets_aod_apply_note));
+            extraToggle(b, str(R.string.extras_keep_widget_blur_colors_aod), AodWidgetAppearance.KEY);
             String aod = AodWidgetAppearance.PROFILE;
-            extraToggle(b, "Customize AOD widget blur", aod + "Custom");
+            extraToggle(b, str(R.string.extras_customize_aod_widget_blur), aod + "Custom");
             if (b.getBoolean(aod + "Custom")) {
-                extraToggle(b, "Neutral blur colors", AodWidgetAppearance.NEUTRAL);
+                extraToggle(b, str(R.string.extras_blur_neutral_colors), AodWidgetAppearance.NEUTRAL);
                 blurControls(b, aod);
             }
         }
@@ -1231,27 +1281,38 @@ final class WidgetPanel {
     private void blurControls(Bundle b, String key) throws Exception {
         boolean aod = key.equals(AodWidgetAppearance.PROFILE);
         int defaultRadius = aod ? 110 : 200;
-        slider("Radius", 1, 300, b.getInt(key + "Radius", defaultRadius), " px",
+        slider(str(R.string.extras_blur_radius), 1, 300, b.getInt(key + "Radius", defaultRadius), " px",
                 (next, value) -> next.putInt(key + "Radius", value), false);
-        slider("Saturation adjustment", -100, 100, b.getInt(key + "Saturation"), "%",
+        slider(str(R.string.extras_blur_saturation), -100, 100, b.getInt(key + "Saturation"), "%",
                 (next, value) -> next.putInt(key + "Saturation", value), false);
-        slider("Tone curve adjustment", -100, 100, b.getInt(key + "Contrast"), "",
+        slider(str(R.string.extras_blur_tone_curve), -100, 100, b.getInt(key + "Contrast"), "",
                 (next, value) -> next.putInt(key + "Contrast", value), false);
-        slider("Brightness adjustment", -100, 100, b.getInt(key + "Brightness"), "%",
+        slider(str(R.string.extras_blur_brightness), -100, 100, b.getInt(key + "Brightness"), "%",
                 (next, value) -> next.putInt(key + "Brightness", value), false);
         if (!BlurAppearance.windowBlur(context)) {
-            note("Tint requires window blur. Only radius and saturation are available here.");
+            note(str(R.string.extras_blur_tint_window_only));
             return;
         }
-        String[] tints = aod ? new String[] {"Samsung default", "Dark", "Light", "None"}
-                : new String[] {"Samsung default", "Dark", "Light"};
+        String[] tints =
+                aod
+                        ? new String[] {
+                            str(R.string.common_samsung_default),
+                            str(R.string.extras_blur_tint_dark),
+                            str(R.string.extras_blur_tint_light),
+                            str(R.string.common_none)
+                        }
+                        : new String[] {
+                            str(R.string.common_samsung_default),
+                            str(R.string.extras_blur_tint_dark),
+                            str(R.string.extras_blur_tint_light)
+                        };
         int tint = b.getInt(key + "Tint");
-        choice("Tint", tints, tint,
+        choice(str(R.string.extras_blur_tint), tints, tint,
                 (next, value) -> next.putInt(key + "Tint", value), false);
-        if (aod && tint != 0) note("Replaces Samsung's brightness preset. Opacity controls the tint over wallpaper blur.");
-        if (key.equals("clockBlur")) note("Tint applies to window blur on the lockscreen.");
+        if (aod && tint != 0) note(str(R.string.extras_blur_tint_aod_note));
+        if (key.equals("clockBlur")) note(str(R.string.extras_blur_tint_clock_note));
         if (tint == 1 || tint == 2)
-            slider("Tint opacity", 0, 100, b.getInt(key + "TintOpacity", 20), "%",
+            slider(str(R.string.extras_blur_tint_opacity), 0, 100, b.getInt(key + "TintOpacity", 20), "%",
                     (next, value) -> next.putInt(key + "TintOpacity", value), false);
     }
 
@@ -1318,7 +1379,7 @@ final class WidgetPanel {
 
     private void checkScreen() {
         if (renderedScreen != ScreenIdentity.current())
-            throw new IllegalStateException("Reopen Advanced after switching screens.");
+            throw new IllegalStateException(str(R.string.editor_error_reopen_after_screen_switch));
     }
 
     private void toggle(String name, boolean checked, Edit edit, boolean structural)
@@ -1389,6 +1450,19 @@ final class WidgetPanel {
             Choice edit,
             boolean structural)
             throws Exception {
+        slider(name, min, max, current, suffix, edit, structural, false);
+    }
+
+    private void slider(
+            String name,
+            int min,
+            int max,
+            int current,
+            String suffix,
+            Choice edit,
+            boolean structural,
+            boolean scalePreview)
+            throws Exception {
         LinearLayout parent = group;
         group = new LinearLayout(context);
         group.setOrientation(LinearLayout.VERTICAL);
@@ -1422,18 +1496,18 @@ final class WidgetPanel {
                                     && Boolean.TRUE.equals(args[2])) {
                                 pending[0] = min + ((Number) args[1]).intValue();
                                 caption.setText(name + "   " + pending[0] + suffix);
-                                if (name.equals("Widget scale")) {
+                                if (scalePreview) {
                                     try {
                                         editor.previewScale(pending[0] / 100f);
                                     } catch (Exception e) {
                                         error(e);
                                     }
                                 }
-                                if (!structural && !name.equals("Widget scale"))
+                                if (!structural && !scalePreview)
                                     change(next -> edit.change(next, pending[0]), false, false);
                             }
                             if (m.getName().equals("onStopTrackingTouch")) {
-                                if (name.equals("Widget scale")) editor.cancelScalePreview();
+                                if (scalePreview) editor.cancelScalePreview();
                                 change(
                                         next -> edit.change(next, pending[0]),
                                         structural,
@@ -1442,7 +1516,7 @@ final class WidgetPanel {
                             return null;
                         });
         Reflect.call(slider, "setOnSeekBarChangeListener", proxy);
-        if (name.equals("Widget scale"))
+        if (scalePreview)
             slider.addOnAttachStateChangeListener(
                     new View.OnAttachStateChangeListener() {
                         @Override
@@ -1455,13 +1529,7 @@ final class WidgetPanel {
                     });
     }
 
-    private void section(String name) {
-        int page =
-                switch (name) {
-                    case "Placement" -> 1;
-                    case "Appearance" -> 2;
-                    default -> 0;
-                };
+    private void section(int page, int titleRes) {
         if (!editor.scaleAvailable()) page = Math.max(0, page - 1);
         boolean separated = pages.hasGroup(page);
         group = pages.group(content, page);
@@ -1478,10 +1546,18 @@ final class WidgetPanel {
             group.addView(
                     line, PanelRows.divider(context, Math.max(1, background.getIntrinsicHeight())));
         }
-        if (!name.equals("Reset")) {
-            TextView title = label(name);
+        if (titleRes != 0) {
+            TextView title = label(str(titleRes));
             PanelRows.heading(title);
         }
+    }
+
+    private String str(int resId) {
+        return ModuleStrings.get(context, resId);
+    }
+
+    private String str(int resId, Object... args) {
+        return ModuleStrings.get(context, resId, args);
     }
 
     private TextView label(String value) {

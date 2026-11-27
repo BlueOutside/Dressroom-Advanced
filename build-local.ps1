@@ -34,7 +34,7 @@ if (-not $ApiAar) {
         if (-not (Test-Path -LiteralPath $ApiAar)) { Invoke-WebRequest -Uri 'https://repo.maven.apache.org/maven2/io/github/libxposed/api/102.0.0/api-102.0.0.aar' -OutFile $ApiAar }
     }
 }
-foreach ($name in @('classes','dex')) {
+foreach ($name in @('classes','dex','gen')) {
     $target = [IO.Path]::GetFullPath((Join-Path $buildRoot $name))
     if (-not $target.StartsWith($buildRoot.TrimEnd('\','/') + [IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase)) { throw 'Generated output escaped the build directory' }
     if (Test-Path -LiteralPath $target) { Remove-Item -LiteralPath $target -Recurse -Force }
@@ -53,15 +53,7 @@ $apiJar = Join-Path $apiDir 'classes.jar'
 $yamlJar = Get-ProjectYamlJar $project $buildRoot
 $classes = Join-Path $buildRoot 'classes'
 $dex = Join-Path $buildRoot 'dex'
-$sourceList = Join-Path $buildRoot 'javac-sources.txt'
-$sources = Get-ChildItem (Join-Path $project 'app/src/main/java') -Recurse -Filter '*.java' |
-    ForEach-Object { '"' + $_.FullName.Replace('\', '/') + '"' }
-# Keep long checkout paths and the growing source list off the Windows command line.
-[IO.File]::WriteAllLines($sourceList, [string[]]$sources, [Text.UTF8Encoding]::new($false))
-Invoke-ProjectTool 'javac' @('--release','17','-encoding','UTF-8','-classpath',"$androidJar;$apiJar;$yamlJar",'-d',$classes,"@$sourceList")
-$moduleJar = Join-Path $buildRoot 'module.jar'
-Invoke-ProjectTool 'jar' @('--create','--file',$moduleJar,'-C',$classes,'.')
-Invoke-ProjectTool (Join-Path $tools 'd8.bat') @('--lib',$androidJar,'--classpath',$apiJar,'--min-api',"$($config.minSdk)",'--output',$dex,$moduleJar,$yamlJar)
+$genDir = Join-Path $buildRoot 'gen'
 # Gradle owns version/SDK values; the CLI generates its manifest from the same values.
 $manifest = [xml](Get-Content -LiteralPath (Join-Path $project 'app/src/main/AndroidManifest.xml') -Raw)
 $androidNamespace = 'http://schemas.android.com/apk/res/android'
@@ -76,8 +68,20 @@ foreach ($name in @('minSdk','targetSdk')) {
 }
 $null = $manifest.manifest.PrependChild($sdkElement)
 $generatedManifest = Join-Path $buildRoot 'AndroidManifest.xml'; $manifest.Save($generatedManifest)
+$resZip = Join-Path $buildRoot 'res.zip'
 $baseApk = Join-Path $buildRoot 'unsigned.apk'
-Invoke-ProjectTool (Join-Path $tools 'aapt.exe') @('package','-f','-M',$generatedManifest,'-S',(Join-Path $project 'app/src/main/res'),'-I',$androidJar,'-F',$baseApk)
+Invoke-ProjectTool (Join-Path $tools 'aapt2.exe') @('compile','--dir',(Join-Path $project 'app/src/main/res'),'-o',$resZip)
+Invoke-ProjectTool (Join-Path $tools 'aapt2.exe') @('link','-o',$baseApk,'-I',$androidJar,'--manifest',$generatedManifest,'--java',$genDir,'--auto-add-overlay',$resZip)
+$sourceList = Join-Path $buildRoot 'javac-sources.txt'
+$sources = @(Get-ChildItem (Join-Path $project 'app/src/main/java') -Recurse -Filter '*.java') +
+    @(Get-ChildItem $genDir -Recurse -Filter '*.java') |
+    ForEach-Object { '"' + $_.FullName.Replace('\', '/') + '"' }
+# Keep long checkout paths and the growing source list off the Windows command line.
+[IO.File]::WriteAllLines($sourceList, [string[]]$sources, [Text.UTF8Encoding]::new($false))
+Invoke-ProjectTool 'javac' @('--release','17','-encoding','UTF-8','-classpath',"$androidJar;$apiJar;$yamlJar",'-d',$classes,"@$sourceList")
+$moduleJar = Join-Path $buildRoot 'module.jar'
+Invoke-ProjectTool 'jar' @('--create','--file',$moduleJar,'-C',$classes,'.')
+Invoke-ProjectTool (Join-Path $tools 'd8.bat') @('--lib',$androidJar,'--classpath',$apiJar,'--min-api',"$($config.minSdk)",'--output',$dex,$moduleJar,$yamlJar)
 Invoke-ProjectTool 'jar' @('--update','--file',$baseApk,'-C',$dex,'classes.dex','-C',(Join-Path $project 'app/src/main/resources'),'META-INF')
 $aligned = Join-Path $buildRoot 'aligned.apk'
 Invoke-ProjectTool (Join-Path $tools 'zipalign.exe') @('-f','4',$baseApk,$aligned)

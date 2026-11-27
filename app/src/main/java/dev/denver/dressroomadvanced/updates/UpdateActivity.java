@@ -55,7 +55,7 @@ public final class UpdateActivity extends Activity {
             ready = UpdateRepository.apk(this);
             if (!ready.isFile()) {
                 if (waiting) closeHost();
-                else error("The downloaded update is no longer available");
+                else error(ModuleStrings.get(this, R.string.update_file_unavailable));
                 return;
             }
             if (!waiting) launchSystemInstaller();
@@ -73,10 +73,10 @@ public final class UpdateActivity extends Activity {
         content.addView(percent);
         dialog =
                 new AlertDialog.Builder(this)
-                        .setTitle("Downloading update")
+                        .setTitle(ModuleStrings.get(this, R.string.update_downloading_title))
                         .setView(content)
                         .setNegativeButton(
-                                "Cancel",
+                                ModuleStrings.get(this, R.string.common_cancel),
                                 (d, which) -> cancelAndClose())
                         .setOnCancelListener(
                                 d -> cancelAndClose())
@@ -113,9 +113,9 @@ public final class UpdateActivity extends Activity {
                                     if (cancelled || isDestroyed()) return;
                                     ready = file;
                                     targetVersionCode = targetCode;
-                                    dialog.setTitle("Installing update");
+                                    dialog.setTitle(ModuleStrings.get(this, R.string.update_installing_title));
                                     progress.setIndeterminate(true);
-                                    percent.setText("Checking root access...");
+                                    percent.setText(ModuleStrings.get(this, R.string.update_checking_root));
                                 });
                         boolean hasRoot = RootUpdater.hasRoot();
                         if (cancelled || isDestroyed()) return;
@@ -127,7 +127,7 @@ public final class UpdateActivity extends Activity {
                                         Button negative =
                                                 dialog.getButton(DialogInterface.BUTTON_NEGATIVE);
                                         if (negative != null) negative.setEnabled(false);
-                                        percent.setText("Installing with root...");
+                                        percent.setText(ModuleStrings.get(this, R.string.update_installing_root));
                                     });
                             RootUpdater.CommandResult installResult = RootUpdater.installApk(file);
                             if (RootUpdater.isInstallSuccess(installResult)) {
@@ -174,7 +174,7 @@ public final class UpdateActivity extends Activity {
     private void launchSystemInstaller() {
         if (isFinishing() || isDestroyed()) return;
         if (ready == null || !ready.isFile()) {
-            error("The downloaded update is no longer available");
+            error(ModuleStrings.get(this, R.string.update_file_unavailable));
             return;
         }
         try {
@@ -193,11 +193,13 @@ public final class UpdateActivity extends Activity {
                             .setData(uri)
                             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                             .putExtra(Intent.EXTRA_RETURN_RESULT, true);
-            install.setClipData(ClipData.newRawUri("Dressroom Advanced update", uri));
+            install.setClipData(
+                    ClipData.newRawUri(
+                            ModuleStrings.get(this, R.string.update_dialog_title_stable), uri));
             waiting = true;
             startActivityForResult(install, 2);
         } catch (RuntimeException error) {
-            error("Could not open Android's package installer");
+            error(ModuleStrings.get(this, R.string.update_installer_open_failed));
         }
     }
 
@@ -209,7 +211,7 @@ public final class UpdateActivity extends Activity {
             if (getPackageManager().canRequestPackageInstalls()) {
                 launchSystemInstaller();
             } else {
-                error("Allow Dressroom Advanced to install updates, then try again.");
+                error(ModuleStrings.get(this, R.string.update_allow_install_permission));
             }
         } else if (request == 2) {
             closeHost();
@@ -252,12 +254,13 @@ public final class UpdateActivity extends Activity {
         dismissDialog();
         dialog =
                 new AlertDialog.Builder(this)
-                        .setTitle("Update failed")
+                        .setTitle(ModuleStrings.get(this, R.string.update_failed_title))
                         .setMessage(
                                 message == null
-                                        ? "Could not download the update. Please try again later."
+                                        ? ModuleStrings.get(this, R.string.update_failed_generic)
                                         : message)
-                        .setPositiveButton("OK", (d, which) -> closeHost())
+                        .setPositiveButton(
+                                ModuleStrings.get(this, R.string.common_ok), (d, which) -> closeHost())
                         .setOnCancelListener(d -> closeHost())
                         .create();
         dialog.setCanceledOnTouchOutside(false);

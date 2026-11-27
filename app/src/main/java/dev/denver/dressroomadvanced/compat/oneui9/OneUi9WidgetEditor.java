@@ -639,7 +639,10 @@ final class OneUi9WidgetEditor {
                         .getDeclaredConstructor(
                                 int.class, int.class, Runnable.class, String.class)
                         .newInstance(-1, icon, openFactory.apply(context), tag);
-        if (labelField != null) labelField.set(extra, "Advanced");
+        if (labelField != null)
+            labelField.set(
+                    extra,
+                    ModuleStrings.getOrFallback(context, R.string.common_advanced, "Advanced"));
         items.add(extra);
         Object updated = java.lang.reflect.Array.newInstance(menuItemClass, items.size());
         for (int i = 0; i < items.size(); i++) java.lang.reflect.Array.set(updated, i, items.get(i));

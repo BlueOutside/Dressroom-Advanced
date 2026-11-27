@@ -233,7 +233,7 @@ public final class DressroomModule extends XposedModule {
     void depthDetectionFailed(String message) {
         if (!depthHardwareAvailable()) {
             depthLibrariesDisabled = true;
-            invalidateDepth(ObjectCaptureBackend.unavailableReason());
+            invalidateDepth(ObjectCaptureBackend.unavailableReason(activeEditorContext()));
             return;
         }
         // A failed scan is not a wallpaper replacement. Keep user choices, suspend the matte.
@@ -253,11 +253,25 @@ public final class DressroomModule extends XposedModule {
     }
 
     String depthUnavailableReason(Object clock) {
+        android.content.Context ctx =
+                clock instanceof View v ? v.getContext() : activeEditorContext();
         String issue = DepthBinding.providerIssue(clock);
-        if (issue != null) return "Clock provider binding failed: " + issue;
+        if (issue != null)
+            return ModuleStrings.getOrFallback(
+                    ctx,
+                    R.string.clock_depth_provider_binding_failed,
+                    "Clock provider binding failed: %1$s",
+                    issue);
         if (editorBinding != null && editorBinding.legacy && !legacyDepthReady)
-            return "Depth editor binding failed: " + legacyDepthFailure;
-        return "Depth is not available for this clock";
+            return ModuleStrings.getOrFallback(
+                    ctx,
+                    R.string.clock_depth_editor_binding_failed,
+                    "Depth editor binding failed: %1$s",
+                    legacyDepthFailure);
+        return ModuleStrings.getOrFallback(
+                ctx,
+                R.string.clock_depth_not_available,
+                "Depth is not available for this clock");
     }
 
     private java.lang.ref.WeakReference<Object> activeClockController =
@@ -356,7 +370,12 @@ public final class DressroomModule extends XposedModule {
             return true;
         } catch (Exception error) {
             report("Detected depth could not update the editor", error);
-            depthStatus("Could not apply subject: " + error.getMessage());
+            depthStatus(
+                    ModuleStrings.getOrFallback(
+                            clock.getContext(),
+                            R.string.depth_status_apply_failed,
+                            "Could not apply subject: %1$s",
+                            error.getMessage() == null ? "" : error.getMessage()));
             return false;
         }
     }
@@ -424,6 +443,10 @@ public final class DressroomModule extends XposedModule {
     @Override
     public void onModuleLoaded(ModuleLoadedParam param) {
         processName = param.getProcessName();
+        try {
+            ModuleStrings.setModuleInfo(getModuleApplicationInfo());
+        } catch (RuntimeException ignored) {
+        }
         if (!PlatformGate.supported() && !platformReported) {
             platformReported = true;
             log(
@@ -705,7 +728,10 @@ public final class DressroomModule extends XposedModule {
             android.widget.Toast.makeText(
                             context,
                             error.getMessage() == null
-                                    ? "Could not prepare settings. Try Apply again."
+                                    ? ModuleStrings.getOrFallback(
+                                            context,
+                                            R.string.editor_error_prepare_settings,
+                                            "Could not prepare settings. Try Apply again.")
                                     : error.getMessage(),
                             android.widget.Toast.LENGTH_LONG)
                     .show();
@@ -1451,7 +1477,7 @@ public final class DressroomModule extends XposedModule {
         if (!depthHardwareAvailable()) {
             if (!depthLibrariesDisabled) {
                 depthLibrariesDisabled = true;
-                invalidateDepth(ObjectCaptureBackend.unavailableReason());
+                invalidateDepth(ObjectCaptureBackend.unavailableReason(clock.getContext()));
             }
             return;
         }

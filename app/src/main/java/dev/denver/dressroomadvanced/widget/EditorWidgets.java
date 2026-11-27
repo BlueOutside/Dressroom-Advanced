@@ -819,8 +819,10 @@ final class EditorWidgets {
                                                 || !module.widgetEngine.fits(grid(), next)) {
                                             android.widget.Toast.makeText(
                                                             context(),
-                                                            "These widgets need a larger grid for"
-                                                                    + " this arrangement.",
+                                                            ModuleStrings.getOrFallback(
+                                                                    context(),
+                                                                    R.string.widget_grid_too_small_toast,
+                                                                    "These widgets need a larger grid for this arrangement."),
                                                             android.widget.Toast.LENGTH_LONG)
                                                     .show();
                                             return false;
@@ -1202,8 +1204,10 @@ final class EditorWidgets {
                                             || !module.widgetEngine.fits(grid(), next)) {
                                         android.widget.Toast.makeText(
                                                         context(),
-                                                        "These widgets need a larger grid for"
-                                                                + " this arrangement.",
+                                                        ModuleStrings.getOrFallback(
+                                                                context(),
+                                                                R.string.widget_grid_too_small_toast,
+                                                                "These widgets need a larger grid for this arrangement."),
                                                         android.widget.Toast.LENGTH_LONG)
                                                 .show();
                                         return false;
@@ -1866,7 +1870,10 @@ final class EditorWidgets {
                     this).showDialog(previewAvailable());
         } catch (Exception e) {
             module.report("Clock panel shortcut unavailable", e);
-            android.widget.Toast.makeText(context, "Could not open Extras.",
+            android.widget.Toast.makeText(
+                    context,
+                    ModuleStrings.getOrFallback(
+                            context, R.string.editor_error_open_extras_failed, "Could not open Extras."),
                     android.widget.Toast.LENGTH_SHORT).show();
         }
     }
@@ -1881,7 +1888,10 @@ final class EditorWidgets {
             }
             if (preview == null || panel == null)
                 throw new IllegalStateException(
-                        "Open the lockscreen editor with widgets available first.");
+                        ModuleStrings.getOrFallback(
+                                context,
+                                R.string.editor_error_open_widgets_first,
+                                "Open the lockscreen editor with widgets available first."));
             new WidgetPanel(context, preview.getClass().getClassLoader(), this).show(panel);
         } catch (Exception e) {
             module.report("Widget Advanced panel unavailable", e);

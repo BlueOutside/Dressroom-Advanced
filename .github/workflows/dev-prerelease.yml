@@ -53,6 +53,8 @@ jobs:
           ./scripts/check-layout.ps1
           python scripts/compatibility-inventory.py --check
           python scripts/dev-version.py --self-test
+          python scripts/check-translations.py --self-test
+          python scripts/check-translations.py
       - name: Compute dev version and changelog
         shell: pwsh
         run: |

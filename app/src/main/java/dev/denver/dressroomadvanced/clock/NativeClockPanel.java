@@ -168,7 +168,12 @@ final class NativeClockPanel {
         pages =
                 new PanelTabs(
                         context,
-                        new String[] {"Layout", "Effects", "Depth", "Date"},
+                        new String[] {
+                            str(R.string.common_layout),
+                            str(R.string.common_effects),
+                            str(R.string.common_depth),
+                            str(R.string.common_date)
+                        },
                         0,
                         tabInset,
                         page -> scroll.post(() -> scroll.scrollTo(0, 0)));
@@ -195,7 +200,7 @@ final class NativeClockPanel {
                             return null;
                         });
         nativeTabs.listen(tabs, listener);
-        nativeTabs.add(tabs, "Advanced", false);
+        nativeTabs.add(tabs, str(R.string.common_advanced), false);
         nativeTabs.applyClockStyle(context, tabs, false);
         scroll.addOnAttachStateChangeListener(
                 new View.OnAttachStateChangeListener() {
@@ -384,26 +389,26 @@ final class NativeClockPanel {
             updateDepthPreview(data);
             Object color = Reflect.call(data, "getClockColorData");
             Object shadow = Reflect.call(color, "getClockShadowStyle");
-            if (binding.supportsPosition()) section("Size & position");
+            if (binding.supportsPosition()) section(0, R.string.clock_section_size_position);
             if (binding.supportsPosition() && bool(data, "isEditableScale")) {
                 float min = binding.minimumScale(data);
                 float max = number(data, "getMaxScale").floatValue();
                 float scale = number(data, "getScale").floatValue();
                 if (Float.isFinite(min) && Float.isFinite(max) && max > min)
-                    slider("Clock size", min, max, scale, true, v -> edit("scale", d -> resize(d, v)));
+                    slider(str(R.string.clock_size), min, max, scale, true, v -> edit("scale", d -> resize(d, v)));
             }
             if (binding.supportsPosition() && bool(data, "isEditablePosition")) {
                 int width = context.getResources().getDisplayMetrics().widthPixels;
                 int height = context.getResources().getDisplayMetrics().heightPixels;
                 slider(
-                        "Move left / right",
+                        str(R.string.clock_move_horizontal),
                         -width / 2f,
                         width / 2f,
                         0,
                         false,
                         v -> edit("x", d -> move(d, Math.round(v), movedY)));
                 slider(
-                        "Move up / down",
+                        str(R.string.clock_move_vertical),
                         -height / 2f,
                         height / 2f,
                         0,
@@ -413,12 +418,16 @@ final class NativeClockPanel {
             EditorWidgets widgetPanel = module.earlyWidgetPanel();
             if (widgetPanel != null) {
                 TextView editorExtras = action(
-                        widgetPanel.previewAvailable() ? "Widgets and Extras" : "Extras", "");
+                        str(
+                                widgetPanel.previewAvailable()
+                                        ? R.string.common_widgets_and_extras
+                                        : R.string.common_extras),
+                        "");
                 editorExtras.setOnClickListener(v -> widgetPanel.openFromClock(context));
             }
-            section("Appearance");
+            section(1, R.string.common_appearance);
             toggle(
-                    "Adaptive color",
+                    str(R.string.clock_adaptive_color),
                     bool(color, "isAdaptiveColor"),
                     true,
                     v ->
@@ -430,7 +439,7 @@ final class NativeClockPanel {
                                                     "setAdaptiveColor",
                                                     v)));
             colorRow(
-                    "Clock color",
+                    str(R.string.clock_color),
                     number(color, "getPaletteCustomColor").intValue(),
                     (d, v) -> {
                         Object c = Reflect.call(d, "getClockColorData");
@@ -445,7 +454,7 @@ final class NativeClockPanel {
                                     && (number(shadow, "getShadowColor").intValue() >>> 24) != 0;
             if (newSelection && shadowPreference == null) initialShadowEnabled = customShadow;
             toggle(
-                    "Custom shadow",
+                    str(R.string.clock_custom_shadow),
                     customShadow,
                     true,
                     enabled -> {
@@ -459,40 +468,40 @@ final class NativeClockPanel {
                                 });
                     });
             slider(
-                    "Shadow softness",
+                    str(R.string.clock_shadow_softness),
                     0,
                     64,
                     number(shadow, "getShadowRadius").floatValue(),
                     false,
                     v -> edit("shadowRadius", d -> shadow(d, "setShadowRadius", v)));
             slider(
-                    "Shadow horizontal offset",
+                    str(R.string.clock_shadow_offset_x),
                     -64,
                     64,
                     number(shadow, "getShadowDx").floatValue(),
                     false,
                     v -> edit("shadowX", d -> shadow(d, "setShadowDx", v)));
             slider(
-                    "Shadow vertical offset",
+                    str(R.string.clock_shadow_offset_y),
                     -64,
                     64,
                     number(shadow, "getShadowDy").floatValue(),
                     false,
                     v -> edit("shadowY", d -> shadow(d, "setShadowDy", v)));
             colorRow(
-                    "Shadow color",
+                    str(R.string.clock_shadow_color),
                     number(shadow, "getShadowColor").intValue(),
                     (d, v) -> shadow(d, "setShadowColor", v));
             if (!binding.legacy) buildBlur(data);
-            section("Depth effect");
+            section(2, R.string.clock_section_depth);
             if (!module.depthAvailable(renderer)) {
                 label(module.depthUnavailableReason(renderer), 12, false);
             } else if (!module.depthHardwareAvailable()) {
-                label(ObjectCaptureBackend.unavailableReason(), 12, false);
+                label(ObjectCaptureBackend.unavailableReason(context), 12, false);
             } else {
                 boolean imageAvailable = module.depthImageAvailable();
                 depthControl = toggle(
-                        "Clock behind subject",
+                        str(R.string.clock_behind_subject),
                         depthEnabled && imageAvailable,
                         imageAvailable,
                         enabled -> {
@@ -504,14 +513,14 @@ final class NativeClockPanel {
                             refresh();
                         });
                 depthAodControl = toggle(
-                        "Disable depth on AOD",
+                        str(R.string.common_disable_depth_on_aod),
                         depthOffAod,
                         depthEnabled && imageAvailable,
                         off -> {
                             depthOffAod = off;
                             stage(data());
                         });
-                TextView detectSubject = action("Detect wallpaper subject again", "");
+                TextView detectSubject = action(str(R.string.clock_detect_subject_again), "");
                 depthDetectControl = detectSubject;
                 detectSubject.setEnabled(imageAvailable);
                 depthAvailability = label(depthSourceExplanation(), 12, false);
@@ -528,21 +537,21 @@ final class NativeClockPanel {
                                     stage(data());
                                 }
                                 module.detectDepth();
-                                setStatus("Detecting subject…");
+                                setStatus(str(R.string.clock_status_detecting_subject));
                             } catch (Exception error) {
                                 error(error);
                             }
                         });
             }
-            section("Typography");
+            section(0, R.string.clock_section_typography);
             if (bool(font, "getFontChangeable")) {
                 TextView chooseFont =
                         action(
-                                "Choose font file",
-                                fontFile.isEmpty() ? "TTF, OTF or TTC" : fontFileName);
+                                str(R.string.clock_choose_font_file),
+                                fontFile.isEmpty() ? str(R.string.common_font_file_types) : fontFileName);
                 chooseFont.setOnClickListener(view -> pickFont());
                 if (!fontFile.isEmpty()) {
-                    TextView restore = action("Use Samsung font", "");
+                    TextView restore = action(str(R.string.clock_use_samsung_font), "");
                     restore.setOnClickListener(
                             view -> {
                                 try {
@@ -561,7 +570,7 @@ final class NativeClockPanel {
                             && weight instanceof Number;
             if (builtInWeight && fontAxes == null && fontFile.isEmpty()) {
                 slider(
-                        "Weight",
+                        str(R.string.font_axis_weight),
                         number(range, "getMinValue").floatValue(),
                         number(range, "getMaxValue").floatValue(),
                         ((Number) weight).floatValue(),
@@ -583,7 +592,7 @@ final class NativeClockPanel {
                             axis.clamp(fontValues.getFloat(axis.tag(), axis.defaultValue()));
                     if (axis.tag().equals("ital") && axis.min() == 0 && axis.max() == 1)
                         toggle(
-                                axis.label(),
+                                axis.label(context),
                                 current >= .5f,
                                 true,
                                 enabled -> previewFontAxis(axis, enabled ? 1 : 0, true));
@@ -591,7 +600,7 @@ final class NativeClockPanel {
                         boolean nativeWeightAxis = axis.tag().equals("wght") && fontFile.isEmpty();
                         View axisRow =
                                 slider(
-                                        axis.label(),
+                                        axis.label(context),
                                         axis.min(),
                                         axis.max(),
                                         current,
@@ -606,11 +615,11 @@ final class NativeClockPanel {
                 }
             }
             if ((!builtInWeight || !fontFile.isEmpty()) && fontAxes == null)
-                label("This font has no adjustable axes.", 12, false);
+                label(str(R.string.common_font_no_adjustable_axes), 12, false);
             int rounding = number(font, "getRoundedCorners").intValue();
             if (rounding >= 0)
                 slider(
-                        "Corner rounding",
+                        str(R.string.clock_corner_rounding),
                         0,
                         100,
                         rounding,
@@ -623,9 +632,9 @@ final class NativeClockPanel {
                                                         Reflect.call(d, "getClockFontData"),
                                                         "setRoundedCorners",
                                                         Math.round(v))));
-            section("Date & weather");
+            section(3, R.string.clock_section_date_weather);
             toggle(
-                    "Show date",
+                    str(R.string.clock_show_date),
                     !hideDate,
                     true,
                     show -> {
@@ -644,7 +653,7 @@ final class NativeClockPanel {
                     });
             dateOrderControl =
                     toggle(
-                            "Date above the time",
+                            str(R.string.clock_date_above_time),
                             bool(data, "getShowDateInfoFirst"),
                             true,
                             v -> {
@@ -661,14 +670,14 @@ final class NativeClockPanel {
                 weatherSupported = binding.supportsWeather(controller, data);
             } catch (ReflectiveOperationException error) {
                 module.report("Weather capability unavailable", error);
-                label("Weather controls are unavailable for this clock.", 12, false);
+                label(str(R.string.clock_weather_unavailable), 12, false);
             }
-            dateSizeControl = labelSizeSlider("Date size", dateSize, false);
+            dateSizeControl = labelSizeSlider(str(R.string.clock_date_size), dateSize, false);
             dateSizeControl.setVisibility(hideDate ? View.GONE : View.VISIBLE);
             if (weatherSupported) {
-                labelSizeSlider("Weather size", weatherSize, true);
+                labelSizeSlider(str(R.string.clock_weather_size), weatherSize, true);
                 toggle(
-                        "Weather information",
+                        str(R.string.clock_weather_info),
                         weatherPreference != null
                                 ? weatherPreference
                                 : bool(data, "getShowWeatherInfo"),
@@ -677,14 +686,14 @@ final class NativeClockPanel {
                             setWeather(v);
                         });
                 if (!bool(data, "isWeatherLocationExist"))
-                    label("Add a city in Samsung Weather to show weather information.", 12, false);
+                    label(str(R.string.clock_weather_add_city), 12, false);
             }
             buildStretch(data, font);
-            section("Restore");
+            section(0, 0);
             TextView reset =
                     action(
-                            "Restore this editing session",
-                            "Undo changes made since opening Advanced");
+                            str(R.string.clock_restore_session),
+                            str(R.string.clock_restore_session_summary));
             reset.setOnClickListener(
                     v -> {
                         try {
@@ -767,7 +776,7 @@ final class NativeClockPanel {
     private void buildBlur(Object data) throws Exception {
         boolean extension = hasInterface("ClockBlurExtension");
         toggle(
-                "Clock blur",
+                str(R.string.clock_blur),
                 forceBlur || bool(data, "getBlurEnabled"),
                 extension,
                 enabled -> {
@@ -788,14 +797,14 @@ final class NativeClockPanel {
                         BlurEffects.preview((View) renderer, enabled, blurRadius, blurVisibility);
                 });
         if (!extension) {
-            label("Blur is unavailable for this clock.", 12, false);
+            label(str(R.string.clock_blur_unavailable), 12, false);
             return;
         }
         if (BlurAppearance.customClockRadius(context)) {
-            label("Radius is set in Advanced → Extras → Blur.", 12, false);
+            label(str(R.string.clock_blur_radius_in_extras), 12, false);
         } else {
             slider(
-                    "Blur strength",
+                    str(R.string.clock_blur_strength),
                     1,
                     300,
                     blurRadius,
@@ -814,7 +823,7 @@ final class NativeClockPanel {
         boolean custom = blurVisibility >= 0f;
         View[] visibility = new View[1];
         toggle(
-                "Custom text visibility",
+                str(R.string.clock_custom_text_visibility),
                 custom,
                 true,
                 enabled -> {
@@ -830,7 +839,7 @@ final class NativeClockPanel {
                 });
         visibility[0] =
                 slider(
-                        "Text visibility over blur",
+                        str(R.string.clock_text_visibility_over_blur),
                         0,
                         100,
                         custom ? blurVisibility * 100 : 50,
@@ -850,34 +859,26 @@ final class NativeClockPanel {
 
     @SuppressWarnings("unchecked")
     private void buildStretch(Object data, Object font) throws Exception {
-        section("Dynamic stretch");
+        section(0, R.string.clock_section_dynamic_stretch);
         boolean importedStretch = importedStretchable();
         if (!fontFile.isEmpty() && !importedStretch) {
-            label(
-                    "Samsung dynamic stretching requires a font with a HEGT or HGHT height axis.",
-                    12,
-                    false);
+            label(str(R.string.clock_stretch_requires_height_axis), 12, false);
             return;
         }
         if (!bool(data, "getStretchable") || renderer == null || !hasInterface("FontExtension")) {
             if (importedStretch && !nativeFontStretchable) {
                 label(
-                        "Pick a stretchable Samsung clock font (first two) to drive this font's "
-                                + fontAxes.heightAxis().tag()
-                                + " axis with Dynamic stretch.",
+                        str(R.string.clock_stretch_pick_samsung_font, fontAxes.heightAxis().tag()),
                         12,
                         false);
             } else {
-                label(
-                        "Choose a dynamic clock with a stretchable font to adjust its shape.",
-                        12,
-                        false);
+                label(str(R.string.clock_stretch_choose_dynamic_clock), 12, false);
             }
             return;
         }
         Object measured = Reflect.call(renderer, "getStretchMeasureData");
         if (measured == null) {
-            label("Stretch controls appear after the clock finishes measuring.", 12, false);
+            label(str(R.string.clock_stretch_waiting_measure), 12, false);
             return;
         }
         List<Rect> mins = (List<Rect>) Reflect.call(measured, "getMinRects");
@@ -890,7 +891,7 @@ final class NativeClockPanel {
                 || mins.size() != maxs.size()
                 || mins.size() != defaults.size()
                 || mins.size() > 12) {
-            label("This clock does not expose compatible stretch measurements.", 12, false);
+            label(str(R.string.clock_stretch_incompatible_measurements), 12, false);
             return;
         }
         Object stretch = Reflect.call(font, "getClockStretchData");
@@ -947,16 +948,11 @@ final class NativeClockPanel {
         boolean locked = module.stretchLocks.get(stretch) != null;
         if (heightAxisControl != null) setControlEnabled(heightAxisControl, !locked);
         if (importedStretch) {
-            label(
-                    "Using this font's "
-                            + fontAxes.heightAxis().tag()
-                            + " axis for native dynamic stretching.",
-                    12,
-                    false);
+            label(str(R.string.clock_stretch_using_axis, fontAxes.heightAxis().tag()), 12, false);
         }
         List<View> controls = new ArrayList<>();
         toggle(
-                "Manual stretch",
+                str(R.string.clock_stretch_manual),
                 locked,
                 true,
                 enabled -> {
@@ -989,11 +985,12 @@ final class NativeClockPanel {
                 });
         View[] segmentRows = new View[progress.length];
         View[] allRowRef = new View[1];
+        String allSegmentsLabel = str(R.string.clock_stretch_all_segments);
         if (progress.length > 1) {
             int initialAll = averageProgress(progress);
             View allRow =
                     slider(
-                            "All segments",
+                            allSegmentsLabel,
                             0,
                             100,
                             initialAll,
@@ -1003,7 +1000,9 @@ final class NativeClockPanel {
                                 for (int i = 0; i < progress.length; i++) {
                                     progress[i] = unified;
                                     syncSliderRow(
-                                            segmentRows[i], "Segment " + (i + 1), unified);
+                                            segmentRows[i],
+                                            str(R.string.clock_stretch_segment, i + 1),
+                                            unified);
                                 }
                                 applyStretch(mins, maxs, progress);
                             });
@@ -1015,7 +1014,7 @@ final class NativeClockPanel {
             final int segment = index;
             View control =
                     slider(
-                            "Segment " + (index + 1),
+                            str(R.string.clock_stretch_segment, index + 1),
                             0,
                             100,
                             progress[index],
@@ -1025,7 +1024,7 @@ final class NativeClockPanel {
                                 if (allRowRef[0] != null) {
                                     syncSliderRow(
                                             allRowRef[0],
-                                            "All segments",
+                                            allSegmentsLabel,
                                             averageProgress(progress));
                                 }
                                 applyStretch(mins, maxs, progress);
@@ -1127,8 +1126,7 @@ final class NativeClockPanel {
                             || heights.isEmpty()
                             || heights.stream()
                                     .anyMatch(h -> h == null || !Float.isFinite(h) || h <= 0)) {
-                        throw new IllegalArgumentException(
-                                "This clock rejected that stretch amount.");
+                        throw new IllegalArgumentException(str(R.string.clock_stretch_rejected));
                     }
                     module.setManualRenderer(renderer, true);
                     module.stretchLocks.remove(item);
@@ -1260,7 +1258,7 @@ final class NativeClockPanel {
                     || expectedScreen != ScreenIdentity.current()
                             || expectedOrientation != module.layoutOrientation(context)
                     || !expectedScene.equals(module.scene())) {
-                throw new IllegalStateException("Clock changed. Select Advanced again.");
+                throw new IllegalStateException(str(R.string.clock_error_changed));
             }
             if (edits.keySet().stream().allMatch(NativeClockPanel::labelSizeEdit)) {
                 for (Edit edit : edits.values()) edit.apply(source);
@@ -1569,18 +1567,19 @@ final class NativeClockPanel {
         Reflect.call(c, "setClockShadowStyle", fresh);
     }
 
-    private void section(String name) {
-        if (name.equals("Restore")) {
-            currentGroup = pages.group(content, 0);
+    private String str(int resId) {
+        return ModuleStrings.get(context, resId);
+    }
+
+    private String str(int resId, Object... args) {
+        return ModuleStrings.get(context, resId, args);
+    }
+
+    private void section(int page, int titleRes) {
+        if (titleRes == 0) {
+            currentGroup = pages.group(content, page);
             return;
         }
-        int page =
-                switch (name) {
-                    case "Appearance" -> 1;
-                    case "Depth effect" -> 2;
-                    case "Date & weather" -> 3;
-                    default -> 0;
-                };
         boolean separated = pages.hasGroup(page);
         currentGroup = pages.group(content, page);
         int divider = resource("clock_panel_item_divider", "drawable");
@@ -1592,7 +1591,7 @@ final class NativeClockPanel {
                     line, PanelRows.divider(context, Math.max(1, drawable.getIntrinsicHeight())));
         }
         TextView header = (TextView) nativeView(EditorBinding.Row.LABEL);
-        header.setText(name);
+        header.setText(str(titleRes));
         PanelRows.heading(header);
         addNativeRow(header);
     }
@@ -1606,9 +1605,10 @@ final class NativeClockPanel {
     }
 
     private String depthSourceExplanation() {
-        return module.depthSourceKnown()
-                ? "Depth requires a still-image wallpaper. Gyro, video and live wallpapers are not supported."
-                : "The wallpaper source has not loaded. Reopen the clock panel once the wallpaper preview is visible.";
+        return str(
+                module.depthSourceKnown()
+                        ? R.string.common_depth_requires_still_wallpaper
+                        : R.string.clock_depth_source_not_loaded);
     }
 
     private void checkDepthSource() {
@@ -1674,7 +1674,10 @@ final class NativeClockPanel {
                             String file = result.getString("fontFile", "");
                             if (!file.isEmpty())
                                 panel.changeFontFile(
-                                        file, result.getString("fontFileName", "Custom font"));
+                                        file,
+                                        result.getString(
+                                                "fontFileName",
+                                                panel.str(R.string.common_custom_font)));
                         } catch (Exception error) {
                             panel.error(error);
                         }
@@ -2120,8 +2123,11 @@ final class NativeClockPanel {
         }
         if (status != null)
             setStatus(
-                    "Could not update: "
-                            + (e.getMessage() == null ? "select Advanced again" : e.getMessage()));
+                    str(
+                            R.string.clock_error_update_failed,
+                            e.getMessage() == null
+                                    ? str(R.string.clock_error_select_again)
+                                    : e.getMessage()));
     }
 
     private int dp(int value) {

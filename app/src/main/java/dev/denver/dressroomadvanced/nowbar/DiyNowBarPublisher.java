@@ -551,7 +551,11 @@ final class DiyNowBarPublisher {
         }
         if (card.showProgress) {
             rv.setViewVisibility(res.idExpandProgressGroup, View.VISIBLE);
-            String label = card.progressLabel.isEmpty() ? "Progress" : card.progressLabel;
+            String label =
+                    card.progressLabel.isEmpty()
+                            ? ModuleStrings.getOrFallback(
+                                    ctx, R.string.nowbar_progress_default, "Progress")
+                            : card.progressLabel;
             rv.setTextViewText(res.idExpandProgressLabel, label);
             rv.setTextViewText(res.idExpandProgressValue, card.goalSummary());
             rv.setProgressBar(res.idExpandProgress, 100, card.goalPercent(), false);
@@ -590,7 +594,8 @@ final class DiyNowBarPublisher {
                     card.timerMode == DiyNowBarCard.TIMER_STOPWATCH
                             ? DiyNowBarCard.formatDuration(card.stopwatchElapsedMs(now))
                             : (card.countdownRemainingMs(now) <= 0L
-                                    ? "Completed"
+                                    ? ModuleStrings.getOrFallback(
+                                            ctx, R.string.nowbar_timer_completed, "Completed")
                                     : DiyNowBarCard.formatDuration(card.countdownRemainingMs(now)));
             rv.setTextViewText(res.idExpandBody, readout);
             rv.setViewVisibility(res.idExpandBody, View.VISIBLE);
@@ -598,7 +603,9 @@ final class DiyNowBarPublisher {
         if (card.timerMode == DiyNowBarCard.TIMER_COUNTDOWN) {
             int pct = card.countdownProgress(now);
             rv.setViewVisibility(res.idExpandProgressGroup, View.VISIBLE);
-            rv.setTextViewText(res.idExpandProgressLabel, "Elapsed");
+            rv.setTextViewText(
+                    res.idExpandProgressLabel,
+                    ModuleStrings.getOrFallback(ctx, R.string.nowbar_timer_elapsed, "Elapsed"));
             rv.setTextViewText(res.idExpandProgressValue, pct + "%");
             rv.setProgressBar(res.idExpandProgress, 100, pct, false);
             List<BtnSpec> btns = new ArrayList<>();
@@ -611,7 +618,7 @@ final class DiyNowBarPublisher {
             }
             btns.add(
                     new BtnSpec(
-                            "Restart",
+                            ModuleStrings.getOrFallback(ctx, R.string.common_restart, "Restart"),
                             internalBroadcastPi(
                                     ctx, card.id, DiyNowBarCard.MUTATE_TIMER_RESET, -1, 202)));
             bindButtons(res, rv, btns);
@@ -619,12 +626,15 @@ final class DiyNowBarPublisher {
             List<BtnSpec> btns = new ArrayList<>();
             btns.add(
                     new BtnSpec(
-                            card.timerRunning ? "Pause" : "Start",
+                            ModuleStrings.getOrFallback(
+                                    ctx,
+                                    card.timerRunning ? R.string.common_pause : R.string.common_start,
+                                    card.timerRunning ? "Pause" : "Start"),
                             internalBroadcastPi(
                                     ctx, card.id, DiyNowBarCard.MUTATE_TIMER_TOGGLE, -1, 203)));
             btns.add(
                     new BtnSpec(
-                            "Reset",
+                            ModuleStrings.getOrFallback(ctx, R.string.common_reset, "Reset"),
                             internalBroadcastPi(
                                     ctx, card.id, DiyNowBarCard.MUTATE_TIMER_RESET, -1, 204)));
             bindButtons(res, rv, btns);
@@ -636,7 +646,10 @@ final class DiyNowBarPublisher {
         rv.setViewVisibility(res.idExpandProgressGroup, View.VISIBLE);
         rv.setTextViewText(
                 res.idExpandProgressLabel,
-                card.unit.isEmpty() ? "Progress" : card.unit);
+                card.unit.isEmpty()
+                        ? ModuleStrings.getOrFallback(
+                                ctx, R.string.nowbar_progress_default, "Progress")
+                        : card.unit);
         rv.setTextViewText(res.idExpandProgressValue, card.goalSummary());
         rv.setProgressBar(res.idExpandProgress, 100, card.goalPercent(), false);
 
@@ -651,7 +664,7 @@ final class DiyNowBarPublisher {
                         internalBroadcastPi(ctx, card.id, DiyNowBarCard.MUTATE_GOAL_INC, -1, 302)));
         btns.add(
                 new BtnSpec(
-                        "Reset",
+                        ModuleStrings.getOrFallback(ctx, R.string.common_reset, "Reset"),
                         internalBroadcastPi(
                                 ctx, card.id, DiyNowBarCard.MUTATE_GOAL_RESET, -1, 303)));
         bindButtons(res, rv, btns);
@@ -668,8 +681,8 @@ final class DiyNowBarPublisher {
             if (i < enabled.size()) {
                 int bit = enabled.get(i);
                 rv.setViewVisibility(res.statTileIds[i], View.VISIBLE);
-                rv.setTextViewText(res.statLabelIds[i], DiyNowBarCard.statName(bit));
-                rv.setTextViewText(res.statValueIds[i], stats.detail(bit));
+                rv.setTextViewText(res.statLabelIds[i], DiyNowBarCard.statName(appContext, bit));
+                rv.setTextViewText(res.statValueIds[i], stats.detail(appContext, bit));
             } else {
                 rv.setViewVisibility(res.statTileIds[i], View.INVISIBLE);
             }
@@ -711,7 +724,12 @@ final class DiyNowBarPublisher {
     private static void bindChecklistExpanded(
             Context ctx, DiyRes res, RemoteViews rv, DiyNowBarCard card) {
         if (card.checklist.isEmpty()) {
-            rv.setTextViewText(res.idExpandBody, "Add checklist items in DIY Now Bar Studio.");
+            rv.setTextViewText(
+                    res.idExpandBody,
+                    ModuleStrings.getOrFallback(
+                            ctx,
+                            R.string.nowbar_checklist_empty_studio,
+                            "Add checklist items in DIY Now Bar Studio."));
             rv.setViewVisibility(res.idExpandBody, View.VISIBLE);
             return;
         }
@@ -739,7 +757,8 @@ final class DiyNowBarPublisher {
                     rv,
                     Collections.singletonList(
                             new BtnSpec(
-                                    "Uncheck all",
+                                    ModuleStrings.getOrFallback(
+                                            ctx, R.string.nowbar_uncheck_all, "Uncheck all"),
                                     internalBroadcastPi(
                                             ctx,
                                             card.id,
@@ -754,8 +773,14 @@ final class DiyNowBarPublisher {
         rv.setTextViewText(res.idExpandBody, DiyNowBarLiveViews.controlsSummary(ctx));
         rv.setViewVisibility(res.idExpandBody, View.VISIBLE);
         List<BtnSpec> btns = new ArrayList<>();
-        btns.add(new BtnSpec("Torch", internalBroadcastPi(ctx, card.id, "flashlight", -1, 680)));
-        btns.add(new BtnSpec("Studio", editCardPendingIntent(ctx, card.id)));
+        btns.add(
+                new BtnSpec(
+                        ModuleStrings.getOrFallback(ctx, R.string.nowbar_short_torch, "Torch"),
+                        internalBroadcastPi(ctx, card.id, "flashlight", -1, 680)));
+        btns.add(
+                new BtnSpec(
+                        ModuleStrings.getOrFallback(ctx, R.string.nowbar_short_studio, "Studio"),
+                        editCardPendingIntent(ctx, card.id)));
         bindButtons(res, rv, btns);
     }
 
@@ -787,7 +812,11 @@ final class DiyNowBarPublisher {
                 case DiyNowBarCard.TYPE_GOAL ->
                         buildAction(
                                 "plus",
-                                "Add " + card.stepValue,
+                                ModuleStrings.getOrFallback(
+                                        ctx,
+                                        R.string.nowbar_goal_add_step,
+                                        "Add %1$d",
+                                        card.stepValue),
                                 internalBroadcastPi(
                                         ctx, card.id, DiyNowBarCard.MUTATE_GOAL_INC, -1, 101),
                                 false);
@@ -795,7 +824,12 @@ final class DiyNowBarPublisher {
                     if (card.timerMode == DiyNowBarCard.TIMER_STOPWATCH) {
                         yield buildAction(
                                 card.timerRunning ? "pause" : "play",
-                                card.timerRunning ? "Pause" : "Start",
+                                ModuleStrings.getOrFallback(
+                                        ctx,
+                                        card.timerRunning
+                                                ? R.string.common_pause
+                                                : R.string.common_start,
+                                        card.timerRunning ? "Pause" : "Start"),
                                 internalBroadcastPi(
                                         ctx, card.id, DiyNowBarCard.MUTATE_TIMER_TOGGLE, -1, 102),
                                 false);
@@ -806,7 +840,8 @@ final class DiyNowBarPublisher {
                     if (card.checklistDoneCount() < card.checklist.size()) {
                         yield buildAction(
                                 "check",
-                                "Check next",
+                                ModuleStrings.getOrFallback(
+                                        ctx, R.string.nowbar_check_next, "Check next"),
                                 internalBroadcastPi(
                                         ctx, card.id, DiyNowBarCard.MUTATE_CHECK_NEXT, -1, 103),
                                 false);
@@ -816,7 +851,7 @@ final class DiyNowBarPublisher {
                 case DiyNowBarCard.TYPE_CONTROLS ->
                         buildAction(
                                 "bolt",
-                                "Torch",
+                                ModuleStrings.getOrFallback(ctx, R.string.nowbar_short_torch, "Torch"),
                                 internalBroadcastPi(ctx, card.id, "flashlight", -1, 104),
                                 false);
                 default -> null;
@@ -912,14 +947,19 @@ final class DiyNowBarPublisher {
 
     private static String actionLabel(Context ctx, int action, String target) {
         return switch (action) {
-            case DiyNowBarCard.ACTION_FLASHLIGHT -> "Torch";
-            case DiyNowBarCard.ACTION_OPEN_EDITOR -> "Edit";
+            case DiyNowBarCard.ACTION_FLASHLIGHT ->
+                    ModuleStrings.getOrFallback(ctx, R.string.nowbar_short_torch, "Torch");
+            case DiyNowBarCard.ACTION_OPEN_EDITOR ->
+                    ModuleStrings.getOrFallback(ctx, R.string.common_edit, "Edit");
             case DiyNowBarCard.ACTION_OPEN_APP -> {
                 String label = DiyNowBarIcons.loadAppLabel(ctx, target);
-                yield label.isEmpty() ? "Open App" : label;
+                yield label.isEmpty()
+                        ? ModuleStrings.getOrFallback(ctx, R.string.nowbar_short_open_app, "Open App")
+                        : label;
             }
-            case DiyNowBarCard.ACTION_OPEN_URL -> "Open Link";
-            default -> "Action";
+            case DiyNowBarCard.ACTION_OPEN_URL ->
+                    ModuleStrings.getOrFallback(ctx, R.string.nowbar_short_open_link, "Open Link");
+            default -> ModuleStrings.getOrFallback(ctx, R.string.nowbar_short_action, "Action");
         };
     }
 
@@ -931,26 +971,33 @@ final class DiyNowBarPublisher {
             Context ctx, DiyNowBarCard card, StatsSnapshot stats, long now) {
         return switch (card.type) {
             case DiyNowBarCard.TYPE_GOAL -> card.goalSummary();
-            case DiyNowBarCard.TYPE_CHECKLIST -> card.checklistSummary();
+            case DiyNowBarCard.TYPE_CHECKLIST -> card.checklistSummary(ctx);
             case DiyNowBarCard.TYPE_STATS -> {
                 if (!card.statsFormat.isEmpty()) {
                     yield stats == null ? card.statsFormat : stats.format(card.statsFormat);
                 }
-                yield stats == null ? card.subtitle : stats.compact(card.statsPrimary);
+                yield stats == null ? card.subtitle : stats.compact(ctx, card.statsPrimary);
             }
             case DiyNowBarCard.TYPE_LAUNCHER -> {
                 if (!card.subtitle.isEmpty()) yield card.subtitle;
                 int count = card.activeShortcutCount();
-                yield count + (count == 1 ? " shortcut" : " shortcuts");
+                yield ModuleStrings.quantity(
+                        ctx,
+                        R.plurals.nowbar_shortcuts_count,
+                        count,
+                        count == 1 ? "%1$d shortcut" : "%1$d shortcuts",
+                        count);
             }
             case DiyNowBarCard.TYPE_TIMER -> {
                 if (card.timerMode == DiyNowBarCard.TIMER_STOPWATCH) {
                     yield card.timerRunning
-                            ? "Running"
+                            ? ModuleStrings.getOrFallback(ctx, R.string.nowbar_timer_running, "Running")
                             : DiyNowBarCard.formatDuration(card.stopwatchElapsedMs(now));
                 }
                 long rem = card.countdownRemainingMs(now);
-                yield rem <= 0L ? "Done" : DiyNowBarCard.formatCountdownBadge(rem);
+                yield rem <= 0L
+                        ? ModuleStrings.getOrFallback(ctx, R.string.common_done, "Done")
+                        : DiyNowBarCard.formatCountdownBadge(rem);
             }
             case DiyNowBarCard.TYPE_CONTROLS ->
                     card.subtitle.isEmpty() ? DiyNowBarLiveViews.controlsSummary(ctx) : card.subtitle;
@@ -966,15 +1013,25 @@ final class DiyNowBarPublisher {
             if (!card.statsFormat.isEmpty()) {
                 return stats == null ? card.statsFormat : stats.format(card.statsFormat);
             }
-            return stats == null ? "Live telemetry" : stats.compact(card.statsPrimary);
+            return stats == null
+                    ? ModuleStrings.getOrFallback(
+                            appContext,
+                            R.string.nowbar_default_subtitle_live_telemetry,
+                            "Live telemetry")
+                    : stats.compact(appContext, card.statsPrimary);
         }
         if (!card.subtitle.isEmpty() && card.type != DiyNowBarCard.TYPE_GOAL) return card.subtitle;
         return switch (card.type) {
             case DiyNowBarCard.TYPE_GOAL -> card.goalSummary();
-            case DiyNowBarCard.TYPE_CHECKLIST -> card.checklistSummary();
+            case DiyNowBarCard.TYPE_CHECKLIST -> card.checklistSummary(appContext);
             case DiyNowBarCard.TYPE_TIMER ->
                     card.timerMode == DiyNowBarCard.TIMER_STOPWATCH
-                            ? (card.timerRunning ? "Stopwatch running" : "Stopwatch paused")
+                            ? ModuleStrings.getOrFallback(
+                                    appContext,
+                                    card.timerRunning
+                                            ? R.string.nowbar_timer_stopwatch_running
+                                            : R.string.nowbar_timer_stopwatch_paused,
+                                    card.timerRunning ? "Stopwatch running" : "Stopwatch paused")
                             : DiyNowBarCard.formatCountdownBadge(card.countdownRemainingMs(now));
             default -> card.subtitle;
         };
@@ -987,10 +1044,20 @@ final class DiyNowBarPublisher {
                     card.checklistDoneCount() + "/" + card.checklist.size();
             case DiyNowBarCard.TYPE_TIMER ->
                     card.timerMode == DiyNowBarCard.TIMER_STOPWATCH
-                            ? (card.timerRunning ? "LIVE" : "PAUSED")
-                            : (card.countdownRemainingMs(now) <= 0L ? "DONE" : "TIMER");
-            case DiyNowBarCard.TYPE_STATS -> "LIVE";
-            case DiyNowBarCard.TYPE_CONTROLS -> "LIVE";
+                            ? ModuleStrings.getOrFallback(
+                                    appContext,
+                                    card.timerRunning
+                                            ? R.string.common_badge_live
+                                            : R.string.nowbar_badge_paused,
+                                    card.timerRunning ? "LIVE" : "PAUSED")
+                            : ModuleStrings.getOrFallback(
+                                    appContext,
+                                    card.countdownRemainingMs(now) <= 0L
+                                            ? R.string.nowbar_badge_done
+                                            : R.string.nowbar_badge_timer,
+                                    card.countdownRemainingMs(now) <= 0L ? "DONE" : "TIMER");
+            case DiyNowBarCard.TYPE_STATS, DiyNowBarCard.TYPE_CONTROLS ->
+                    ModuleStrings.getOrFallback(appContext, R.string.common_badge_live, "LIVE");
             default -> "";
         };
     }
@@ -1068,6 +1135,10 @@ final class DiyNowBarPublisher {
         }
 
         String compact(int bit) {
+            return compact(appContext, bit);
+        }
+
+        String compact(Context ctx, int bit) {
             return switch (bit) {
                 case DiyNowBarCard.STAT_BATTERY -> {
                     String s = batteryPct + "%";
@@ -1081,14 +1152,28 @@ final class DiyNowBarPublisher {
                     int pct = ramTotalBytes > 0 ? (int) Math.round(ramUsedBytes * 100.0 / ramTotalBytes) : 0;
                     yield DiyNowBarCard.formatBytesGb(ramUsedBytes) + " (" + pct + "%)";
                 }
-                case DiyNowBarCard.STAT_STORAGE -> DiyNowBarCard.formatBytesGb(storageFreeBytes) + " free";
+                case DiyNowBarCard.STAT_STORAGE ->
+                        ModuleStrings.getOrFallback(
+                                ctx,
+                                R.string.nowbar_stat_storage_free,
+                                "%1$s free",
+                                DiyNowBarCard.formatBytesGb(storageFreeBytes));
                 case DiyNowBarCard.STAT_NETWORK -> networkLabel;
-                case DiyNowBarCard.STAT_UPTIME -> "Up " + DiyNowBarCard.formatUptime(uptimeMs);
+                case DiyNowBarCard.STAT_UPTIME ->
+                        ModuleStrings.getOrFallback(
+                                ctx,
+                                R.string.nowbar_stat_uptime_compact,
+                                "Up %1$s",
+                                DiyNowBarCard.formatUptime(uptimeMs));
                 default -> "";
             };
         }
 
         String detail(int bit) {
+            return detail(appContext, bit);
+        }
+
+        String detail(Context ctx, int bit) {
             return switch (bit) {
                 case DiyNowBarCard.STAT_BATTERY -> {
                     String s = batteryPct + "%";
@@ -1103,7 +1188,11 @@ final class DiyNowBarPublisher {
                                 + " / "
                                 + DiyNowBarCard.formatBytesGb(ramTotalBytes);
                 case DiyNowBarCard.STAT_STORAGE ->
-                        DiyNowBarCard.formatBytesGb(storageFreeBytes) + " free";
+                        ModuleStrings.getOrFallback(
+                                ctx,
+                                R.string.nowbar_stat_storage_free,
+                                "%1$s free",
+                                DiyNowBarCard.formatBytesGb(storageFreeBytes));
                 case DiyNowBarCard.STAT_NETWORK -> networkLabel;
                 case DiyNowBarCard.STAT_UPTIME -> DiyNowBarCard.formatUptime(uptimeMs);
                 default -> "-";
@@ -1177,7 +1266,7 @@ final class DiyNowBarPublisher {
         } catch (Throwable ignored) {
         }
 
-        String net = "Offline";
+        String net = ModuleStrings.getOrFallback(ctx, R.string.nowbar_net_offline, "Offline");
         try {
             ConnectivityManager cm = ctx.getSystemService(ConnectivityManager.class);
             if (cm != null) {
@@ -1185,16 +1274,21 @@ final class DiyNowBarPublisher {
                 NetworkCapabilities caps = active == null ? null : cm.getNetworkCapabilities(active);
                 if (caps != null) {
                     if (caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
-                        net = "Wi-Fi";
+                        net = ModuleStrings.getOrFallback(ctx, R.string.nowbar_net_wifi, "Wi-Fi");
                     } else if (caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)) {
-                        net = "Mobile Data";
+                        net = ModuleStrings.getOrFallback(ctx, R.string.nowbar_net_mobile, "Mobile Data");
                     } else if (caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)) {
-                        net = "Ethernet";
+                        net = ModuleStrings.getOrFallback(ctx, R.string.nowbar_net_ethernet, "Ethernet");
                     } else {
-                        net = "Connected";
+                        net = ModuleStrings.getOrFallback(ctx, R.string.nowbar_net_connected, "Connected");
                     }
                     if (caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) {
-                        net += " \u00B7 VPN";
+                        net =
+                                ModuleStrings.getOrFallback(
+                                        ctx,
+                                        R.string.nowbar_net_with_vpn,
+                                        "%1$s \u00B7 VPN",
+                                        net);
                     }
                 }
             }

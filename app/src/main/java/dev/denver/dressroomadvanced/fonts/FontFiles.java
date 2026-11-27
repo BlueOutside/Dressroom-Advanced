@@ -31,7 +31,9 @@ final class FontFiles {
                 .clear()
                 .putString("token", token)
                 .putLong("expires", System.currentTimeMillis() + 30 * 60_000L)
-                .commit()) throw new IllegalStateException("Could not open font picker");
+                .commit()) throw new IllegalStateException(
+                        ModuleStrings.getOrFallback(
+                                context, R.string.font_import_open_picker_failed, "Could not open font picker"));
         Bundle result = new Bundle();
         result.putString("token", token);
         return result;
@@ -82,24 +84,27 @@ final class FontFiles {
     static Bundle importFont(Context context, Uri uri) throws Exception {
         File directory = new File(context.getFilesDir(), "clock-fonts");
         if (!directory.isDirectory() && !directory.mkdirs())
-            throw new IOException("Could not store font");
+            throw new IOException(ModuleStrings.getOrFallback(context, R.string.font_import_store_failed, "Could not store font"));
         File temporary = File.createTempFile("import-", ".tmp", directory);
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             int size = 0;
             try (InputStream input = context.getContentResolver().openInputStream(uri);
                     FileOutputStream output = new FileOutputStream(temporary)) {
-                if (input == null) throw new IOException("Could not read font");
+                if (input == null)
+                    throw new IOException(ModuleStrings.getOrFallback(context, R.string.font_import_read_failed, "Could not read font"));
                 byte[] buffer = new byte[16384];
                 int count;
                 while ((count = input.read(buffer)) != -1) {
-                    if (size > LIMIT - count) throw new IOException("Font exceeds 32 MB");
+                    if (size > LIMIT - count)
+                        throw new IOException(ModuleStrings.getOrFallback(context, R.string.font_import_too_large, "Font exceeds 32 MB"));
                     size += count;
                     digest.update(buffer, 0, count);
                     output.write(buffer, 0, count);
                 }
             }
-            if (size < 12) throw new IOException("Not a font file");
+            if (size < 12)
+                throw new IOException(ModuleStrings.getOrFallback(context, R.string.font_import_not_font, "Not a font file"));
             try (java.io.DataInputStream input =
                     new java.io.DataInputStream(new java.io.FileInputStream(temporary))) {
                 int magic = input.readInt();
@@ -107,15 +112,15 @@ final class FontFiles {
                         && magic != 0x4f54544f
                         && magic != 0x74746366
                         && magic != 0x74727565)
-                    throw new IOException("Choose a TTF, OTF or TTC font");
+                    throw new IOException(ModuleStrings.getOrFallback(context, R.string.font_import_unsupported_format, "Choose a TTF, OTF or TTC font"));
             }
             if (new Typeface.Builder(temporary).build() == null)
-                throw new IOException("Android could not load this font");
+                throw new IOException(ModuleStrings.getOrFallback(context, R.string.font_import_android_load_failed, "Android could not load this font"));
             String id = java.util.HexFormat.of().formatHex(digest.digest());
             File destination = file(context, id);
             if (!destination.isFile() && !temporary.renameTo(destination))
-                throw new IOException("Could not import font");
-            String name = "Custom font";
+                throw new IOException(ModuleStrings.getOrFallback(context, R.string.font_import_failed, "Could not import font"));
+            String name = ModuleStrings.getOrFallback(context, R.string.common_custom_font, "Custom font");
             try (Cursor cursor =
                     context.getContentResolver()
                             .query(

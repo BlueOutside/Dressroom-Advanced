@@ -22,7 +22,7 @@
         <activity android:name=".FontPickerActivity" android:exported="true"
             android:excludeFromRecents="true" android:theme="@android:style/Theme.DeviceDefault.NoActionBar"/>
         <activity android:name=".NowBarStudioActivity" android:exported="true"
-            android:label="DIY Now Bar"
+            android:label="@string/diy_nowbar_setting_title"
             android:launchMode="singleTop"
             android:windowSoftInputMode="adjustResize"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode"

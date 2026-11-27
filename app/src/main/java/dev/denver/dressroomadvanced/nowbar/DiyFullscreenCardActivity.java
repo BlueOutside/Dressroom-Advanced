@@ -181,7 +181,7 @@ public final class DiyFullscreenCardActivity extends Activity {
                         ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         fLp.topMargin = dp(16);
 
-        TextView editBtn = makePill("Edit in Studio", 0x28FFFFFF);
+        TextView editBtn = makePill(ModuleStrings.get(this, R.string.nowbar_edit_in_studio), 0x28FFFFFF);
         editBtn.setOnClickListener(
                 v -> {
                     DiyNowBarLiveViews.launchEditor(this, card.id, card.ignoreBouncer);
@@ -191,7 +191,7 @@ public final class DiyFullscreenCardActivity extends Activity {
         eLp.setMarginEnd(dp(8));
         footer.addView(editBtn, eLp);
 
-        TextView closeBtn = makePill("Close", withAlpha(card.accentColor, 0xCC));
+        TextView closeBtn = makePill(ModuleStrings.get(this, R.string.common_close), withAlpha(card.accentColor, 0xCC));
         closeBtn.setOnClickListener(v -> finish());
         footer.addView(closeBtn, new LinearLayout.LayoutParams(0, dp(42), 1f));
         content.addView(footer, fLp);
@@ -253,7 +253,7 @@ public final class DiyFullscreenCardActivity extends Activity {
                         card.timerMode == DiyNowBarCard.TIMER_STOPWATCH
                                 ? DiyNowBarCard.formatDuration(card.stopwatchElapsedMs(now))
                                 : (card.countdownRemainingMs(now) <= 0L
-                                        ? "Completed"
+                                        ? ModuleStrings.get(this, R.string.nowbar_timer_completed)
                                         : DiyNowBarCard.formatDuration(
                                                 card.countdownRemainingMs(now)));
                 TextView big = new TextView(this);
@@ -273,13 +273,20 @@ public final class DiyFullscreenCardActivity extends Activity {
                 LinearLayout row = new LinearLayout(this);
                 row.setOrientation(LinearLayout.HORIZONTAL);
                 if (card.timerMode == DiyNowBarCard.TIMER_STOPWATCH) {
-                    TextView toggle = makePill(card.timerRunning ? "Pause" : "Start", withAlpha(card.accentColor, 0xCC));
+                    TextView toggle =
+                            makePill(
+                                    ModuleStrings.get(
+                                            this,
+                                            card.timerRunning
+                                                    ? R.string.common_pause
+                                                    : R.string.common_start),
+                                    withAlpha(card.accentColor, 0xCC));
                     toggle.setOnClickListener(v -> mutateAndReload(DiyNowBarCard.MUTATE_TIMER_TOGGLE, -1));
                     LinearLayout.LayoutParams lp1 = new LinearLayout.LayoutParams(0, dp(42), 1f);
                     lp1.setMarginEnd(dp(8));
                     row.addView(toggle, lp1);
                 }
-                TextView reset = makePill("Reset", 0x28FFFFFF);
+                TextView reset = makePill(ModuleStrings.get(this, R.string.common_reset), 0x28FFFFFF);
                 reset.setOnClickListener(v -> mutateAndReload(DiyNowBarCard.MUTATE_TIMER_RESET, -1));
                 row.addView(reset, new LinearLayout.LayoutParams(0, dp(42), 1f));
                 content.addView(row);
@@ -313,7 +320,7 @@ public final class DiyFullscreenCardActivity extends Activity {
                 lp2.setMarginEnd(dp(8));
                 row.addView(inc, lp2);
 
-                TextView rst = makePill("Reset", 0x28FFFFFF);
+                TextView rst = makePill(ModuleStrings.get(this, R.string.common_reset), 0x28FFFFFF);
                 rst.setOnClickListener(v -> mutateAndReload(DiyNowBarCard.MUTATE_GOAL_RESET, -1));
                 row.addView(rst, new LinearLayout.LayoutParams(0, dp(44), 1f));
                 content.addView(row);
@@ -354,7 +361,7 @@ public final class DiyFullscreenCardActivity extends Activity {
                     content.addView(row, rlp);
                 }
                 if (card.checklistDoneCount() > 0) {
-                    TextView clear = makePill("Uncheck all", 0x28FFFFFF);
+                    TextView clear = makePill(ModuleStrings.get(this, R.string.nowbar_uncheck_all), 0x28FFFFFF);
                     clear.setOnClickListener(v -> mutateAndReload(DiyNowBarCard.MUTATE_CHECK_CLEAR, -1));
                     LinearLayout.LayoutParams clp =
                             new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(40));
@@ -390,7 +397,7 @@ public final class DiyFullscreenCardActivity extends Activity {
                     tile.addView(iv, new LinearLayout.LayoutParams(dp(36), dp(36)));
 
                     TextView lbl = new TextView(this);
-                    lbl.setText(slot.label.isEmpty() ? "Open" : slot.label);
+                    lbl.setText(slot.label.isEmpty() ? ModuleStrings.get(this, R.string.common_open) : slot.label);
                     lbl.setTextColor(Color.WHITE);
                     lbl.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
                     lbl.setSingleLine(true);

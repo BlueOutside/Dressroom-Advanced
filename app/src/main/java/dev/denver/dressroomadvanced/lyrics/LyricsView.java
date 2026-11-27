@@ -341,7 +341,9 @@ public final class LyricsView extends FrameLayout {
         headerLayout.addView(textCol);
 
         headerPinBtn = new HeaderActionButton(context, true);
-        headerPinBtn.setContentDescription("Keep screen on");
+        headerPinBtn.setContentDescription(
+                dev.denver.dressroomadvanced.ModuleStrings.getOrFallback(
+                        context, dev.denver.dressroomadvanced.R.string.lyrics_keep_screen_on, "Keep screen on"));
         headerPinBtn.setOnClickListener(v -> {
             screenPinned = !screenPinned;
             headerPinBtn.setPinned(screenPinned);
@@ -350,7 +352,9 @@ public final class LyricsView extends FrameLayout {
         headerLayout.addView(headerPinBtn, new LinearLayout.LayoutParams(dpToPx(44), dpToPx(44)));
 
         headerCloseBtn = new HeaderActionButton(context, false);
-        headerCloseBtn.setContentDescription("Close lyrics");
+        headerCloseBtn.setContentDescription(
+                dev.denver.dressroomadvanced.ModuleStrings.getOrFallback(
+                        context, dev.denver.dressroomadvanced.R.string.lyrics_close, "Close lyrics"));
         headerCloseBtn.setOnClickListener(v -> {
             if (closeListener != null) closeListener.run();
         });
@@ -369,7 +373,9 @@ public final class LyricsView extends FrameLayout {
         statusView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
         statusView.setTypeface(artistTypeface);
         statusView.setGravity(Gravity.CENTER);
-        statusView.setText("Loading lyrics...");
+        statusView.setText(
+                dev.denver.dressroomadvanced.ModuleStrings.getOrFallback(
+                        context, dev.denver.dressroomadvanced.R.string.lyrics_loading, "Loading lyrics..."));
         contentContainer.addView(statusView, new LayoutParams(
                 LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT, Gravity.CENTER));
 
@@ -786,7 +792,16 @@ public final class LyricsView extends FrameLayout {
 
         if (entry == null || !entry.hasLyrics()) {
             statusView.setVisibility(VISIBLE);
-            statusView.setText(entry != null && entry.notFound() ? "No lyrics found" : "Loading lyrics...");
+            statusView.setText(
+                    entry != null && entry.notFound()
+                            ? dev.denver.dressroomadvanced.ModuleStrings.getOrFallback(
+                                    getContext(),
+                                    dev.denver.dressroomadvanced.R.string.lyrics_not_found,
+                                    "No lyrics found")
+                            : dev.denver.dressroomadvanced.ModuleStrings.getOrFallback(
+                                    getContext(),
+                                    dev.denver.dressroomadvanced.R.string.lyrics_loading,
+                                    "Loading lyrics..."));
             fadeContainer.setVisibility(GONE);
             attributionView.setVisibility(GONE);
             return;
@@ -804,9 +819,13 @@ public final class LyricsView extends FrameLayout {
             activeScratch = new boolean[lyricLines.size()];
             plainLyricsView.setVisibility(GONE);
 
-            String src = "lrclib".equalsIgnoreCase(entry.source())
-                    ? "LRCLIB \u2022 Synced"
-                    : entry.source() + " \u2022 Synced";
+            String provider = "lrclib".equalsIgnoreCase(entry.source()) ? "LRCLIB" : entry.source();
+            String src =
+                    dev.denver.dressroomadvanced.ModuleStrings.getOrFallback(
+                            getContext(),
+                            dev.denver.dressroomadvanced.R.string.lyrics_synced_attribution,
+                            "%1$s \u2022 Synced",
+                            provider);
             attributionView.setText(src);
 
             Context ctx = getContext();
@@ -877,13 +896,22 @@ public final class LyricsView extends FrameLayout {
             plainLyricsView.setVisibility(VISIBLE);
             plainLyricsView.setText(entry.plainLyrics());
             String src = "lyrics.ovh".equalsIgnoreCase(entry.source()) ? "lyrics.ovh" : entry.source();
-            attributionView.setText(src + " \u2022 Plain");
+            attributionView.setText(
+                    dev.denver.dressroomadvanced.ModuleStrings.getOrFallback(
+                            getContext(),
+                            dev.denver.dressroomadvanced.R.string.lyrics_plain_attribution,
+                            "%1$s \u2022 Plain",
+                            src));
             linesContainer.addView(attributionView, new LinearLayout.LayoutParams(
                     LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
             scrollView.scrollTo(0, 0);
         } else {
             statusView.setVisibility(VISIBLE);
-            statusView.setText("No lyrics found");
+            statusView.setText(
+                    dev.denver.dressroomadvanced.ModuleStrings.getOrFallback(
+                            getContext(),
+                            dev.denver.dressroomadvanced.R.string.lyrics_not_found,
+                            "No lyrics found"));
             fadeContainer.setVisibility(GONE);
             attributionView.setVisibility(GONE);
         }

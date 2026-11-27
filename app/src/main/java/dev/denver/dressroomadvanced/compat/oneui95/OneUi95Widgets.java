@@ -33,8 +33,15 @@ final class OneUi95Widgets {
             if (icon == 0) icon = android.R.drawable.ic_menu_manage;
             Object updated = Array.newInstance(item.getDeclaringClass(), count + 1);
             System.arraycopy(current, 0, updated, 0, count);
-            Object entry = item.newInstance(-1, icon, null, "Advanced", marker, 0,
-                    openFactory.apply(screen), 0);
+            Object entry = item.newInstance(
+                    -1,
+                    icon,
+                    null,
+                    ModuleStrings.getOrFallback(screen, R.string.common_advanced, "Advanced"),
+                    marker,
+                    0,
+                    openFactory.apply(screen),
+                    0);
             Array.set(updated, count, entry);
             items.set(owner, updated);
         }

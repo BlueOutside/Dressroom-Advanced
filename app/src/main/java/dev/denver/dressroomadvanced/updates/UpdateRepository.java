@@ -274,7 +274,11 @@ final class UpdateRepository {
                 return new JSONObject(prefs.getString("release" + suffix, "{}"));
             }
         }
-        throw new IOException("This update request expired. Reopen the editor to check again.");
+        throw new IOException(
+                ModuleStrings.getOrFallback(
+                        context,
+                        R.string.update_error_expired,
+                        "This update request expired. Reopen the editor to check again."));
     }
 
     static File apk(Context context) {
@@ -309,7 +313,7 @@ final class UpdateRepository {
     }
 
     private static String fetchJson(String url) throws Exception {
-        HttpURLConnection connection = connect(url);
+        HttpURLConnection connection = connect(null, url);
         try {
             if (connection.getResponseCode() == 404) return null;
             if (connection.getResponseCode() != 200) throw new IOException("Release check failed");
@@ -353,30 +357,57 @@ final class UpdateRepository {
     }
 
     static File download(Context context, JSONObject release, Progress progress) throws Exception {
-        if (progress.cancelled()) throw new IOException("Download cancelled");
+        if (progress.cancelled())
+            throw new IOException(
+                    ModuleStrings.getOrFallback(
+                            context, R.string.update_error_cancelled, "Download cancelled"));
         JSONObject asset = asset(release);
-        if (asset == null) throw new IOException("No update APK is available");
+        if (asset == null)
+            throw new IOException(
+                    ModuleStrings.getOrFallback(
+                            context, R.string.update_error_no_apk, "No update APK is available"));
         File target = apk(context), partial = new File(target.getParentFile(), "release.part");
         if (!target.getParentFile().isDirectory() && !target.getParentFile().mkdirs())
-            throw new IOException("Could not create update folder");
+            throw new IOException(
+                    ModuleStrings.getOrFallback(
+                            context,
+                            R.string.update_error_create_folder,
+                            "Could not create update folder"));
         long expected = asset.getLong("size"), received = 0;
         long deadline = android.os.SystemClock.elapsedRealtime() + 180_000;
         MessageDigest hash = MessageDigest.getInstance("SHA-256");
-        HttpURLConnection connection = connect(asset.getString("browser_download_url"));
+        HttpURLConnection connection = connect(context, asset.getString("browser_download_url"));
         try {
             if (connection.getResponseCode() != 200)
-                throw new IOException("Update download failed");
+                throw new IOException(
+                        ModuleStrings.getOrFallback(
+                                context,
+                                R.string.update_error_download_failed,
+                                "Update download failed"));
             try (var input = connection.getInputStream();
                     var output = new FileOutputStream(partial)) {
                 byte[] buffer = new byte[32768];
                 int count, previous = -1;
                 while ((count = input.read(buffer)) != -1) {
-                    if (progress.cancelled()) throw new IOException("Download cancelled");
+                    if (progress.cancelled())
+                        throw new IOException(
+                                ModuleStrings.getOrFallback(
+                                        context,
+                                        R.string.update_error_cancelled,
+                                        "Download cancelled"));
                     if (android.os.SystemClock.elapsedRealtime() > deadline)
-                        throw new IOException("Download timed out");
+                        throw new IOException(
+                                ModuleStrings.getOrFallback(
+                                        context,
+                                        R.string.update_error_timed_out,
+                                        "Download timed out"));
                     received += count;
                     if (received > expected || received > MAX_APK)
-                        throw new IOException("Update size mismatch");
+                        throw new IOException(
+                                ModuleStrings.getOrFallback(
+                                        context,
+                                        R.string.update_error_size_mismatch,
+                                        "Update size mismatch"));
                     output.write(buffer, 0, count);
                     hash.update(buffer, 0, count);
                     int percent = (int) (received * 100 / expected);
@@ -386,13 +417,25 @@ final class UpdateRepository {
                     }
                 }
             }
-            if (received != expected) throw new IOException("Update download was incomplete");
+            if (received != expected)
+                throw new IOException(
+                        ModuleStrings.getOrFallback(
+                                context,
+                                R.string.update_error_incomplete,
+                                "Update download was incomplete"));
             String digest = asset.optString("digest");
             if (digest.startsWith("sha256:")
                     && !digest.substring(7).equalsIgnoreCase(hex(hash.digest())))
-                throw new IOException("Update checksum mismatch");
+                throw new IOException(
+                        ModuleStrings.getOrFallback(
+                                context,
+                                R.string.update_error_checksum_mismatch,
+                                "Update checksum mismatch"));
             verify(context, partial, release.getString("tag_name"));
-            if (progress.cancelled()) throw new IOException("Download cancelled");
+            if (progress.cancelled())
+                throw new IOException(
+                        ModuleStrings.getOrFallback(
+                                context, R.string.update_error_cancelled, "Download cancelled"));
             java.nio.file.Files.move(
                     partial.toPath(),
                     target.toPath(),
@@ -417,14 +460,26 @@ final class UpdateRepository {
                 || ReleaseVersion.parse(archive.versionName)
                                 .compareTo(ReleaseVersion.parse(releaseVersion))
                         != 0)
-            throw new IOException("The downloaded APK is not a newer Dressroom Advanced release");
+            throw new IOException(
+                    ModuleStrings.getOrFallback(
+                            context,
+                            R.string.update_error_not_newer,
+                            "The downloaded APK is not a newer Dressroom Advanced release"));
         for (var signature : archive.signingInfo.getApkContentsSigners()) {
             byte[] digest = MessageDigest.getInstance("SHA-256").digest(signature.toByteArray());
             if (!pm.hasSigningCertificate(PACKAGE, digest, PackageManager.CERT_INPUT_SHA256))
-                throw new IOException("The update was signed with a different key");
+                throw new IOException(
+                        ModuleStrings.getOrFallback(
+                                context,
+                                R.string.update_error_different_key,
+                                "The update was signed with a different key"));
         }
         if (archive.signingInfo.getApkContentsSigners().length == 0)
-            throw new IOException("Update signature is missing");
+            throw new IOException(
+                    ModuleStrings.getOrFallback(
+                            context,
+                            R.string.update_error_missing_signature,
+                            "Update signature is missing"));
     }
 
     private static String hex(byte[] bytes) {
@@ -433,7 +488,7 @@ final class UpdateRepository {
         return value.toString();
     }
 
-    private static HttpURLConnection connect(String address) throws Exception {
+    private static HttpURLConnection connect(Context context, String address) throws Exception {
         for (int redirects = 0; redirects < 6; redirects++) {
             URI uri = URI.create(address);
             String host = uri.getHost();
@@ -443,7 +498,9 @@ final class UpdateRepository {
                     || !("api.github.com".equals(host)
                             || "github.com".equals(host)
                             || (host != null && host.endsWith(".githubusercontent.com"))))
-                throw new IOException("Untrusted update URL");
+                throw new IOException(
+                        ModuleStrings.getOrFallback(
+                                context, R.string.update_error_untrusted_url, "Untrusted update URL"));
             HttpURLConnection connection = (HttpURLConnection) uri.toURL().openConnection();
             try {
                 connection.setConnectTimeout(10_000);
@@ -456,13 +513,22 @@ final class UpdateRepository {
                     return connection;
                 String location = connection.getHeaderField("Location");
                 connection.disconnect();
-                if (location == null) throw new IOException("Update redirect is missing");
+                if (location == null)
+                    throw new IOException(
+                            ModuleStrings.getOrFallback(
+                                    context,
+                                    R.string.update_error_missing_redirect,
+                                    "Update redirect is missing"));
                 address = uri.resolve(location).toString();
             } catch (Exception error) {
                 connection.disconnect();
                 throw error;
             }
         }
-        throw new IOException("Too many update redirects");
+        throw new IOException(
+                ModuleStrings.getOrFallback(
+                        context,
+                        R.string.update_error_too_many_redirects,
+                        "Too many update redirects"));
     }
 }

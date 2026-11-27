@@ -102,7 +102,7 @@ record OneUi80WidgetPanel(Field controller, Method show, Field mode, Method read
                 || !(activity.findViewById(rootId) instanceof RelativeLayout root)) return;
 
         Button advanced = new Button(activity);
-        advanced.setText("Advanced");
+        advanced.setText(ModuleStrings.getOrFallback(activity, R.string.common_advanced, "Advanced"));
         advanced.setAllCaps(false);
         advanced.setVisibility(View.GONE);
         advanced.setOnClickListener(view -> editor.openFromClock(activity));

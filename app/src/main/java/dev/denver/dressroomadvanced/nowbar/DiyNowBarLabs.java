@@ -109,6 +109,21 @@ final class DiyNowBarLabs {
         return GLOBAL_SHADER_LABELS[globalShaderIndex(value)];
     }
 
+    static String[] globalShaderLabels(android.content.Context context) {
+        return new String[] {
+            ModuleStrings.getOrFallback(context, R.string.nowbar_labs_shader_off, GLOBAL_SHADER_LABELS[0]),
+            ModuleStrings.getOrFallback(context, R.string.nowbar_labs_shader_ai_presence_sweep, GLOBAL_SHADER_LABELS[1]),
+            ModuleStrings.getOrFallback(context, R.string.nowbar_effect_ai_border, GLOBAL_SHADER_LABELS[2]),
+            ModuleStrings.getOrFallback(context, R.string.nowbar_effect_outer_glow, GLOBAL_SHADER_LABELS[3]),
+            ModuleStrings.getOrFallback(context, R.string.nowbar_effect_gradient_fill, GLOBAL_SHADER_LABELS[4]),
+            ModuleStrings.getOrFallback(context, R.string.nowbar_effect_guiding_light, GLOBAL_SHADER_LABELS[5])
+        };
+    }
+
+    static String globalShaderLabel(android.content.Context context, int value) {
+        return globalShaderLabels(context)[globalShaderIndex(value)];
+    }
+
     static boolean isNativeLabKey(String key) {
         return KEY_NATIVE_BATTERY.equals(key) || KEY_NATIVE_CONTACT.equals(key);
     }

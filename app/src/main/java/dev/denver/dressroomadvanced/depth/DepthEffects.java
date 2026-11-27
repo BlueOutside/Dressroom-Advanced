@@ -1454,8 +1454,10 @@ final class DepthEffects {
             if (image != null)
                 android.widget.Toast.makeText(
                                 image.getContext(),
-                                "Subject detection is not ready yet. Apply again after it"
-                                        + " finishes.",
+                                ModuleStrings.getOrFallback(
+                                        image.getContext(),
+                                        R.string.depth_toast_not_ready,
+                                        "Subject detection is not ready yet. Apply again after it finishes."),
                                 android.widget.Toast.LENGTH_LONG)
                         .show();
             return copy;

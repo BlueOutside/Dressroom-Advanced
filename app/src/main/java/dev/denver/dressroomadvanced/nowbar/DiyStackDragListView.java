@@ -149,7 +149,8 @@ final class DiyStackDragListView extends LinearLayout {
         titleLine.setGravity(Gravity.CENTER_VERTICAL);
 
         TextView titleTv = new TextView(ui.host);
-        titleTv.setText(entry.label.isEmpty() ? entry.slotId : entry.label);
+        String label = DiyNowBarStackOrder.displayLabel(ui.host, entry);
+        titleTv.setText(label.isEmpty() ? entry.slotId : label);
         titleTv.setTextColor(ui.primaryText);
         titleTv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
         titleTv.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
@@ -162,7 +163,7 @@ final class DiyStackDragListView extends LinearLayout {
 
         if (entry.live) {
             TextView liveBadge = new TextView(ui.host);
-            liveBadge.setText("LIVE");
+            liveBadge.setText(ModuleStrings.getOrFallback(ui.host, R.string.common_badge_live, "LIVE"));
             liveBadge.setTextColor(0xFF22C55E);
             liveBadge.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
             liveBadge.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
@@ -213,7 +214,8 @@ final class DiyStackDragListView extends LinearLayout {
                 DiyNowBarIcons.drawDragHandle(
                         ui.dp(20), ui.dp(24), DiyStudioUi.withAlpha(ui.secondaryText, 0xCC)));
         handle.setScaleType(ImageView.ScaleType.CENTER);
-        handle.setContentDescription("Drag to reorder");
+        handle.setContentDescription(
+                ModuleStrings.getOrFallback(ui.host, R.string.nowbar_drag_to_reorder, "Drag to reorder"));
         LinearLayout.LayoutParams hlp = new LinearLayout.LayoutParams(ui.dp(34), ui.dp(40));
         pill.addView(handle, hlp);
 
@@ -223,13 +225,25 @@ final class DiyStackDragListView extends LinearLayout {
 
     private String buildSubtitle(DiyNowBarStackOrder.LiveEntry entry, DiyNowBarCard diyCard) {
         if (entry.live) {
-            if (!entry.subtitle.isEmpty()) return "On Now Bar \u00B7 " + entry.subtitle;
-            return "Currently on Now Bar";
+            if (!entry.subtitle.isEmpty()) {
+                return ModuleStrings.getOrFallback(
+                        ui.host,
+                        R.string.nowbar_on_nowbar_detail,
+                        "On Now Bar \u00B7 %1$s",
+                        entry.subtitle);
+            }
+            return ModuleStrings.getOrFallback(
+                    ui.host, R.string.nowbar_currently_on_nowbar, "Currently on Now Bar");
         }
         if (diyCard != null) {
-            return "DIY " + DiyNowBarCard.TYPE_NAMES[diyCard.type] + " card";
+            return ModuleStrings.getOrFallback(
+                    ui.host,
+                    R.string.nowbar_diy_card_type,
+                    "DIY %1$s card",
+                    DiyNowBarCard.typeName(ui.host, diyCard.type));
         }
-        return "Applies when active";
+        return ModuleStrings.getOrFallback(
+                ui.host, R.string.nowbar_applies_when_active, "Applies when active");
     }
 
     private GradientDrawable makePillBackground(boolean live, boolean elevated) {

@@ -143,7 +143,13 @@ final class DiyStudioUi {
         bar.setPadding(dp(8), dp(4), dp(8), dp(4));
 
         if (onBack != null) {
-            bar.addView(toolbarIconButton("back", primaryText, "Navigate up", onBack));
+            bar.addView(
+                    toolbarIconButton(
+                            "back",
+                            primaryText,
+                            ModuleStrings.getOrFallback(
+                                    host, R.string.nowbar_navigate_up, "Navigate up"),
+                            onBack));
         }
 
         TextView titleTv = new TextView(host);

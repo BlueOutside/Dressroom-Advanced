@@ -36,6 +36,26 @@ final class FontAxes {
                 default -> name == null || name.isBlank() ? tag : name + " (" + tag + ")";
             };
         }
+
+        String label(android.content.Context context) {
+            return switch (tag) {
+                case "wght" -> ModuleStrings.getOrFallback(context, R.string.font_axis_weight, "Weight");
+                case "wdth" -> ModuleStrings.getOrFallback(context, R.string.font_axis_width, "Width");
+                case "opsz" -> ModuleStrings.getOrFallback(context, R.string.font_axis_optical_size, "Optical size");
+                case "slnt" -> ModuleStrings.getOrFallback(context, R.string.font_axis_slant, "Slant");
+                case "ital" -> ModuleStrings.getOrFallback(context, R.string.font_axis_italic, "Italic");
+                case "GRAD" -> ModuleStrings.getOrFallback(context, R.string.font_axis_grade, "Grade");
+                case "HEGT" -> ModuleStrings.getOrFallback(context, R.string.font_axis_height_hegt, "Height (HEGT)");
+                case "HGHT" -> ModuleStrings.getOrFallback(context, R.string.font_axis_height_hght, "Height (HGHT)");
+                case "RNDN" -> ModuleStrings.getOrFallback(context, R.string.font_axis_roundness_rndn, "Roundness (RNDN)");
+                case "YTLC" -> ModuleStrings.getOrFallback(context, R.string.font_axis_lowercase_height_ytlc, "Lowercase height (YTLC)");
+                case "BLED" -> ModuleStrings.getOrFallback(context, R.string.font_axis_bleed, "Bleed");
+                default -> name == null || name.isBlank()
+                        ? tag
+                        : ModuleStrings.getOrFallback(
+                                context, R.string.font_axis_custom_named, "%1$s (%2$s)", name, tag);
+            };
+        }
     }
 
     private record Table(int offset, int length) {}

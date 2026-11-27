@@ -45,8 +45,15 @@ final class ObjectCaptureBackend {
     }
 
     static String unavailableReason() {
+        return unavailableReason(null);
+    }
+
+    static String unavailableReason(Context context) {
         return unavailable == null
-                ? "Depth is unavailable: Samsung's subject detection libraries are missing."
+                ? ModuleStrings.getOrFallback(
+                        context,
+                        R.string.common_depth_libraries_missing,
+                        "Depth is unavailable: Samsung's subject detection libraries are missing.")
                 : unavailable;
     }
 

@@ -740,7 +740,12 @@ final class WidgetEditorBinding {
         items.add(
                 itemType.getDeclaredConstructor(
                                 String.class, int.class, Runnable.class, String.class)
-                        .newInstance("Advanced", icon, openFactory.apply(context), tag));
+                        .newInstance(
+                                ModuleStrings.getOrFallback(
+                                        context, R.string.common_advanced, "Advanced"),
+                                icon,
+                                openFactory.apply(context),
+                                tag));
         Object updated = Array.newInstance(itemType, items.size());
         for (int i = 0; i < items.size(); i++) Array.set(updated, i, items.get(i));
         arrayField.set(owner, updated);

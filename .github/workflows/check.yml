@@ -38,6 +38,8 @@ jobs:
           ./scripts/check-layout.ps1
           python scripts/compatibility-inventory.py --check
           python scripts/dev-version.py --self-test
+          python scripts/check-translations.py --self-test
+          python scripts/check-translations.py
       - name: Build unsigned APK
         id: build
         shell: pwsh

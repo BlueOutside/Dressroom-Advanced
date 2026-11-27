@@ -39,7 +39,14 @@ final class UpdatePrompt {
         destination = new WeakReference<>(activity);
         if (!running.compareAndSet(false, true)) {
             if (manual) {
-                Toast.makeText(activity, "Already checking for updates", Toast.LENGTH_SHORT).show();
+                Toast.makeText(
+                                activity,
+                                ModuleStrings.getOrFallback(
+                                        activity,
+                                        R.string.update_already_checking,
+                                        "Already checking for updates"),
+                                Toast.LENGTH_SHORT)
+                        .show();
             }
             return;
         }
@@ -65,8 +72,15 @@ final class UpdatePrompt {
                                         update == null ? "" : update.getString("installed", "");
                                 String message =
                                         installed.isEmpty()
-                                                ? "You are up to date"
-                                                : "You are up to date (" + installed + ")";
+                                                ? ModuleStrings.getOrFallback(
+                                                        current,
+                                                        R.string.update_up_to_date,
+                                                        "You are up to date")
+                                                : ModuleStrings.getOrFallback(
+                                                        current,
+                                                        R.string.update_up_to_date_version,
+                                                        "You are up to date (%1$s)",
+                                                        installed);
                                 current.runOnUiThread(
                                         () ->
                                                 Toast.makeText(
@@ -90,7 +104,10 @@ final class UpdatePrompt {
                                         () ->
                                                 Toast.makeText(
                                                                 current,
-                                                                "Could not check for updates",
+                                                                ModuleStrings.getOrFallback(
+                                                                        current,
+                                                                        R.string.update_check_failed,
+                                                                        "Could not check for updates"),
                                                                 Toast.LENGTH_SHORT)
                                                         .show());
                             }
@@ -130,43 +147,69 @@ final class UpdatePrompt {
         String token = update.getString("token");
         String altToken = update.getString("altToken");
         AlertDialog.Builder builder = new AlertDialog.Builder(host);
+        String cancelLabel = ModuleStrings.getOrFallback(host, R.string.common_cancel, "Cancel");
+        String updateLabel =
+                ModuleStrings.getOrFallback(host, R.string.update_button_update, "Update");
         if (altToken != null) {
             String altVersion = update.getString("altVersion");
-            builder.setTitle("Dressroom Advanced updates")
+            builder.setTitle(
+                            ModuleStrings.getOrFallback(
+                                    host,
+                                    R.string.update_dialog_title_both,
+                                    "Dressroom Advanced updates"))
                     .setMessage(
-                            "Both a stable release ("
-                                    + version
-                                    + ") and a pre-release ("
-                                    + altVersion
-                                    + ") are available.\nInstalled: "
-                                    + installed
-                                    + "\n\nChoose which version to install:")
-                    .setNegativeButton("Cancel", null)
+                            ModuleStrings.getOrFallback(
+                                    host,
+                                    R.string.update_dialog_message_both,
+                                    "Both a stable release (%1$s) and a pre-release (%2$s) are available.\nInstalled: %3$s\n\nChoose which version to install:",
+                                    version,
+                                    altVersion,
+                                    installed))
+                    .setNegativeButton(cancelLabel, null)
                     .setNeutralButton(
-                            "Pre-release (" + altVersion + ")",
+                            ModuleStrings.getOrFallback(
+                                    host,
+                                    R.string.update_button_prerelease,
+                                    "Pre-release (%1$s)",
+                                    altVersion),
                             (ignored, which) -> launchUpdater(host, altToken))
                     .setPositiveButton(
-                            "Stable (" + version + ")",
+                            ModuleStrings.getOrFallback(
+                                    host,
+                                    R.string.update_button_stable,
+                                    "Stable (%1$s)",
+                                    version),
                             (ignored, which) -> launchUpdater(host, token));
         } else if (update.getBoolean("prerelease")) {
-            builder.setTitle("Dressroom Advanced pre-release")
+            builder.setTitle(
+                            ModuleStrings.getOrFallback(
+                                    host,
+                                    R.string.update_dialog_title_prerelease,
+                                    "Dressroom Advanced pre-release"))
                     .setMessage(
-                            "Pre-release "
-                                    + version
-                                    + " is available. Installed: "
-                                    + installed
-                                    + ". Download and install it?")
-                    .setNegativeButton("Cancel", null)
-                    .setPositiveButton("Update", (ignored, which) -> launchUpdater(host, token));
+                            ModuleStrings.getOrFallback(
+                                    host,
+                                    R.string.update_dialog_message_prerelease,
+                                    "Pre-release %1$s is available. Installed: %2$s. Download and install it?",
+                                    version,
+                                    installed))
+                    .setNegativeButton(cancelLabel, null)
+                    .setPositiveButton(updateLabel, (ignored, which) -> launchUpdater(host, token));
         } else {
-            builder.setTitle("Dressroom Advanced update")
+            builder.setTitle(
+                            ModuleStrings.getOrFallback(
+                                    host,
+                                    R.string.update_dialog_title_stable,
+                                    "Dressroom Advanced update"))
                     .setMessage(
-                            version
-                                    + " is available. Installed: "
-                                    + installed
-                                    + ". Download and install it?")
-                    .setNegativeButton("Cancel", null)
-                    .setPositiveButton("Update", (ignored, which) -> launchUpdater(host, token));
+                            ModuleStrings.getOrFallback(
+                                    host,
+                                    R.string.update_dialog_message_stable,
+                                    "%1$s is available. Installed: %2$s. Download and install it?",
+                                    version,
+                                    installed))
+                    .setNegativeButton(cancelLabel, null)
+                    .setPositiveButton(updateLabel, (ignored, which) -> launchUpdater(host, token));
         }
         AlertDialog dialog = builder.create();
         dialog.setCanceledOnTouchOutside(false);
@@ -189,7 +232,14 @@ final class UpdatePrompt {
         try {
             host.startActivity(intent);
         } catch (RuntimeException error) {
-            Toast.makeText(host, "Could not open the updater", Toast.LENGTH_LONG).show();
+            Toast.makeText(
+                            host,
+                            ModuleStrings.getOrFallback(
+                                    host,
+                                    R.string.update_open_updater_failed,
+                                    "Could not open the updater"),
+                            Toast.LENGTH_LONG)
+                    .show();
         }
     }
 

@@ -23,7 +23,7 @@ public final class FontPickerActivity extends Activity {
         }
         if (state != null) {
             if (state.getBoolean("importing") && !active.contains(token))
-                finishWithError("Font import was interrupted. Please choose the file again.");
+                finishWithError(ModuleStrings.get(this, R.string.font_import_interrupted));
             return;
         }
         Intent intent =
@@ -33,7 +33,7 @@ public final class FontPickerActivity extends Activity {
         try {
             startActivityForResult(intent, 1);
         } catch (RuntimeException error) {
-            finishWithError("No file picker is available");
+            finishWithError(ModuleStrings.get(this, R.string.font_import_no_picker));
         }
     }
 
@@ -60,7 +60,9 @@ public final class FontPickerActivity extends Activity {
                         imported.putString(
                                 "error",
                                 error.getMessage() == null
-                                        ? "Could not load this font"
+                                        ? ModuleStrings.get(
+                                                getApplicationContext(),
+                                                R.string.font_import_load_failed)
                                         : error.getMessage());
                     }
                     FontFiles.complete(getApplicationContext(), token, imported);

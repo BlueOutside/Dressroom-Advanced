@@ -369,7 +369,7 @@ final class DiyNowBarLiveViews {
             header.addView(texts, tlp);
 
             badgeTv = new TextView(context);
-            badgeTv.setText("LIVE");
+            badgeTv.setText(ModuleStrings.getOrFallback(context, R.string.common_badge_live, "LIVE"));
             badgeTv.setTextColor(0xDDFFFFFF);
             badgeTv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 9.5f);
             badgeTv.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
@@ -426,6 +426,17 @@ final class DiyNowBarLiveViews {
             addView(statsGrid, glp);
         }
 
+        private String metricLabel(int idx) {
+            int res =
+                    switch (idx) {
+                        case 1 -> R.string.nowbar_stat_power;
+                        case 2 -> R.string.nowbar_stat_temp;
+                        case 3 -> R.string.nowbar_stat_ram_pct;
+                        default -> R.string.nowbar_stat_bat_pct;
+                    };
+            return ModuleStrings.getOrFallback(getContext(), res, METRIC_LABELS[idx]);
+        }
+
         void bind(
                 String cardId,
                 String title,
@@ -435,7 +446,13 @@ final class DiyNowBarLiveViews {
                 DiyNowBarCard badgeCard,
                 boolean ignoreBouncer) {
             this.cardId = cardId == null ? "" : cardId;
-            this.rawTitle = title == null || title.isEmpty() ? "Device Stats" : title;
+            this.rawTitle =
+                    title == null || title.isEmpty()
+                            ? ModuleStrings.getOrFallback(
+                                    getContext(),
+                                    R.string.nowbar_default_title_device_stats,
+                                    "Device Stats")
+                            : title;
             this.rawSubtitle = subtitle == null ? "" : subtitle;
             this.accentColor = accent == 0 ? 0xFF10B981 : accent;
             this.statsMask = statsMask;
@@ -469,7 +486,7 @@ final class DiyNowBarLiveViews {
                 final int idx = i;
                 boolean active = idx == selectedMetric;
                 TextView pill = new TextView(getContext());
-                pill.setText(METRIC_LABELS[i]);
+                pill.setText(metricLabel(i));
                 pill.setTextColor(active ? Color.WHITE : 0xDEFFFFFF);
                 pill.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
                 pill.setTypeface(
@@ -501,7 +518,9 @@ final class DiyNowBarLiveViews {
             List<TelemetrySample> samples = snapshotHistory(getContext());
 
             String sub =
-                    rawSubtitle.isEmpty() ? snap.compact(DiyNowBarCard.STAT_BATTERY) : snap.format(rawSubtitle);
+                    rawSubtitle.isEmpty()
+                            ? snap.compact(getContext(), DiyNowBarCard.STAT_BATTERY)
+                            : snap.format(rawSubtitle);
             subtitleTv.setText(sub);
             subtitleTv.setVisibility(sub.isEmpty() ? GONE : VISIBLE);
 
@@ -541,7 +560,7 @@ final class DiyNowBarLiveViews {
                     currentText = last == null ? "--%" : last.batteryPct + "%";
                 }
             }
-            chartView.setSeries(series, accentColor, METRIC_LABELS[selectedMetric], currentText, unit);
+            chartView.setSeries(series, accentColor, metricLabel(selectedMetric), currentText, unit);
 
             // Refresh 2x2 (or 1x2) telemetry grid; host height auto-expands cleanly with zero clip
             statsGrid.removeAllViews();
@@ -570,14 +589,14 @@ final class DiyNowBarLiveViews {
                     if (idx < count) {
                         int bit = bits.get(idx);
                         TextView l = new TextView(getContext());
-                        l.setText(DiyNowBarCard.statName(bit));
+                        l.setText(DiyNowBarCard.statName(getContext(), bit));
                         l.setTextColor(0xCCFFFFFF);
                         l.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10);
                         l.setSingleLine(true);
                         tile.addView(l);
 
                         TextView v = new TextView(getContext());
-                        v.setText(snap.detail(bit));
+                        v.setText(snap.detail(getContext(), bit));
                         v.setTextColor(Color.WHITE);
                         v.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
                         v.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
@@ -830,7 +849,13 @@ final class DiyNowBarLiveViews {
             addView(header);
 
             // Brightness slider
-            brightnessSlider = new LivePillSlider(context, "Brightness", "sun", previewOnly);
+            brightnessSlider =
+                    new LivePillSlider(
+                            context,
+                            ModuleStrings.getOrFallback(
+                                    context, R.string.nowbar_controls_brightness, "Brightness"),
+                            "sun",
+                            previewOnly);
             brightnessSlider.setOnFractionChanged(
                     frac -> {
                         if (!previewOnly) applyBrightness(getContext(), frac);
@@ -842,7 +867,12 @@ final class DiyNowBarLiveViews {
             addView(brightnessSlider, bLp);
 
             // Media volume slider
-            volumeSlider = new LivePillSlider(context, "Media", "music", previewOnly);
+            volumeSlider =
+                    new LivePillSlider(
+                            context,
+                            ModuleStrings.getOrFallback(context, R.string.extras_tab_media, "Media"),
+                            "music",
+                            previewOnly);
             volumeSlider.setOnFractionChanged(
                     frac -> {
                         if (!previewOnly) applyMediaVolume(getContext(), frac);
@@ -861,7 +891,10 @@ final class DiyNowBarLiveViews {
                             ViewGroup.LayoutParams.WRAP_CONTENT);
             tgLp.topMargin = dp(8);
 
-            torchPill = makeTogglePill(context, "Torch");
+            torchPill =
+                    makeTogglePill(
+                            context,
+                            ModuleStrings.getOrFallback(context, R.string.nowbar_short_torch, "Torch"));
             torchPill.setOnClickListener(
                     v -> {
                         if (!previewOnly) {
@@ -875,7 +908,11 @@ final class DiyNowBarLiveViews {
             p1.setMarginEnd(dp(6));
             toggles.addView(torchPill, p1);
 
-            ringerPill = makeTogglePill(context, "Sound");
+            ringerPill =
+                    makeTogglePill(
+                            context,
+                            ModuleStrings.getOrFallback(
+                                    context, R.string.nowbar_controls_sound, "Sound"));
             ringerPill.setOnClickListener(
                     v -> {
                         if (!previewOnly) cycleRingerMode(getContext());
@@ -885,7 +922,10 @@ final class DiyNowBarLiveViews {
             p2.setMarginEnd(dp(6));
             toggles.addView(ringerPill, p2);
 
-            autoBrightPill = makeTogglePill(context, "Auto");
+            autoBrightPill =
+                    makeTogglePill(
+                            context,
+                            ModuleStrings.getOrFallback(context, R.string.nowbar_controls_auto, "Auto"));
             autoBrightPill.setOnClickListener(
                     v -> {
                         if (!previewOnly) toggleAutoBrightness(getContext());
@@ -906,7 +946,13 @@ final class DiyNowBarLiveViews {
             this.accentColor = accent == 0 ? 0xFF06B6D4 : accent;
             this.ignoreBouncer = ignoreBouncer;
 
-            titleTv.setText(title == null || title.isEmpty() ? "Live Controls" : title);
+            titleTv.setText(
+                    title == null || title.isEmpty()
+                            ? ModuleStrings.getOrFallback(
+                                    getContext(),
+                                    R.string.nowbar_default_title_live_controls,
+                                    "Live Controls")
+                            : title);
             iconIv.setBackground(null);
             iconIv.setScaleType(ImageView.ScaleType.FIT_CENTER);
             if (badgeCard != null) {
@@ -935,21 +981,45 @@ final class DiyNowBarLiveViews {
         private void updateHeaderSummary() {
             int bPct = Math.round(brightnessSlider.getFraction() * 100f);
             int vPct = Math.round(volumeSlider.getFraction() * 100f);
-            subTv.setText("Bright " + bPct + "% \u00B7 Vol " + vPct + "%");
+            subTv.setText(
+                    ModuleStrings.getOrFallback(
+                            getContext(),
+                            R.string.nowbar_controls_summary,
+                            "Bright %1$d%% \u00B7 Vol %2$d%%",
+                            bPct,
+                            vPct));
         }
 
         private void syncTogglePills() {
-            styleTogglePill(torchPill, torchActive ? "Torch On" : "Torch", torchActive);
+            styleTogglePill(
+                    torchPill,
+                    ModuleStrings.getOrFallback(
+                            getContext(),
+                            torchActive ? R.string.nowbar_short_torch_on : R.string.nowbar_short_torch,
+                            torchActive ? "Torch On" : "Torch"),
+                    torchActive);
             int ringer = readRingerMode(getContext());
             String ringerLabel =
                     switch (ringer) {
-                        case AudioManager.RINGER_MODE_SILENT -> "Mute";
-                        case AudioManager.RINGER_MODE_VIBRATE -> "Vibrate";
-                        default -> "Sound";
+                        case AudioManager.RINGER_MODE_SILENT ->
+                                ModuleStrings.getOrFallback(
+                                        getContext(), R.string.nowbar_controls_mute, "Mute");
+                        case AudioManager.RINGER_MODE_VIBRATE ->
+                                ModuleStrings.getOrFallback(
+                                        getContext(), R.string.nowbar_controls_vibrate, "Vibrate");
+                        default ->
+                                ModuleStrings.getOrFallback(
+                                        getContext(), R.string.nowbar_controls_sound, "Sound");
                     };
             styleTogglePill(ringerPill, ringerLabel, ringer != AudioManager.RINGER_MODE_SILENT);
             boolean auto = isAutoBrightness(getContext());
-            styleTogglePill(autoBrightPill, auto ? "Auto On" : "Auto", auto);
+            styleTogglePill(
+                    autoBrightPill,
+                    ModuleStrings.getOrFallback(
+                            getContext(),
+                            auto ? R.string.nowbar_controls_auto_on : R.string.nowbar_controls_auto,
+                            auto ? "Auto On" : "Auto"),
+                    auto);
         }
 
         private TextView makeTogglePill(Context ctx, String text) {
@@ -1263,7 +1333,8 @@ final class DiyNowBarLiveViews {
     static String controlsSummary(Context ctx) {
         int bPct = Math.round(readBrightnessFraction(ctx) * 100f);
         int vPct = Math.round(readMediaVolumeFraction(ctx) * 100f);
-        return "Bright " + bPct + "% \u00B7 Vol " + vPct + "%";
+        return ModuleStrings.getOrFallback(
+                ctx, R.string.nowbar_controls_summary, "Bright %1$d%% \u00B7 Vol %2$d%%", bPct, vPct);
     }
 
     static void launchEditor(Context ctx, String cardId, boolean ignoreBouncer) {

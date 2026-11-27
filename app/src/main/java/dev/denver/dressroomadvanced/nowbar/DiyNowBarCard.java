@@ -122,6 +122,132 @@ final class DiyNowBarCard {
         new ShaderPreset("Rose Gold", 0xFFF472B6, 0xFFFBBF24)
     };
 
+    static String typeName(android.content.Context context, int type) {
+        int clamped = clamp(type, 0, TYPE_NAMES.length - 1);
+        int res =
+                switch (clamped) {
+                    case TYPE_CUSTOM -> R.string.nowbar_type_custom;
+                    case TYPE_TIMER -> R.string.nowbar_type_timer;
+                    case TYPE_GOAL -> R.string.nowbar_type_goal;
+                    case TYPE_STATS -> R.string.nowbar_type_stats;
+                    case TYPE_LAUNCHER -> R.string.nowbar_type_launcher;
+                    case TYPE_CHECKLIST -> R.string.nowbar_type_checklist;
+                    case TYPE_CONTROLS -> R.string.nowbar_type_controls;
+                    default -> R.string.nowbar_type_custom;
+                };
+        return ModuleStrings.getOrFallback(context, res, TYPE_NAMES[clamped]);
+    }
+
+    static String effectName(android.content.Context context, int effect) {
+        int clamped = clamp(effect, 0, EFFECT_NAMES.length - 1);
+        int res =
+                switch (clamped) {
+                    case EFFECT_NONE -> R.string.nowbar_effect_clean_glass;
+                    case EFFECT_RADIAL_GLOW -> R.string.nowbar_effect_radial_glow;
+                    case EFFECT_AI_PRESENCE -> R.string.nowbar_effect_ai_presence;
+                    case EFFECT_OUTER_GLOW -> R.string.nowbar_effect_outer_glow;
+                    case EFFECT_GRADIENT_FILL -> R.string.nowbar_effect_gradient_fill;
+                    case EFFECT_AI_MESH_WARP -> R.string.nowbar_effect_ai_border;
+                    case EFFECT_GUIDING_LIGHT -> R.string.nowbar_effect_guiding_light;
+                    default -> R.string.nowbar_effect_clean_glass;
+                };
+        return ModuleStrings.getOrFallback(context, res, EFFECT_NAMES[clamped]);
+    }
+
+    static String shaderPresetName(android.content.Context context, int index) {
+        int clamped = clamp(index, 0, SHADER_PRESETS.length - 1);
+        int res =
+                switch (clamped) {
+                    case 0 -> R.string.nowbar_preset_galaxy_ai;
+                    case 1 -> R.string.nowbar_preset_cyber_neon;
+                    case 2 -> R.string.nowbar_preset_sunset;
+                    case 3 -> R.string.nowbar_preset_aurora;
+                    case 4 -> R.string.nowbar_preset_emerald;
+                    case 5 -> R.string.nowbar_preset_rose_gold;
+                    default -> R.string.nowbar_preset_galaxy_ai;
+                };
+        return ModuleStrings.getOrFallback(context, res, SHADER_PRESETS[clamped].name);
+    }
+
+    static String statName(android.content.Context context, int bit) {
+        int res =
+                switch (bit) {
+                    case STAT_BATTERY -> R.string.nowbar_stat_battery;
+                    case STAT_RAM -> R.string.nowbar_stat_memory;
+                    case STAT_STORAGE -> R.string.nowbar_stat_storage;
+                    case STAT_NETWORK -> R.string.nowbar_stat_network;
+                    case STAT_UPTIME -> R.string.nowbar_stat_uptime;
+                    default -> R.string.nowbar_stat_generic;
+                };
+        return ModuleStrings.getOrFallback(context, res, statName(bit));
+    }
+
+    String checklistSummary(android.content.Context context) {
+        int total = checklist.size();
+        if (total == 0) {
+            return ModuleStrings.getOrFallback(
+                    context, R.string.nowbar_checklist_no_items, "No items yet");
+        }
+        int done = checklistDoneCount();
+        if (done == total) {
+            return ModuleStrings.getOrFallback(
+                    context, R.string.nowbar_checklist_all_done, "All %1$d done", total);
+        }
+        String next = nextUncheckedText();
+        if (next.isEmpty()) {
+            return ModuleStrings.getOrFallback(
+                    context, R.string.nowbar_checklist_progress_done, "%1$d/%2$d done", done, total);
+        }
+        return done + "/" + total + " \u00B7 " + next;
+    }
+
+    static DiyNowBarCard defaultForType(android.content.Context context, int type, long nowEpochMs) {
+        DiyNowBarCard c = defaultForType(type, nowEpochMs);
+        if (context == null) return c;
+        switch (c.type) {
+            case TYPE_TIMER -> {
+                c.title = ModuleStrings.getOrFallback(context, R.string.nowbar_timer_countdown, c.title);
+                c.subtitle = ModuleStrings.getOrFallback(context, R.string.nowbar_default_subtitle_event_timer, c.subtitle);
+            }
+            case TYPE_GOAL -> {
+                c.title = ModuleStrings.getOrFallback(context, R.string.nowbar_default_title_water, c.title);
+                c.subtitle = ModuleStrings.getOrFallback(context, R.string.nowbar_default_subtitle_daily_goal, c.subtitle);
+                c.unit = ModuleStrings.getOrFallback(context, R.string.nowbar_default_unit_glasses, c.unit);
+            }
+            case TYPE_STATS -> {
+                c.title = ModuleStrings.getOrFallback(context, R.string.nowbar_default_title_device_stats, c.title);
+                c.subtitle = ModuleStrings.getOrFallback(context, R.string.nowbar_default_subtitle_live_telemetry, c.subtitle);
+            }
+            case TYPE_LAUNCHER -> {
+                c.title = ModuleStrings.getOrFallback(context, R.string.nowbar_default_title_quick_actions, c.title);
+                c.subtitle = ModuleStrings.getOrFallback(context, R.string.nowbar_default_subtitle_tap_expand, c.subtitle);
+                if (c.shortcuts.size() >= 2) {
+                    c.shortcuts.get(0).label = ModuleStrings.getOrFallback(context, R.string.nowbar_short_torch, "Torch");
+                    c.shortcuts.get(1).label = ModuleStrings.getOrFallback(context, R.string.nowbar_short_studio, "Studio");
+                }
+            }
+            case TYPE_CHECKLIST -> {
+                c.title = ModuleStrings.getOrFallback(context, R.string.nowbar_default_title_todays_tasks, c.title);
+                c.subtitle = ModuleStrings.getOrFallback(context, R.string.nowbar_default_subtitle_check_off, c.subtitle);
+                if (c.checklist.size() >= 3) {
+                    c.checklist.get(0).text = ModuleStrings.getOrFallback(context, R.string.nowbar_default_task_stretch, "Morning stretch");
+                    c.checklist.get(1).text = ModuleStrings.getOrFallback(context, R.string.nowbar_default_task_water, "Drink water");
+                    c.checklist.get(2).text = ModuleStrings.getOrFallback(context, R.string.nowbar_default_task_messages, "Reply to messages");
+                }
+            }
+            case TYPE_CONTROLS -> {
+                c.title = ModuleStrings.getOrFallback(context, R.string.nowbar_default_title_live_controls, c.title);
+                c.subtitle = ModuleStrings.getOrFallback(context, R.string.nowbar_default_subtitle_brightness_volume, c.subtitle);
+            }
+            default -> {
+                c.title = ModuleStrings.getOrFallback(context, R.string.nowbar_default_title_custom, c.title);
+                c.subtitle = ModuleStrings.getOrFallback(context, R.string.nowbar_default_subtitle_tap_expand, c.subtitle);
+                c.body = ModuleStrings.getOrFallback(context, R.string.nowbar_default_body_custom, c.body);
+            }
+        }
+        return c.sanitize();
+    }
+
     static final class ShaderPreset {
         final String name;
         final int color1;
