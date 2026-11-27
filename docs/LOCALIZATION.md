@@ -15,8 +15,9 @@ Dressroom Advanced uses standard Android string resources compiled with `aapt2` 
 2. In your Crowdin project, open **Integrations** -> **GitHub** -> **Set Up Integration**.
 3. Select **Source and translation files mode**.
 4. Choose the repository `BlueOutside/Dressroom-Advanced`, select the `dev` branch, and keep the configuration file path as `crowdin.yml`.
-5. Keep the default service branch (`l10n_dev`) so Crowdin opens pull requests against `dev` automatically as translations are added or approved.
-6. Choose your target languages in Crowdin **Settings -> Languages**. Crowdin will map each language automatically via `%android_code%` (including regional codes like `values-pt-rBR` and BCP-47 tags like `values-b+sr+Latn`).
+5. Keep the default service branch (`l10n_dev`) so Crowdin opens pull requests against `dev` automatically as translations are added or approved. (`crowdin.yml` sets `append_commit_message: false` so GitHub Actions validates every Crowdin PR instead of skipping CI.)
+6. In Crowdin **Settings -> Export**, enable **Skip untranslated strings** and **Skip untranslated files** so Crowdin does not open PRs with untranslated English copies.
+7. Choose your target languages in Crowdin **Settings -> Languages** (do not add English as a target language since `values/strings.xml` is already the English default). `crowdin.yml` maps single-region languages to clean Android folders (`values-fr`, `values-de`, `values-es`, `values-nb`, `values-sr`, etc.) while keeping regional variants like `values-pt-rBR`, `values-pt-rPT`, `values-zh-rCN`, and `values-zh-rTW`.
 
 ## Guidelines for contributors and translators
 

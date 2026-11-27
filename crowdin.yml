@@ -1,7 +1,37 @@
 project_id_env: CROWDIN_PROJECT_ID
 api_token_env: CROWDIN_PERSONAL_TOKEN
 preserve_hierarchy: true
+pull_request_title: 'New Crowdin translations'
+commit_message: 'New translations %original_file_name% (%language%)'
+append_commit_message: false
 
 files:
   - source: /app/src/main/res/values/strings.xml
     translation: /app/src/main/res/values-%android_code%/%original_file_name%
+    languages_mapping:
+      android_code:
+        'af': af
+        'ar': ar
+        'ca': ca
+        'cs': cs
+        'da': da
+        'de': de
+        'el': el
+        'es-ES': es
+        'fi': fi
+        'fr': fr
+        'he': iw
+        'hu': hu
+        'it': it
+        'ja': ja
+        'ko': ko
+        'nl': nl
+        'no': nb
+        'pl': pl
+        'ro': ro
+        'ru': ru
+        'sr': sr
+        'sv-SE': sv
+        'tr': tr
+        'uk': uk
+        'vi': vi
