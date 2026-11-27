@@ -468,7 +468,9 @@ final class RuntimeClockHooks {
                             var animator = body.uniqueWrite(pageType, "Landroid/animation/ValueAnimator;", null)
                                     .field(loader);
                             var pageClockField = NativeContract.findField(page, null, base);
-                            var pageExpanded = PlatformGate.oneUiVersion() >= 90500
+                            boolean betaMediaObserver = PlatformGate.oneUiVersion() >= 90500
+                                    || ClockTransitionBinding.of(base).transition.getParameterCount() == 3;
+                            var pageExpanded = betaMediaObserver
                                     ? OneUi95MediaState.pageExpanded(body, pageType, owner, loader)
                                     : null;
                             record(module.hook(observer).setId("dressroom-advanced.media-page-return")
@@ -663,7 +665,7 @@ final class RuntimeClockHooks {
                                 || (axisAnim != null && axisAnim.isStarted())) {
                             mediaReturnStarted.add(clock);
                         } else if (mediaReturnStarted.add(clock)) {
-                            transition.transition.invoke(clock, 0f, false);
+                            transition.reset(clock);
                             axisAnim =
                                     (android.animation.Animator)
                                             transition.animation.get(controller);
@@ -702,7 +704,7 @@ final class RuntimeClockHooks {
             if (!dozing && dozeAmount == 0f) {
                 if (animation != null && animation.isStarted()) mediaReturnStarted.add(clock);
                 if (mediaReturnStarted.add(clock)) {
-                    transition.transition.invoke(clock, 0f, false);
+                    transition.reset(clock);
                     animation = (android.animation.Animator) transition.animation.get(controller);
                 }
             }
