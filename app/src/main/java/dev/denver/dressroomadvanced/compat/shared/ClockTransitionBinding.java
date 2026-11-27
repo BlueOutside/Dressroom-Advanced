@@ -40,6 +40,11 @@ final class ClockTransitionBinding {
         return of(clock.getClass());
     }
 
+    void reset(Object clock) throws ReflectiveOperationException {
+        if (transition.getParameterCount() == 3) transition.invoke(clock, 0f, 0f, false);
+        else transition.invoke(clock, 0f, false);
+    }
+
     private ClockTransitionBinding(Class<?> base) throws ReflectiveOperationException {
         ClassLoader loader = base.getClassLoader();
         String baseDesc = DexSignatures.descriptor(base);
